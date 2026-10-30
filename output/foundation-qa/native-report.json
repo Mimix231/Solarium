@@ -1,0 +1,181 @@
+{
+  "at": "2026-10-30T08:52:14.576Z",
+  "profile": "org.solarium.foundationqa",
+  "projectRoot": "C:\\Users\\hacke\\AppData\\Local\\Temp\\solarium-foundation-qa-1793350334575\\VideoEditor",
+  "results": [
+    {
+      "name": "native-storage-and-writing",
+      "result": {
+        "project": "369b6b5a-61c7-49e7-970a-30bc5ceb4fd9",
+        "chat": "12b1258d-1d7b-414a-b7c7-b9c1dd895e96",
+        "sourceId": "6b58b871-6afb-483f-9e79-b7a3b2947a9b",
+        "worldId": "09b31866-1486-4f2b-bce6-881c25f295b3",
+        "characterId": "550cbe52-77b0-4a8e-a82f-870a13f77844",
+        "documentId": "26513078-0f48-4677-86aa-72ed1d76e0a0",
+        "revisions": 2,
+        "peerSources": 1,
+        "foreignSources": 0
+      }
+    },
+    {
+      "name": "native-research-page",
+      "result": {
+        "url": "https://witchculttranslation.com/2021/01/23/arc-7-chapter-1-initiation/",
+        "title": "Arc 7, Chapter 1 – “Baptism” | Witch Cult Translations",
+        "characters": 3953,
+        "arrow": true,
+        "tree": true,
+        "savedSourceId": "23d4a9ea-3b03-46b1-93c8-a88d8e12ceb7"
+      }
+    },
+    {
+      "name": "native-scaffold",
+      "result": {
+        "before": {
+          "fileCount": 0,
+          "rootEntryCount": 0
+        },
+        "files": [
+          ".gitignore",
+          "README.md",
+          "index.html",
+          "package-lock.json",
+          "package.json",
+          "src-tauri/Cargo.toml",
+          "src-tauri/build.rs",
+          "src-tauri/capabilities/default.json",
+          "src-tauri/gen/schemas/acl-manifests.json",
+          "src-tauri/gen/schemas/capabilities.json",
+          "src-tauri/gen/schemas/desktop-schema.json",
+          "src-tauri/gen/schemas/windows-schema.json",
+          "src-tauri/src/main.rs",
+          "src-tauri/tauri.conf.json",
+          "src/App.tsx",
+          "src/main.tsx",
+          "src/style.css",
+          "tsconfig.json",
+          "vite.config.ts"
+        ],
+        "detected": {
+          "tauri": true,
+          "react": true,
+          "typescript": true,
+          "mui": true,
+          "rust": true,
+          "ffmpeg": false,
+          "packageManager": "npm"
+        },
+        "steps": [
+          {
+            "id": "write-0",
+            "status": "completed",
+            "detail": "Native write confirmed 12 files.",
+            "files": [
+              {
+                "path": "package.json",
+                "operation": "created"
+              },
+              {
+                "path": "index.html",
+                "operation": "created"
+              },
+              {
+                "path": "tsconfig.json",
+                "operation": "created"
+              },
+              {
+                "path": "vite.config.ts",
+                "operation": "created"
+              },
+              {
+                "path": "src/main.tsx",
+                "operation": "created"
+              },
+              {
+                "path": "src/App.tsx",
+                "operation": "created"
+              },
+              {
+                "path": "src/style.css",
+                "operation": "created"
+              },
+              {
+                "path": "src-tauri/Cargo.toml",
+                "operation": "created"
+              },
+              {
+                "path": "src-tauri/build.rs",
+                "operation": "created"
+              },
+              {
+                "path": "src-tauri/src/main.rs",
+                "operation": "created"
+              },
+              {
+                "path": "src-tauri/tauri.conf.json",
+                "operation": "created"
+              },
+              {
+                "path": "src-tauri/capabilities/default.json",
+                "operation": "created"
+              }
+            ]
+          },
+          {
+            "id": "write-12",
+            "status": "completed",
+            "detail": "Native write confirmed 2 files.",
+            "files": [
+              {
+                "path": ".gitignore",
+                "operation": "created"
+              },
+              {
+                "path": "README.md",
+                "operation": "created"
+              }
+            ]
+          },
+          {
+            "id": "install",
+            "status": "completed",
+            "detail": "npm install runs with scripts disabled; Web OFF uses only the local package cache.",
+            "command": "npm.cmd install --ignore-scripts --no-audit --no-fund",
+            "exitCode": 0,
+            "stderr": ""
+          },
+          {
+            "id": "npm_check",
+            "status": "completed",
+            "detail": "npm.cmd run check: exit 0",
+            "command": "npm.cmd run check",
+            "exitCode": 0,
+            "stderr": ""
+          },
+          {
+            "id": "npm_build",
+            "status": "completed",
+            "detail": "npm.cmd run build: exit 0",
+            "command": "npm.cmd run build",
+            "exitCode": 0,
+            "stderr": ""
+          },
+          {
+            "id": "cargo_check",
+            "status": "failed",
+            "detail": "cargo check --manifest-path src-tauri/Cargo.toml: exit 101",
+            "command": "cargo check --manifest-path src-tauri/Cargo.toml",
+            "exitCode": 101,
+            "stderr": "1793350334575\\VideoEditor\\src-tauri)\n    Building [=======================> ] 388/395: tauri(b…\r    Building [=======================> ] 389/395: tauri-m…\r    Building [=======================> ] 390/395: tauri-m…\r    Building [=======================> ] 391/395: tauri(b…\r    Building [=======================> ] 392/395: video_e…\rerror: failed to run custom build command for `video_editor v0.1.0 (C:\\Users\\hacke\\AppData\\Local\\Temp\\solarium-foundation-qa-1793350334575\\VideoEditor\\src-tauri)`\n\nCaused by:\n  process didn't exit successfully: `C:\\Users\\hacke\\AppData\\Local\\Temp\\solarium-foundation-qa-1793350334575\\VideoEditor\\src-tauri\\target\\debug\\build\\video_editor-c3b17aab94a59278\\build-script-build` (exit code: 1)\n  --- stdout\n  cargo:rerun-if-env-changed=TAURI_CONFIG\n  cargo:rustc-check-cfg=cfg(desktop)\n  cargo:rustc-cfg=desktop\n  cargo:rustc-check-cfg=cfg(mobile)\n  cargo:rerun-if-changed=C:\\Users\\hacke\\AppData\\Local\\Temp\\solarium-foundation-qa-1793350334575\\VideoEditor\\src-tauri\\tauri.conf.json\n  cargo:rustc-env=TAURI_ANDROID_PACKAGE_NAME_APP_NAME=foundationqa\n  cargo:rustc-env=TAURI_ANDROID_PACKAGE_NAME_PREFIX=org_solarium\n  cargo:rustc-check-cfg=cfg(dev)\n  cargo:rustc-cfg=dev\n  cargo:PERMISSION_FILES_PATH=C:\\Users\\hacke\\AppData\\Local\\Temp\\solarium-foundation-qa-1793350334575\\VideoEditor\\src-tauri\\target\\debug\\build\\video_editor-30c87f49ec120ec1\\out\\app-manifest\\__app__-permission-files\n  cargo:rerun-if-changed=C:\\Users\\hacke\\AppData\\Local\\Temp\\solarium-foundation-qa-1793350334575\\VideoEditor\\src-tauri\\capabilities\n  cargo:rerun-if-env-changed=REMOVE_UNUSED_COMMANDS\n  cargo:rustc-env=TAURI_ENV_TARGET_TRIPLE=x86_64-pc-windows-msvc\n  package.metadata does not exist\n  `C:\\Users\\hacke\\AppData\\Local\\Temp\\solarium-foundation-qa-1793350334575\\VideoEditor\\src-tauri\\icons/icon.ico` not found; required for generating a Windows Resource file during tauri-build\nwarning: build failed, waiting for other jobs to finish...\n    Building [=======================> ] 393/395: tauri   \r"
+          }
+        ]
+      }
+    },
+    {
+      "name": "native-web-off",
+      "result": {
+        "blocked": 2
+      }
+    }
+  ]
+}

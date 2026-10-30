@@ -1,0 +1,12 @@
+:root[data-theme='slate'] {
+  color-scheme: dark;
+  --app-bg: #21252b; --surface: #30363c; --surface-strong: #2c3137;
+  --surface-hover: #3b444b; --line: #45515b;
+  --ink-muted: #a6b1b6; --glow: transparent; --radius: 4px;
+  --shadow: 0 3px 6px rgba(0,0,0,.1); --blur: 0px; --accent: #a9c0c9;
+  --side-surface: #282e34; --rail-surface: #23292f; --title-surface: #30363b;
+  --user-message: #384650; --app-decoration: none;
+}
+:root[data-theme='slate'] .nav-rail .rail-button,:root[data-theme='slate'] .chat-row,:root[data-theme='slate'] .spark-avatar,:root[data-theme='slate'] .composer,:root[data-theme='slate'] .icon-surface { border-radius: 3px }
+:root[data-theme='slate'] .glass { backdrop-filter: none; -webkit-backdrop-filter: none }
+:root[data-theme='slate'] .spark-card:hover { transform: none }

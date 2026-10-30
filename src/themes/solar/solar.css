@@ -1,0 +1,11 @@
+:root[data-theme='solar'] {
+  color-scheme: dark;
+  --app-bg: #0c1629; --surface: rgba(37,42,51,.66); --surface-strong: #1e293a;
+  --surface-hover: rgba(235,186,117,.12); --line: rgba(255,204,135,.14);
+  --ink-muted: #aeb0bb; --glow: rgba(243,174,79,.14); --radius: 15px;
+  --shadow: 0 18px 60px rgba(0,3,18,.29); --blur: 22px; --accent: #f3bd72;
+  --side-surface: rgba(14,27,43,.78); --rail-surface: rgba(11,22,37,.85);
+  --title-surface: rgba(13,23,38,.78); --user-message: rgba(210,143,78,.14);
+  --app-decoration: radial-gradient(ellipse at 87% 75%,rgba(170,87,42,.16),transparent 53%),radial-gradient(circle at 70% 10%,rgba(253,207,113,.06),transparent 34%),linear-gradient(145deg,#0e182c,#132335);
+}
+:root[data-theme='solar'] .brand-symbol { filter: drop-shadow(0 0 8px rgba(255,208,114,.26)) }

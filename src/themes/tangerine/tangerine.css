@@ -1,0 +1,16 @@
+/* Tangerine zest: orange rind, deep sunset peel and cream pulp. */
+:root[data-theme='tangerine'] {
+  color-scheme:dark;--app-bg:#26180e;--surface:rgba(75,45,24,.83);--surface-strong:#4a2d20;
+  --surface-hover:rgba(255,186,72,.15);--line:rgba(255,188,119,.22);--ink-muted:#e2b99a;
+  --glow:rgba(254,147,31,.22);--radius:14px;--shadow:0 18px 42px rgba(22,10,4,.4);
+  --blur:16px;--accent:#ffb857;--side-surface:rgba(49,29,18,.92);
+  --rail-surface:linear-gradient(180deg,#7e3f16,#4f2e1d);--title-surface:linear-gradient(90deg,#47291c,#60351b);
+  --user-message:rgba(222,127,41,.23);
+  --app-decoration:radial-gradient(ellipse at 94% 15%,rgba(236,130,38,.26),transparent 47%),
+    radial-gradient(circle at 2% 85%,rgba(197,87,25,.18),transparent 40%),
+    repeating-radial-gradient(circle at 99% 100%,transparent 0 14px,rgba(255,181,61,.045) 15px 16px),linear-gradient(135deg,#29180d,#46261b);
+}
+:root[data-theme='tangerine'] .spark-card {border-top:3px solid #ffb760;background:linear-gradient(155deg,rgba(92,56,31,.88),rgba(50,30,20,.88))}
+:root[data-theme='tangerine'] .spark-card::after {content:'';position:absolute;right:-17px;top:-22px;width:90px;height:90px;border-radius:50%;opacity:.27;pointer-events:none;background:repeating-conic-gradient(#ffd48d 0 5deg,#e47c24 6deg 45deg)}
+:root[data-theme='tangerine'] .MuiButton-containedPrimary {background:linear-gradient(115deg,#ef9e35,#ffc16b);color:#3b1d10}
+:root[data-theme='tangerine'] .eyebrow {color:#ffd39d!important}

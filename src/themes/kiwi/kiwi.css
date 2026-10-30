@@ -1,0 +1,18 @@
+/* Kiwi: fuzzy rind rail, sliced-lime flesh, dark seeds, warm cream. */
+:root[data-theme='kiwi'] {
+  color-scheme:light;--app-bg:#f7f8ea;--surface:rgba(251,255,240,.9);--surface-strong:#fffef4;
+  --surface-hover:rgba(75,134,61,.11);--line:rgba(83,107,57,.24);--ink-muted:#61715b;
+  --glow:rgba(105,179,71,.2);--radius:13px;--shadow:0 12px 40px rgba(71,84,38,.13);
+  --blur:14px;--accent:#387b3a;--side-surface:rgba(242,250,224,.95);
+  --rail-surface:linear-gradient(180deg,#846745,#654931);--title-surface:linear-gradient(90deg,#f3edcc,#f5fae3);
+  --user-message:#e0f1d2;
+  --app-decoration:radial-gradient(ellipse at 88% 65%,rgba(157,207,91,.26),transparent 52%),
+    repeating-radial-gradient(circle at 95% 10%,transparent 0 16px,rgba(57,86,38,.045) 17px 18px,transparent 19px 28px),
+    linear-gradient(145deg,#fffdf0,#ebf5d6);
+}
+:root[data-theme='kiwi'] .nav-rail .rail-button {color:#fff1c8}
+:root[data-theme='kiwi'] .nav-rail .rail-active {color:#ffffec;background:#4c813e;box-shadow:inset 3px 0 #d7ef87}
+:root[data-theme='kiwi'] .spark-card {border-top:4px solid #9dd86d;background:linear-gradient(135deg,#fbffe7,#f0f8d8)}
+:root[data-theme='kiwi'] .spark-card::after {content:'';position:absolute;right:-11px;top:-18px;width:95px;height:95px;opacity:.28;pointer-events:none;background:repeating-conic-gradient(from 7deg,#284629 0 4deg,transparent 5deg 32deg),radial-gradient(circle,#e9ef9c 0 34%,#8abf5b 36% 49%,#8a653f 50% 53%,transparent 54%);border-radius:50%}
+:root[data-theme='kiwi'] .MuiButton-containedPrimary {background:linear-gradient(130deg,#4a8848,#28683a);color:#fff}
+:root[data-theme='kiwi'] .glass.panel {border-left:3px solid #aa8555}

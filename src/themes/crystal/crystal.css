@@ -1,0 +1,13 @@
+:root[data-theme='crystal'] {
+  color-scheme: light;
+  --app-bg: #e9effc; --surface: rgba(255,255,255,.40); --surface-strong: rgba(251,254,255,.94);
+  --surface-hover: rgba(97,123,185,.115); --line: rgba(65,83,134,.15);
+  --ink-muted: #68788f; --glow: rgba(117,129,228,.24); --radius: 18px;
+  --shadow: 0 14px 48px rgba(78,92,165,.14), inset 0 1px 0 rgba(255,255,255,.65);
+  --surface-shadow: inset 0 1px 0 rgba(255,255,255,.72),0 9px 32px rgba(62,91,147,.06);
+  --blur: 35px; --accent: #697fd2; --side-surface: rgba(248,252,255,.46);
+  --rail-surface: rgba(255,255,255,.55); --title-surface: rgba(245,252,255,.55);
+  --user-message: rgba(203,214,248,.72);
+  --app-decoration: radial-gradient(ellipse at 86% 18%,rgba(217,184,255,.7),transparent 50%),radial-gradient(ellipse at 25% 82%,rgba(167,229,244,.7),transparent 50%),linear-gradient(130deg,#e7f1ff,#faf1fd);
+}
+:root[data-theme='crystal'] .glass { border-top-color: rgba(255,255,255,.9) }

@@ -1,0 +1,54 @@
+import { applyProjectChanges, inspectGeneratedFile, runProjectCheck, type AppliedChange, type ProjectCheckResult, type ProjectFileChange } from '../creator';
+import { inspectEnvironment, type ProjectEnvironment } from './project';
+export interface RecipeStep {id:string;title:string;status:'completed'|'failed'|'denied'|'skipped';files?:AppliedChange[];check?:ProjectCheckResult;detail:string}
+export interface RecipeContext {folder:string;name:string;environment:ProjectEnvironment;signal:AbortSignal;webEnabled:boolean;authorize:(tool:string,args:Record<string,unknown>)=>Promise<'allow'|'deny'>;onStep:(step:RecipeStep)=>void;onStage?:(files:ProjectFileChange[])=>void}
+const json=(value:unknown)=>JSON.stringify(value,null,2)+'\n';
+/** Bundled source template. Local media import and preview work; encoding is a later feature. */
+export function videoEditorTemplate(name:string):ProjectFileChange[]{
+  const packageName=name.toLowerCase().replace(/[^a-z0-9-]/g,'-').replace(/^-+|-+$/g,'')||'video-editor';
+  const files:Record<string,string>={
+    'package.json':json({name:packageName,version:'0.1.0',private:true,type:'module',scripts:{dev:'vite',check:'tsc --noEmit',build:'tsc --noEmit && vite build',tauri:'tauri'},dependencies:{react:'^19.1.0','react-dom':'^19.1.0','@mui/material':'^7.3.0','@emotion/react':'^11.14.0','@emotion/styled':'^11.14.0','@tauri-apps/api':'^2.7.0'},devDependencies:{typescript:'~5.8.3',vite:'^7.0.0','@vitejs/plugin-react':'^4.7.0','@types/react':'^19.1.0','@types/react-dom':'^19.1.0','@tauri-apps/cli':'^2.7.0'}}),
+    'index.html':'<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Video Editor</title></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>\n',
+    'tsconfig.json':json({compilerOptions:{target:'ES2022',lib:['ES2022','DOM','DOM.Iterable'],module:'ESNext',moduleResolution:'Bundler',jsx:'react-jsx',strict:true,skipLibCheck:true,noEmit:true,allowSyntheticDefaultImports:true},include:['src','vite.config.ts']}),
+    'vite.config.ts':"import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\nexport default defineConfig({plugins:[react()],server:{port:1420,strictPort:true},clearScreen:false});\n",
+    'src/main.tsx':"import { createRoot } from 'react-dom/client';\nimport { App } from './App';\nimport './style.css';\ncreateRoot(document.getElementById('root')!).render(<App/>);\n",
+    'src/App.tsx':`import { useEffect, useRef, useState } from 'react';
+import { ThemeProvider, createTheme, CssBaseline, Button, Typography, Slider } from '@mui/material';
+type Clip={id:string;name:string;url:string};
+const theme=createTheme({palette:{mode:'dark',primary:{main:'#a5b4fc'},background:{default:'#101323',paper:'#1c2234'}},shape:{borderRadius:14},typography:{fontFamily:'Segoe UI, sans-serif'}});
+export function App(){
+ const [clips,setClips]=useState<Clip[]>([]),[active,setActive]=useState(''),[time,setTime]=useState(0),[duration,setDuration]=useState(0);
+ const video=useRef<HTMLVideoElement>(null),urls=useRef<string[]>([]);const selected=clips.find(c=>c.id===active);
+ useEffect(()=>()=>{urls.current.forEach(url=>URL.revokeObjectURL(url));},[]);
+ return <ThemeProvider theme={theme}><CssBaseline/><div className="editor-shell"><header><Typography variant="h6">Video Editor <small>0.1 · Phase 1</small></Typography><Button component="label" variant="contained">Import media<input hidden type="file" multiple accept="video/*" onChange={e=>{const next=Array.from(e.target.files??[]).map(f=>{const url=URL.createObjectURL(f);urls.current.push(url);return{id:crypto.randomUUID(),name:f.name,url};});setClips(old=>[...old,...next]);if(next[0])setActive(next[0].id);e.target.value='';}}/></Button></header>
+ <aside className="media panel"><h2>Media library</h2>{!clips.length&&<p>Import a local video to begin.</p>}{clips.map(c=><Button key={c.id} fullWidth variant={active===c.id?'contained':'text'} onClick={()=>{setActive(c.id);setTime(0);}}>{c.name}</Button>)}</aside>
+ <main className="preview panel"><h2>Preview</h2>{selected?<video key={selected.id} ref={video} src={selected.url} controls onLoadedMetadata={e=>setDuration(e.currentTarget.duration)} onTimeUpdate={e=>setTime(e.currentTarget.currentTime)}/>:<p>Your selected video appears here.</p>}</main>
+ <section className="timeline panel"><h2>Timeline · {time.toFixed(1)} / {duration.toFixed(1)} s</h2><Slider aria-label="Playhead" min={0} max={duration||1} step={0.01} value={Math.min(time,duration||1)} onChange={(_,v)=>{if(video.current){video.current.currentTime=v as number;setTime(v as number);}}}/><div className="track">{clips.map(c=><button key={c.id} onClick={()=>setActive(c.id)}>{c.name}</button>)}</div><p>Local import, playback and scrubbing. Multi-track editing and FFmpeg export are planned.</p></section></div></ThemeProvider>;
+}
+`,
+    'src/style.css':'*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#303055,#101323);color:#e4e7f7}.editor-shell{height:100vh;padding:16px;display:grid;grid-template-columns:240px 1fr;grid-template-rows:50px 1fr 220px;gap:14px}header{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center}small{font-size:11px;opacity:.6}.panel{border:1px solid #ffffff22;background:#ffffff09;backdrop-filter:blur(24px);border-radius:18px;padding:16px;overflow:auto}h2{font-size:13px;letter-spacing:.04em}p{font-size:12px;opacity:.65}.preview video{width:100%;height:calc(100% - 35px);object-fit:contain}.timeline{grid-column:1/-1}.track{display:flex;gap:8px;background:#0003;padding:12px;border-radius:8px}.track button{border:1px solid #a5b4fc55;border-radius:8px;background:#a5b4fc22;color:inherit;padding:12px;cursor:pointer}@media(max-width:700px){.editor-shell{grid-template-columns:150px 1fr;padding:8px;gap:8px}}\n',
+    'src-tauri/Cargo.toml':'[package]\nname="video_editor"\nversion="0.1.0"\nedition="2021"\n[build-dependencies]\ntauri-build={version="2",features=[]}\n[dependencies]\ntauri={version="2",features=[]}\n',
+    'src-tauri/build.rs':'fn main() { tauri_build::build() }\n',
+    'src-tauri/src/main.rs':'#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]\nfn main() { tauri::Builder::default().run(tauri::generate_context!()).expect("Video editor failed to start"); }\n',
+    'src-tauri/tauri.conf.json':json({$schema:'https://schema.tauri.app/config/2',productName:'Video Editor',version:'0.1.0',identifier:'local.solarium.videoeditor',build:{beforeDevCommand:'npm run dev',devUrl:'http://localhost:1420',beforeBuildCommand:'npm run build',frontendDist:'../dist'},app:{windows:[{title:'Video Editor',width:1200,height:800}],security:{csp:"default-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob:; img-src 'self' data: blob:"}},bundle:{active:false}}),
+    'src-tauri/capabilities/default.json':json({identifier:'default',windows:['main'],permissions:['core:default']}),
+    '.gitignore':'node_modules/\ndist/\nsrc-tauri/target/\n*.solarium.bak\n',
+    'README.md':'# Video Editor 0.1\n\nPhase 1: Tauri 2, React, TypeScript and Material UI. Import a local video, preview it, and scrub the timeline.\n\nRun `npm install`, `npm run check`, `npm run build`, then `npm run tauri dev`. Rust checks run with `cargo check --manifest-path src-tauri/Cargo.toml`.\n\nFFmpeg encoding and multi-track editing are later work.\n',
+  };return Object.entries(files).map(([path,content])=>({path,content,expected:null}));
+}
+export async function scaffoldVideoEditor(ctx:RecipeContext):Promise<RecipeStep[]>{
+  const steps:RecipeStep[]=[];const emit=(s:RecipeStep)=>{steps.push(s);ctx.onStep(s);};const checkStop=()=>{if(ctx.signal.aborted)throw new DOMException('Cancelled','AbortError');};
+  const pending:ProjectFileChange[]=[];
+  for(const file of videoEditorTemplate(ctx.name)){checkStop();const preview=await inspectGeneratedFile(ctx.folder,file.path).catch((error:unknown)=>{if(String(error).includes('directory does not exist'))return {exists:false,current:''};throw error;});if(preview.exists){if(preview.current!==file.content)throw Error(`Scaffold conflict: ${file.path} already contains different content. Existing files were preserved.`);}else pending.push(file);}
+  for(let offset=0;offset<pending.length;offset+=12){checkStop();const files=pending.slice(offset,offset+12);ctx.onStage?.(files);if(await ctx.authorize('apply_project_changes',{files})!=='allow'){emit({id:`write-${offset}`,title:'Create scaffold files',status:'denied',detail:'File creation was denied.'});return steps;}
+    checkStop();try{const applied=await applyProjectChanges(ctx.folder,files);emit({id:`write-${offset}`,title:'Create scaffold files',status:'completed',files:applied,detail:`Native write confirmed ${applied.length} files.`});}catch(error){emit({id:`write-${offset}`,title:'Create scaffold files',status:'failed',detail:String(error)});return steps;}}
+  checkStop();const environment=await inspectEnvironment(ctx.environment.projectId,ctx.folder);
+  if(!environment.dependenciesInstalled){try{const install=await installDependencies({...ctx,environment});emit(install);if(install.status!=='completed')return steps;}catch(error){emit({id:'install',title:'Install dependencies',status:'failed',detail:String(error)});return steps;}}
+  for(const check of ['npm_check','npm_build','cargo_check']){checkStop();if(!environment.checks.includes(check)){emit({id:check,title:check,status:'skipped',detail:'No matching manifest/script.'});continue;}if(await ctx.authorize('run_project_check',{check})!=='allow'){emit({id:check,title:check,status:'denied',detail:'Project check was denied.'});continue;}checkStop();try{const result=await runProjectCheck(ctx.folder,check);emit({id:check,title:check,status:result.exit_code===0&&!result.timed_out?'completed':'failed',check:result,detail:`${result.command}: exit ${result.exit_code??'unknown'}${result.timed_out?' (timed out)':''}`});}catch(error){emit({id:check,title:check,status:'failed',detail:String(error)});}}
+  return steps;
+}
+export async function installDependencies(ctx:RecipeContext):Promise<RecipeStep>{
+  const check=ctx.webEnabled?'npm_install':'npm_install_offline';if(ctx.environment.detected.packageManager!=='npm')return{id:'install',title:'Install dependencies',status:'skipped',detail:'Automatic installation currently supports npm projects. Use the detected package manager manually.'};
+  if(await ctx.authorize('install_project_dependencies',{check})!=='allow')return{id:'install',title:'Install dependencies',status:'denied',detail:'Dependency installation was denied.'};
+  const result=await runProjectCheck(ctx.folder,check);return{id:'install',title:'Install dependencies',status:result.exit_code===0&&!result.timed_out?'completed':'failed',check:result,detail:'npm install runs with scripts disabled; Web OFF uses only the local package cache.'};
+}

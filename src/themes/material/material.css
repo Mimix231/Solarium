@@ -1,0 +1,12 @@
+:root[data-theme='material'] {
+  color-scheme: light;
+  --app-bg: #f4effc; --surface: rgba(251,247,255,.92); --surface-strong: #fefbff;
+  --surface-hover: #e7dffa; --line: rgba(105,79,151,.15);
+  --ink-muted: #80758d; --glow: rgba(138,105,185,.13); --radius: 25px;
+  --shadow: 0 4px 16px rgba(70,49,109,.075); --blur: 5px; --accent: #6b55b8;
+  --side-surface: #ede7f7; --rail-surface: #e7ddf4; --title-surface: #f5f0fb;
+  --user-message: #e2d5fb; --app-decoration: radial-gradient(ellipse at 85% 100%,rgba(196,219,255,.55),transparent 55%);
+}
+:root[data-theme='material'] .nav-rail .rail-button { border-radius: 99px }
+:root[data-theme='material'] .glass { box-shadow: none }
+:root[data-theme='material'] .composer { border-radius: 29px }

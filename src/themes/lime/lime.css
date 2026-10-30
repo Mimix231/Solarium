@@ -1,0 +1,15 @@
+/* Lime soda: lively citrus rind, translucent juice and crisp cut-glass lines. */
+:root[data-theme='lime'] {
+  color-scheme:light;--app-bg:#f7fced;--surface:rgba(254,255,240,.88);--surface-strong:#fffff5;
+  --surface-hover:rgba(129,187,41,.16);--line:rgba(97,146,37,.25);--ink-muted:#697d53;
+  --glow:rgba(162,215,48,.2);--radius:9px;--shadow:0 14px 30px rgba(86,125,43,.12);
+  --blur:11px;--accent:#397c38;--side-surface:rgba(248,255,218,.92);
+  --rail-surface:linear-gradient(180deg,#cfed75,#9bc93c);--title-surface:linear-gradient(90deg,#f1ffc5,#faffde);
+  --user-message:#e8f6ba;
+  --app-decoration:repeating-conic-gradient(from 0deg at 100% 100%,rgba(124,177,53,.035) 0 20deg,transparent 21deg 45deg),
+    radial-gradient(ellipse at 100% 100%,rgba(176,223,55,.32),transparent 45%),linear-gradient(120deg,#fbffe4,#e7f6d8);
+}
+:root[data-theme='lime'] .spark-card {border-radius:11px;border-top:4px solid #acd048;background:linear-gradient(145deg,#fffff1,#eaf9cd)}
+:root[data-theme='lime'] .spark-card::after {content:'';position:absolute;right:-23px;top:-22px;width:99px;height:99px;border-radius:50%;opacity:.24;pointer-events:none;background:repeating-conic-gradient(#fff7b1 0 4deg,#72bb41 5deg 36deg),radial-gradient(circle,transparent 0 38%,#4d9e44 41% 54%,transparent 55%);}
+:root[data-theme='lime'] .MuiButton-containedPrimary {background:linear-gradient(120deg,#78b83b,#397b37);color:#fff}
+:root[data-theme='lime'] .eyebrow {letter-spacing:2.6px!important}

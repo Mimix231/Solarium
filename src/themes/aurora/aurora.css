@@ -1,0 +1,11 @@
+:root[data-theme='aurora'] {
+  color-scheme: dark;
+  --app-bg: #0d1a2a; --surface: rgba(21,42,55,.60); --surface-strong: rgba(22,33,61,.96);
+  --surface-hover: rgba(108,221,217,.11); --line: rgba(130,236,228,.15);
+  --ink-muted: #95bac5; --glow: rgba(79,241,203,.20); --radius: 16px;
+  --shadow: 0 25px 75px rgba(0,5,26,.3); --blur: 28px; --accent: #83e4d7;
+  --side-surface: rgba(13,27,46,.68); --rail-surface: rgba(9,21,37,.77);
+  --title-surface: rgba(15,25,47,.66); --user-message: rgba(76,157,178,.15);
+  --app-decoration: radial-gradient(ellipse at 82% 16%,rgba(111,44,174,.35),transparent 48%),radial-gradient(ellipse at 30% 70%,rgba(18,135,143,.33),transparent 53%),linear-gradient(115deg,#0c162e,#102735 63%,#171833);
+}
+:root[data-theme='aurora'] .spark-card-glow { opacity: .4 }

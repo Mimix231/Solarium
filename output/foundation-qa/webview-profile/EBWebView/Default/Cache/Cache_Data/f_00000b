@@ -1,0 +1,192 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/views/CodeWorkspace.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=8bddaf3b"; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+var _s = $RefreshSig$();
+import __vite__cjsImport3_react from "/node_modules/.vite/deps/react.js?v=8bddaf3b"; const useEffect = __vite__cjsImport3_react["useEffect"]; const useState = __vite__cjsImport3_react["useState"];
+import { Alert, Box, Button, Card, Chip, Stack, TextField, Typography } from "/node_modules/.vite/deps/@mui_material.js?v=4b79b76d";
+import { useSolarium } from "/src/state/useSolarium.ts";
+import { listProjectFiles, readProjectFile, writeProjectFile } from "/src/engine/creator.ts";
+import { SectionTitle } from "/src/components/SectionTitle.tsx";
+export function CodeWorkspace() {
+  _s();
+  const { workspace, setView } = useSolarium();
+  const project = (workspace.projects ?? []).find((p) => p.id === workspace.activeProjectId);
+  const [files, setFiles] = useState([]);
+  const [current, setCurrent] = useState("");
+  const [original, setOriginal] = useState("");
+  const [content, setContent] = useState("");
+  const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
+  useEffect(() => {
+    let mounted = true;
+    setFiles([]);
+    setCurrent("");
+    setContent("");
+    setOriginal("");
+    if (project?.folder) void listProjectFiles(project.folder).then((list) => {
+      if (mounted) setFiles(list);
+    }).catch((e) => {
+      if (mounted) setError(String(e));
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [project?.folder]);
+  async function openFile(path) {
+    if (!project) return;
+    try {
+      const text = await readProjectFile(project.folder, path);
+      setContent(text);
+      setOriginal(text);
+      setCurrent(path);
+      setStatus("");
+      setError("");
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+  async function save() {
+    if (!project || !current || content === original) return;
+    if (!window.confirm(`Apply your changes to ${current}? A .solarium.bak backup will be saved first.`)) return;
+    try {
+      await writeProjectFile(project.folder, current, content, original);
+      setOriginal(content);
+      setStatus("File saved. Backup created beside the original file.");
+      setError("");
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+  return /* @__PURE__ */ jsxDEV("div", { className: "view-scroll creator-view", children: [
+    /* @__PURE__ */ jsxDEV(SectionTitle, { eyebrow: "LOCAL SOURCE EXPLORER", title: "Code Workspace", description: "Browse, inspect, and explicitly save project files. Solarium never edits files automatically from chat." }, void 0, false, {
+      fileName: "E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx",
+      lineNumber: 38,
+      columnNumber: 52
+    }, this),
+    /* @__PURE__ */ jsxDEV(Stack, { direction: "row", gap: 1, mb: 2, children: [
+      /* @__PURE__ */ jsxDEV(Button, { onClick: () => setView("projects"), children: "← Project settings" }, void 0, false, {
+        fileName: "E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx",
+        lineNumber: 39,
+        columnNumber: 43
+      }, this),
+      /* @__PURE__ */ jsxDEV(Chip, { size: "small", label: project?.name ?? "No project" }, void 0, false, {
+        fileName: "E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx",
+        lineNumber: 39,
+        columnNumber: 114
+      }, this),
+      /* @__PURE__ */ jsxDEV(Button, { onClick: () => project?.folder && listProjectFiles(project.folder).then(setFiles).catch((e) => setError(String(e))), children: "Refresh" }, void 0, false, {
+        fileName: "E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx",
+        lineNumber: 39,
+        columnNumber: 173
+      }, this)
+    ] }, void 0, true, {
+      fileName: "E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx",
+      lineNumber: 39,
+      columnNumber: 5
+    }, this),
+    error && /* @__PURE__ */ jsxDEV(Alert, { severity: "warning", onClose: () => setError(""), children: error }, void 0, false, {
+      fileName: "E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx",
+      lineNumber: 40,
+      columnNumber: 15
+    }, this),
+    status && /* @__PURE__ */ jsxDEV(Alert, { severity: "success", onClose: () => setStatus(""), children: status }, void 0, false, {
+      fileName: "E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx",
+      lineNumber: 40,
+      columnNumber: 97
+    }, this),
+    /* @__PURE__ */ jsxDEV("div", { className: "creator-code-layout", children: [
+      /* @__PURE__ */ jsxDEV(Card, { className: "creator-file-tree", children: files.length ? files.map((file) => /* @__PURE__ */ jsxDEV("button", { onClick: () => void openFile(file), className: current === file ? "selected" : "", children: file }, file, false, {
+        fileName: "E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx",
+        lineNumber: 41,
+        columnNumber: 114
+      }, this)) : /* @__PURE__ */ jsxDEV(Typography, { fontSize: 12, color: "text.secondary", children: "Choose a project source folder. Supported text and code files are shown here." }, void 0, false, {
+        fileName: "E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx",
+        lineNumber: 41,
+        columnNumber: 235
+      }, this) }, void 0, false, {
+        fileName: "E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx",
+        lineNumber: 41,
+        columnNumber: 42
+      }, this),
+      /* @__PURE__ */ jsxDEV(Card, { className: "creator-editor", children: [
+        /* @__PURE__ */ jsxDEV(Stack, { direction: "row", justifyContent: "space-between", alignItems: "center", children: [
+          /* @__PURE__ */ jsxDEV(Typography, { fontSize: 12, fontWeight: 700, children: [
+            current || "Select a file",
+            " ",
+            content !== original ? "• Unsaved" : ""
+          ] }, void 0, true, {
+            fileName: "E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx",
+            lineNumber: 41,
+            columnNumber: 489
+          }, this),
+          /* @__PURE__ */ jsxDEV(Button, { variant: "contained", disabled: !current || content === original, onClick: () => void save(), children: "Review & Save" }, void 0, false, {
+            fileName: "E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx",
+            lineNumber: 41,
+            columnNumber: 615
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx",
+          lineNumber: 41,
+          columnNumber: 415
+        }, this),
+        /* @__PURE__ */ jsxDEV(TextField, { fullWidth: true, multiline: true, minRows: 18, maxRows: 40, value: content, onChange: (e) => setContent(e.target.value), placeholder: "Open a file to inspect or edit it", slotProps: { input: { sx: { fontFamily: "monospace", fontSize: 12, lineHeight: 1.5 } } } }, void 0, false, {
+          fileName: "E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx",
+          lineNumber: 42,
+          columnNumber: 7
+        }, this),
+        /* @__PURE__ */ jsxDEV(Box, { fontSize: 11, color: "text.secondary", children: "Changes are written only after you confirm. Files changed externally will not be overwritten." }, void 0, false, {
+          fileName: "E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx",
+          lineNumber: 42,
+          columnNumber: 265
+        }, this)
+      ] }, void 0, true, {
+        fileName: "E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx",
+        lineNumber: 41,
+        columnNumber: 382
+      }, this)
+    ] }, void 0, true, {
+      fileName: "E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx",
+      lineNumber: 41,
+      columnNumber: 5
+    }, this)
+  ] }, void 0, true, {
+    fileName: "E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx",
+    lineNumber: 38,
+    columnNumber: 10
+  }, this);
+}
+_s(CodeWorkspace, "i27yCftHsFPl5zzvN7h93C/55aY=", false, function() {
+  return [useSolarium];
+});
+_c = CodeWorkspace;
+var _c;
+$RefreshReg$(_c, "CodeWorkspace");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("E:/ChatGPTProjects/Solarium/src/views/CodeWorkspace.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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LGNBQVcsVUFBVSxJQUFJLFlBQVksS0FBTTFCO0FBQUFBLHVCQUFXO0FBQUEsWUFBZ0I7QUFBQSxZQUFFSSxZQUFZRixXQUFXLGNBQWM7QUFBQSxlQUE5RztBQUFBO0FBQUE7QUFBQTtBQUFBLGlCQUFpSDtBQUFBLFVBQWEsdUJBQUMsVUFBTyxTQUFRLGFBQVksVUFBVSxDQUFDRixXQUFXSSxZQUFZRixVQUFVLFNBQVMsTUFBTSxLQUFLa0IsS0FBSyxHQUFHLDZCQUFwRztBQUFBO0FBQUE7QUFBQTtBQUFBLGlCQUFpSDtBQUFBLGFBQXpUO0FBQUE7QUFBQTtBQUFBO0FBQUEsZUFBa1U7QUFBQSxRQUMxdEIsdUJBQUMsYUFBVSxXQUFTLE1BQUMsV0FBUyxNQUFDLFNBQVMsSUFBSSxTQUFTLElBQUksT0FBT2hCLFNBQVMsVUFBVSxDQUFDVyxNQUFNVixXQUFXVSxFQUFFWSxPQUFPQyxLQUFLLEdBQUcsYUFBWSxxQ0FBb0MsV0FBVyxFQUFFQyxPQUFPLEVBQUVDLElBQUksRUFBRUMsWUFBWSxhQUFhQyxVQUFVLElBQUlDLFlBQVksSUFBSSxFQUFFLEVBQUUsS0FBN1A7QUFBQTtBQUFBO0FBQUE7QUFBQSxlQUErUDtBQUFBLFFBQUcsdUJBQUMsT0FBSSxVQUFVLElBQUksT0FBTSxrQkFBaUIsNkdBQTFDO0FBQUE7QUFBQTtBQUFBO0FBQUEsZUFBdUk7QUFBQSxXQURsQjtBQUFBO0FBQUE7QUFBQTtBQUFBLGFBQ3dCO0FBQUEsU0FEalo7QUFBQTtBQUFBO0FBQUE7QUFBQSxXQUN3WjtBQUFBLE9BSm5aO0FBQUE7QUFBQTtBQUFBO0FBQUEsU0FLUDtBQUNGO0FBQUM1QyxHQWxCZUQsZUFBYTtBQUFBLFVBQ0lMLFdBQVc7QUFBQTtBQUFBLEtBRDVCSztBQUFhLElBQUE4QztBQUFBLGFBQUFBLElBQUEiLCJuYW1lcyI6WyJ1c2VFZmZlY3QiLCJ1c2VTdGF0ZSIsIkFsZXJ0IiwiQm94IiwiQnV0dG9uIiwiQ2FyZCIsIkNoaXAiLCJTdGFjayIsIlRleHRGaWVsZCIsIlR5cG9ncmFwaHkiLCJ1c2VTb2xhcml1bSIsImxpc3RQcm9qZWN0RmlsZXMiLCJyZWFkUHJvamVjdEZpbGUiLCJ3cml0ZVByb2plY3RGaWxlIiwiU2VjdGlvblRpdGxlIiwiQ29kZVdvcmtzcGFjZSIsIl9zIiwid29ya3NwYWNlIiwic2V0VmlldyIsInByb2plY3QiLCJwcm9qZWN0cyIsImZpbmQiLCJwIiwiaWQiLCJhY3RpdmVQcm9qZWN0SWQiLCJmaWxlcyIsInNldEZpbGVzIiwiY3VycmVudCIsInNldEN1cnJlbnQiLCJvcmlnaW5hbCIsInNldE9yaWdpbmFsIiwiY29udGVudCIsInNldENvbnRlbnQiLCJlcnJvciIsInNldEVycm9yIiwic3RhdHVzIiwic2V0U3RhdHVzIiwibW91bnRlZCIsImZvbGRlciIsInRoZW4iLCJsaXN0IiwiY2F0Y2giLCJlIiwiU3RyaW5nIiwib3BlbkZpbGUiLCJwYXRoIiwidGV4dCIsInNhdmUiLCJ3aW5kb3ciLCJjb25maXJtIiwibmFtZSIsImxlbmd0aCIsIm1hcCIsImZpbGUiLCJ0YXJnZXQiLCJ2YWx1ZSIsImlucHV0Iiwic3giLCJmb250RmFtaWx5IiwiZm9udFNpemUiLCJsaW5lSGVpZ2h0IiwiX2MiXSwiaWdub3JlTGlzdCI6W10sInNvdXJjZXMiOlsiQ29kZVdvcmtzcGFjZS50c3giXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgdXNlRWZmZWN0LCB1c2VTdGF0ZSB9IGZyb20gJ3JlYWN0JztcbmltcG9ydCB7IEFsZXJ0LCBCb3gsIEJ1dHRvbiwgQ2FyZCwgQ2hpcCwgU3RhY2ssIFRleHRGaWVsZCwgVHlwb2dyYXBoeSB9IGZyb20gJ0BtdWkvbWF0ZXJpYWwnO1xuaW1wb3J0IHsgdXNlU29sYXJpdW0gfSBmcm9tICcuLi9zdGF0ZS91c2VTb2xhcml1bSc7XG5pbXBvcnQgeyBsaXN0UHJvamVjdEZpbGVzLCByZWFkUHJvamVjdEZpbGUsIHdyaXRlUHJvamVjdEZpbGUgfSBmcm9tICcuLi9lbmdpbmUvY3JlYXRvcic7XG5pbXBvcnQgeyBTZWN0aW9uVGl0bGUgfSBmcm9tICcuLi9jb21wb25lbnRzL1NlY3Rpb25UaXRsZSc7XG5cbmV4cG9ydCBmdW5jdGlvbiBDb2RlV29ya3NwYWNlKCkge1xuICBjb25zdCB7IHdvcmtzcGFjZSwgc2V0VmlldyB9ID0gdXNlU29sYXJpdW0oKTtcbiAgY29uc3QgcHJvamVjdCA9ICh3b3Jrc3BhY2UucHJvamVjdHMgPz8gW10pLmZpbmQoKHApID0+IHAuaWQgPT09IHdvcmtzcGFjZS5hY3RpdmVQcm9qZWN0SWQpO1xuICBjb25zdCBbZmlsZXMsIHNldEZpbGVzXSA9IHVzZVN0YXRlPHN0cmluZ1tdPihbXSk7XG4gIGNvbnN0IFtjdXJyZW50LCBzZXRDdXJyZW50XSA9IHVzZVN0YXRlKCcnKTtcbiAgY29uc3QgW29yaWdpbmFsLCBzZXRPcmlnaW5hbF0gPSB1c2VTdGF0ZSgnJyk7XG4gIGNvbnN0IFtjb250ZW50LCBzZXRDb250ZW50XSA9IHVzZVN0YXRlKCcnKTtcbiAgY29uc3QgW2Vycm9yLCBzZXRFcnJvcl0gPSB1c2VTdGF0ZSgnJyk7XG4gIGNvbnN0IFtzdGF0dXMsIHNldFN0YXR1c10gPSB1c2VTdGF0ZSgnJyk7XG4gIHVzZUVmZmVjdCgoKSA9PiB7IGxldCBtb3VudGVkID0gdHJ1ZTsgc2V0RmlsZXMoW10pOyBzZXRDdXJyZW50KCcnKTsgc2V0Q29udGVudCgnJyk7IHNldE9yaWdpbmFsKCcnKTsgaWYgKHByb2plY3Q/LmZvbGRlcikgdm9pZCBsaXN0UHJvamVjdEZpbGVzKHByb2plY3QuZm9sZGVyKS50aGVuKChsaXN0KSA9PiB7IGlmIChtb3VudGVkKSBzZXRGaWxlcyhsaXN0KTsgfSkuY2F0Y2goKGU6IHVua25vd24pID0+IHsgaWYgKG1vdW50ZWQpIHNldEVycm9yKFN0cmluZyhlKSk7IH0pOyByZXR1cm4gKCkgPT4geyBtb3VudGVkID0gZmFsc2U7IH07IH0sIFtwcm9qZWN0Py5mb2xkZXJdKTtcbiAgYXN5bmMgZnVuY3Rpb24gb3BlbkZpbGUocGF0aDogc3RyaW5nKSB7IGlmICghcHJvamVjdCkgcmV0dXJuOyB0cnkgeyBjb25zdCB0ZXh0ID0gYXdhaXQgcmVhZFByb2plY3RGaWxlKHByb2plY3QuZm9sZGVyLCBwYXRoKTsgc2V0Q29udGVudCh0ZXh0KTsgc2V0T3JpZ2luYWwodGV4dCk7IHNldEN1cnJlbnQocGF0aCk7IHNldFN0YXR1cygnJyk7IHNldEVycm9yKCcnKTsgfSBjYXRjaCAoZSkgeyBzZXRFcnJvcihTdHJpbmcoZSkpOyB9IH1cbiAgYXN5bmMgZnVuY3Rpb24gc2F2ZSgpIHsgaWYgKCFwcm9qZWN0IHx8ICFjdXJyZW50IHx8IGNvbnRlbnQgPT09IG9yaWdpbmFsKSByZXR1cm47IGlmICghd2luZG93LmNvbmZpcm0oYEFwcGx5IHlvdXIgY2hhbmdlcyB0byAke2N1cnJlbnR9PyBBIC5zb2xhcml1bS5iYWsgYmFja3VwIHdpbGwgYmUgc2F2ZWQgZmlyc3QuYCkpIHJldHVybjsgdHJ5IHsgYXdhaXQgd3JpdGVQcm9qZWN0RmlsZShwcm9qZWN0LmZvbGRlciwgY3VycmVudCwgY29udGVudCwgb3JpZ2luYWwpOyBzZXRPcmlnaW5hbChjb250ZW50KTsgc2V0U3RhdHVzKCdGaWxlIHNhdmVkLiBCYWNrdXAgY3JlYXRlZCBiZXNpZGUgdGhlIG9yaWdpbmFsIGZpbGUuJyk7IHNldEVycm9yKCcnKTsgfSBjYXRjaCAoZSkgeyBzZXRFcnJvcihTdHJpbmcoZSkpOyB9IH1cbiAgcmV0dXJuIDxkaXYgY2xhc3NOYW1lPVwidmlldy1zY3JvbGwgY3JlYXRvci12aWV3XCI+PFNlY3Rpb25UaXRsZSBleWVicm93PVwiTE9DQUwgU09VUkNFIEVYUExPUkVSXCIgdGl0bGU9XCJDb2RlIFdvcmtzcGFjZVwiIGRlc2NyaXB0aW9uPVwiQnJvd3NlLCBpbnNwZWN0LCBhbmQgZXhwbGljaXRseSBzYXZlIHByb2plY3QgZmlsZXMuIFNvbGFyaXVtIG5ldmVyIGVkaXRzIGZpbGVzIGF1dG9tYXRpY2FsbHkgZnJvbSBjaGF0LlwiLz5cbiAgICA8U3RhY2sgZGlyZWN0aW9uPVwicm93XCIgZ2FwPXsxfSBtYj17Mn0+PEJ1dHRvbiBvbkNsaWNrPXsoKSA9PiBzZXRWaWV3KCdwcm9qZWN0cycpfT7ihpAgUHJvamVjdCBzZXR0aW5nczwvQnV0dG9uPjxDaGlwIHNpemU9XCJzbWFsbFwiIGxhYmVsPXtwcm9qZWN0Py5uYW1lID8/ICdObyBwcm9qZWN0J30vPjxCdXR0b24gb25DbGljaz17KCkgPT4gcHJvamVjdD8uZm9sZGVyICYmIGxpc3RQcm9qZWN0RmlsZXMocHJvamVjdC5mb2xkZXIpLnRoZW4oc2V0RmlsZXMpLmNhdGNoKChlOiB1bmtub3duKSA9PiBzZXRFcnJvcihTdHJpbmcoZSkpKX0+UmVmcmVzaDwvQnV0dG9uPjwvU3RhY2s+XG4gICAge2Vycm9yICYmIDxBbGVydCBzZXZlcml0eT1cIndhcm5pbmdcIiBvbkNsb3NlPXsoKSA9PiBzZXRFcnJvcignJyl9PntlcnJvcn08L0FsZXJ0Pn17c3RhdHVzICYmIDxBbGVydCBzZXZlcml0eT1cInN1Y2Nlc3NcIiBvbkNsb3NlPXsoKSA9PiBzZXRTdGF0dXMoJycpfT57c3RhdHVzfTwvQWxlcnQ+fVxuICAgIDxkaXYgY2xhc3NOYW1lPVwiY3JlYXRvci1jb2RlLWxheW91dFwiPjxDYXJkIGNsYXNzTmFtZT1cImNyZWF0b3ItZmlsZS10cmVlXCI+e2ZpbGVzLmxlbmd0aCA/IGZpbGVzLm1hcCgoZmlsZSkgPT4gPGJ1dHRvbiBrZXk9e2ZpbGV9IG9uQ2xpY2s9eygpID0+IHZvaWQgb3BlbkZpbGUoZmlsZSl9IGNsYXNzTmFtZT17Y3VycmVudCA9PT0gZmlsZSA/ICdzZWxlY3RlZCcgOiAnJ30+e2ZpbGV9PC9idXR0b24+KSA6IDxUeXBvZ3JhcGh5IGZvbnRTaXplPXsxMn0gY29sb3I9XCJ0ZXh0LnNlY29uZGFyeVwiPkNob29zZSBhIHByb2plY3Qgc291cmNlIGZvbGRlci4gU3VwcG9ydGVkIHRleHQgYW5kIGNvZGUgZmlsZXMgYXJlIHNob3duIGhlcmUuPC9UeXBvZ3JhcGh5Pn08L0NhcmQ+PENhcmQgY2xhc3NOYW1lPVwiY3JlYXRvci1lZGl0b3JcIj48U3RhY2sgZGlyZWN0aW9uPVwicm93XCIganVzdGlmeUNvbnRlbnQ9XCJzcGFjZS1iZXR3ZWVuXCIgYWxpZ25JdGVtcz1cImNlbnRlclwiPjxUeXBvZ3JhcGh5IGZvbnRTaXplPXsxMn0gZm9udFdlaWdodD17NzAwfT57Y3VycmVudCB8fCAnU2VsZWN0IGEgZmlsZSd9IHtjb250ZW50ICE9PSBvcmlnaW5hbCA/ICfigKIgVW5zYXZlZCcgOiAnJ308L1R5cG9ncmFwaHk+PEJ1dHRvbiB2YXJpYW50PVwiY29udGFpbmVkXCIgZGlzYWJsZWQ9eyFjdXJyZW50IHx8IGNvbnRlbnQgPT09IG9yaWdpbmFsfSBvbkNsaWNrPXsoKSA9PiB2b2lkIHNhdmUoKX0+UmV2aWV3ICYgU2F2ZTwvQnV0dG9uPjwvU3RhY2s+XG4gICAgICA8VGV4dEZpZWxkIGZ1bGxXaWR0aCBtdWx0aWxpbmUgbWluUm93cz17MTh9IG1heFJvd3M9ezQwfSB2YWx1ZT17Y29udGVudH0gb25DaGFuZ2U9eyhlKSA9PiBzZXRDb250ZW50KGUudGFyZ2V0LnZhbHVlKX0gcGxhY2Vob2xkZXI9XCJPcGVuIGEgZmlsZSB0byBpbnNwZWN0IG9yIGVkaXQgaXRcIiBzbG90UHJvcHM9e3sgaW5wdXQ6IHsgc3g6IHsgZm9udEZhbWlseTogJ21vbm9zcGFjZScsIGZvbnRTaXplOiAxMiwgbGluZUhlaWdodDogMS41IH0gfSB9fSAvPjxCb3ggZm9udFNpemU9ezExfSBjb2xvcj1cInRleHQuc2Vjb25kYXJ5XCI+Q2hhbmdlcyBhcmUgd3JpdHRlbiBvbmx5IGFmdGVyIHlvdSBjb25maXJtLiBGaWxlcyBjaGFuZ2VkIGV4dGVybmFsbHkgd2lsbCBub3QgYmUgb3ZlcndyaXR0ZW4uPC9Cb3g+PC9DYXJkPjwvZGl2PlxuICA8L2Rpdj47XG59XG4iXSwiZmlsZSI6IkU6L0NoYXRHUFRQcm9qZWN0cy9Tb2xhcml1bS9zcmMvdmlld3MvQ29kZVdvcmtzcGFjZS50c3gifQ==

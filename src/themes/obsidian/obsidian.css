@@ -1,0 +1,10 @@
+:root[data-theme='obsidian'] {
+  color-scheme: dark;
+  --app-bg: #10141f; --surface: rgba(31,36,51,.71); --surface-strong: #1c2231;
+  --surface-hover: rgba(158,165,207,.095); --line: rgba(208,212,247,.09);
+  --ink-muted: #929cb0; --glow: rgba(154,142,239,.12); --radius: 12px;
+  --shadow: 0 24px 65px rgba(0,0,0,.22); --blur: 20px; --accent: #9c92ef;
+  --side-surface: rgba(21,26,39,.86); --title-surface: rgba(20,24,35,.9);
+  --rail-surface: rgba(17,21,31,.93); --user-message: rgba(124,113,213,.13);
+  --app-decoration: radial-gradient(ellipse at 75% 15%,rgba(87,82,143,.055),transparent 52%);
+}

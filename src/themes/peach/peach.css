@@ -1,0 +1,15 @@
+/* Peach orchard: fuzzy blush, apricot skin, mint leaves and porcelain. */
+:root[data-theme='peach'] {
+  color-scheme:light;--app-bg:#fff5eb;--surface:rgba(255,250,239,.9);--surface-strong:#fff9f1;
+  --surface-hover:rgba(230,120,95,.11);--line:rgba(187,113,96,.21);--ink-muted:#91756b;
+  --glow:rgba(246,151,117,.19);--radius:25px;--shadow:0 17px 50px rgba(170,99,75,.16);
+  --blur:27px;--accent:#bd5b58;--side-surface:rgba(255,246,235,.93);
+  --rail-surface:linear-gradient(160deg,#fff0d6,#f5ccbc);--title-surface:rgba(255,244,224,.9);
+  --user-message:#ffe7db;
+  --app-decoration:radial-gradient(ellipse at 90% 10%,rgba(255,177,111,.32),transparent 47%),
+    radial-gradient(ellipse at 12% 93%,rgba(174,199,129,.2),transparent 35%),linear-gradient(135deg,#fffaf3,#ffeadc);
+}
+:root[data-theme='peach'] .spark-card {border-radius:23px;background:linear-gradient(150deg,#fffaf4,#ffe6d9);border-bottom:3px solid rgba(223,146,115,.4)}
+:root[data-theme='peach'] .spark-card::after {content:'';position:absolute;right:-12px;top:-21px;width:95px;height:90px;opacity:.23;pointer-events:none;background:radial-gradient(ellipse at 45% 60%,#f28f68 0 32%,transparent 34%),radial-gradient(ellipse at 75% 18%,#4c985e 0 12%,transparent 13%)}
+:root[data-theme='peach'] .MuiButton-containedPrimary {background:linear-gradient(120deg,#e48876,#bc5c59);color:#fff;border-radius:20px}
+:root[data-theme='peach'] .glass.panel {box-shadow:0 10px 28px rgba(209,135,109,.09)}

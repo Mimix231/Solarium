@@ -1,0 +1,24 @@
+/* Strawberry shortcake: ruby fruit, ivory cream, fresh leaf green. */
+:root[data-theme='strawberry'] {
+  color-scheme:light;
+  --app-bg:#fff9f4; --surface:rgba(255,255,253,.88); --surface-strong:#fffdf9;
+  --surface-hover:rgba(217,44,65,.09); --line:rgba(147,65,61,.19);
+  --ink-muted:#7d6864; --glow:rgba(231,54,78,.15); --radius:17px;
+  --shadow:0 20px 45px rgba(135,31,51,.12); --blur:18px;
+  --accent:#c82643; --side-surface:rgba(255,250,246,.92);
+  --rail-surface:linear-gradient(180deg,#275c42,#1d4434);
+  --title-surface:linear-gradient(90deg,rgba(252,249,239,.98),rgba(255,227,224,.91));
+  --user-message:#ffedf0;
+  --app-decoration:radial-gradient(ellipse at 94% 92%,rgba(245,90,102,.18),transparent 53%),
+    radial-gradient(ellipse at 32% 0%,rgba(129,176,105,.17),transparent 35%),
+    radial-gradient(#de969a 0.9px,transparent 1.1px),linear-gradient(130deg,#fffdfa,#fff2ed);
+}
+:root[data-theme='strawberry'] .nav-rail .rail-button {color:#f4f5de}
+:root[data-theme='strawberry'] .nav-rail .rail-active {color:#fff;background:rgba(255,246,235,.18);box-shadow:inset 3px 0 #ffbd5b}
+:root[data-theme='strawberry'] .title-bar {border-bottom:2px solid #e96373}
+:root[data-theme='strawberry'] .spark-card {border:1px solid rgba(199,80,76,.25);border-top:3px solid #d94c63;background:linear-gradient(150deg,#fffefe,#fff6f1)}
+:root[data-theme='strawberry'] .spark-card::after {content:'';position:absolute;right:-18px;top:-19px;width:92px;height:94px;pointer-events:none;opacity:.22;background:radial-gradient(ellipse at 42% 63%,#d52e4f 0 36%,transparent 37%),radial-gradient(ellipse at 46% 27%,#37774b 0 16%,transparent 17%),radial-gradient(ellipse at 66% 29%,#37874d 0 13%,transparent 14%);transform:rotate(-24deg)}
+:root[data-theme='strawberry'] .MuiButton-containedPrimary {color:#fff;background:linear-gradient(130deg,#cb2746,#a91635)}
+:root[data-theme='strawberry'] .glass.panel {border-left:3px solid rgba(48,116,70,.29)}
+:root[data-theme='strawberry'] .sidebar-bottom {background:#f0f5e7}
+:root[data-theme='strawberry'] .eyebrow {color:#2f754a!important}

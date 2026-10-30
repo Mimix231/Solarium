@@ -1,0 +1,219 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/views/Worlds.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=8bddaf3b"; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+var _s = $RefreshSig$();
+import __vite__cjsImport3_react from "/node_modules/.vite/deps/react.js?v=8bddaf3b"; const useState = __vite__cjsImport3_react["useState"];
+import { Box, Button, Chip, Divider, Stack, TextField, Typography } from "/node_modules/.vite/deps/@mui_material.js?v=4b79b76d";
+import { SectionTitle } from "/src/components/SectionTitle.tsx";
+import { useSolarium } from "/src/state/useSolarium.ts";
+import { now, uid } from "/src/domain/types.ts";
+import { retrieveWorldEntries } from "/src/domain/worlds.ts";
+export function Worlds() {
+  _s();
+  const { workspace, mutate } = useSolarium();
+  const [sparkId, setSparkId] = useState(workspace.selectedSparkId);
+  const [query, setQuery] = useState("");
+  const worlds = (workspace.worlds ?? []).filter((w) => w.sparkId === sparkId);
+  function addWorld() {
+    mutate((w) => {
+      (w.worlds ??= []).push({ id: uid(), sparkId, title: "New world", description: "", entries: [], createdAt: now() });
+    });
+  }
+  function edit(worldId, change) {
+    mutate((w) => {
+      const world = (w.worlds ?? []).find((item) => item.id === worldId);
+      if (world) change(world);
+    });
+  }
+  return /* @__PURE__ */ jsxDEV(Box, { className: "view-scroll page-padding", children: [
+    /* @__PURE__ */ jsxDEV(SectionTitle, { eyebrow: "PERSISTENT KNOWLEDGE", title: "Spark Worlds", description: "Private local lorebooks and reference collections. Relevant notes are retrieved by keywords when the Spark answers, not inserted into every prompt.", action: /* @__PURE__ */ jsxDEV(Button, { variant: "contained", onClick: addWorld, children: "Create world" }, void 0, false, {
+      fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+      lineNumber: 33,
+      columnNumber: 288
+    }, this) }, void 0, false, {
+      fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+      lineNumber: 33,
+      columnNumber: 52
+    }, this),
+    /* @__PURE__ */ jsxDEV(Stack, { direction: "row", gap: 1, flexWrap: "wrap", mb: 2, children: workspace.sparks.map((spark) => /* @__PURE__ */ jsxDEV(Chip, { clickable: true, color: sparkId === spark.id ? "primary" : "default", label: spark.name, onClick: () => setSparkId(spark.id) }, spark.id, false, {
+      fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+      lineNumber: 34,
+      columnNumber: 92
+    }, this)) }, void 0, false, {
+      fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+      lineNumber: 34,
+      columnNumber: 5
+    }, this),
+    worlds.map((world) => /* @__PURE__ */ jsxDEV(Box, { className: "glass panel", sx: { maxWidth: 920, mb: 2 }, children: [
+      /* @__PURE__ */ jsxDEV(Stack, { direction: "row", gap: 1, alignItems: "center", children: [
+        /* @__PURE__ */ jsxDEV(TextField, { fullWidth: true, label: "World name", value: world.title, onChange: (e) => edit(world.id, (w) => {
+          w.title = e.target.value;
+        }) }, void 0, false, {
+          fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+          lineNumber: 35,
+          columnNumber: 153
+        }, this),
+        /* @__PURE__ */ jsxDEV(Button, { color: "error", onClick: () => {
+          if (confirm("Delete this world and its entries?")) mutate((w) => {
+            w.worlds = (w.worlds ?? []).filter((x) => x.id !== world.id);
+          });
+        }, children: "Delete" }, void 0, false, {
+          fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+          lineNumber: 35,
+          columnNumber: 284
+        }, this)
+      ] }, void 0, true, {
+        fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+        lineNumber: 35,
+        columnNumber: 102
+      }, this),
+      /* @__PURE__ */ jsxDEV(TextField, { sx: { my: 1.5 }, fullWidth: true, label: "Description", value: world.description, onChange: (e) => edit(world.id, (w) => {
+        w.description = e.target.value;
+      }) }, void 0, false, {
+        fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+        lineNumber: 35,
+        columnNumber: 478
+      }, this),
+      /* @__PURE__ */ jsxDEV(Divider, {}, void 0, false, {
+        fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+        lineNumber: 35,
+        columnNumber: 639
+      }, this),
+      /* @__PURE__ */ jsxDEV(Typography, { fontWeight: 700, fontSize: 12, sx: { my: 1 }, children: [
+        "Knowledge entries · ",
+        world.entries.length
+      ] }, void 0, true, {
+        fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+        lineNumber: 35,
+        columnNumber: 650
+      }, this),
+      world.entries.map((entry) => /* @__PURE__ */ jsxDEV(Box, { className: "world-entry", children: [
+        /* @__PURE__ */ jsxDEV(Stack, { direction: "row", gap: 1, children: [
+          /* @__PURE__ */ jsxDEV(TextField, { fullWidth: true, label: "Title", value: entry.title, onChange: (e) => edit(world.id, (w) => {
+            const e2 = w.entries.find((x) => x.id === entry.id);
+            if (e2) e2.title = e.target.value;
+          }) }, void 0, false, {
+            fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+            lineNumber: 36,
+            columnNumber: 112
+          }, this),
+          /* @__PURE__ */ jsxDEV(Button, { color: "error", onClick: () => edit(world.id, (w) => {
+            w.entries = w.entries.filter((x) => x.id !== entry.id);
+          }), children: "Remove" }, void 0, false, {
+            fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+            lineNumber: 36,
+            columnNumber: 299
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+          lineNumber: 36,
+          columnNumber: 81
+        }, this),
+        /* @__PURE__ */ jsxDEV(TextField, { fullWidth: true, sx: { mt: 1 }, label: "Trigger keywords · comma separated", value: entry.keywords.join(", "), onChange: (e) => edit(world.id, (w) => {
+          const e2 = w.entries.find((x) => x.id === entry.id);
+          if (e2) e2.keywords = e.target.value.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 24);
+        }) }, void 0, false, {
+          fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+          lineNumber: 36,
+          columnNumber: 441
+        }, this),
+        /* @__PURE__ */ jsxDEV(TextField, { fullWidth: true, multiline: true, minRows: 3, sx: { mt: 1 }, label: "Lore / context notes", value: entry.content, onChange: (e) => edit(world.id, (w) => {
+          const e2 = w.entries.find((x) => x.id === entry.id);
+          if (e2) e2.content = e.target.value.slice(0, 12e3);
+        }) }, void 0, false, {
+          fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+          lineNumber: 36,
+          columnNumber: 750
+        }, this),
+        /* @__PURE__ */ jsxDEV(Button, { size: "small", onClick: () => edit(world.id, (w) => {
+          const e2 = w.entries.find((x) => x.id === entry.id);
+          if (e2) e2.enabled = !e2.enabled;
+        }), children: entry.enabled ? "Enabled · click to disable" : "Disabled · click to enable" }, void 0, false, {
+          fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+          lineNumber: 36,
+          columnNumber: 1010
+        }, this)
+      ] }, entry.id, true, {
+        fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+        lineNumber: 36,
+        columnNumber: 37
+      }, this)),
+      /* @__PURE__ */ jsxDEV(Button, { onClick: () => edit(world.id, (w) => {
+        w.entries.push({ id: uid(), title: "New entry", keywords: [], content: "", enabled: true });
+      }), children: "+ New entry" }, void 0, false, {
+        fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+        lineNumber: 37,
+        columnNumber: 7
+      }, this)
+    ] }, world.id, true, {
+      fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+      lineNumber: 35,
+      columnNumber: 28
+    }, this)),
+    /* @__PURE__ */ jsxDEV(Box, { className: "glass panel", sx: { maxWidth: 920 }, children: [
+      /* @__PURE__ */ jsxDEV(Typography, { fontWeight: 700, mb: 1, children: "Test knowledge retrieval" }, void 0, false, {
+        fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+        lineNumber: 38,
+        columnNumber: 57
+      }, this),
+      /* @__PURE__ */ jsxDEV(TextField, { fullWidth: true, label: "Example user question", value: query, onChange: (e) => setQuery(e.target.value) }, void 0, false, {
+        fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+        lineNumber: 38,
+        columnNumber: 130
+      }, this),
+      /* @__PURE__ */ jsxDEV(Typography, { fontSize: 11, color: "text.secondary", mt: 1, children: "This is lexical keyword matching, not semantic search. No data leaves your computer." }, void 0, false, {
+        fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+        lineNumber: 38,
+        columnNumber: 240
+      }, this),
+      retrieveWorldEntries(workspace.worlds ?? [], sparkId, query).map((entry) => /* @__PURE__ */ jsxDEV(Chip, { sx: { mt: 1, mr: 1 }, label: entry.title }, entry.id, false, {
+        fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+        lineNumber: 38,
+        columnNumber: 470
+      }, this))
+    ] }, void 0, true, {
+      fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+      lineNumber: 38,
+      columnNumber: 5
+    }, this)
+  ] }, void 0, true, {
+    fileName: "E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx",
+    lineNumber: 33,
+    columnNumber: 10
+  }, this);
+}
+_s(Worlds, "I/+kEuZCx2CZZspqeF5+L+X6Rbg=", false, function() {
+  return [useSolarium];
+});
+_c = Worlds;
+var _c;
+$RefreshReg$(_c, "Worlds");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("E:/ChatGPTProjects/Solarium/src/views/Worlds.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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QTtBQUFBLGFBQTRJO0FBQUEsTUFBY2xDLHFCQUFxQkcsVUFBVU8sVUFBVSxJQUFJTCxTQUFTRyxLQUFLLEVBQUVtQixJQUFJLENBQUNZLFVBQVUsdUJBQUMsUUFBb0IsSUFBSSxFQUFFRSxJQUFJLEdBQUdVLElBQUksRUFBRSxHQUFHLE9BQU9aLE1BQU12QixTQUE3Q3VCLE1BQU14QixJQUFqQjtBQUFBO0FBQUE7QUFBQTtBQUFBLGFBQThELENBQUc7QUFBQSxTQUFqaEI7QUFBQTtBQUFBO0FBQUE7QUFBQSxXQUFtaEI7QUFBQSxPQUw5Z0I7QUFBQTtBQUFBO0FBQUE7QUFBQSxTQU1QO0FBQ0Y7QUFBQ2IsR0FkZUQsUUFBTTtBQUFBLFVBQ1VKLFdBQVc7QUFBQTtBQUFBLEtBRDNCSTtBQUFNLElBQUFtRDtBQUFBLGFBQUFBLElBQUEiLCJuYW1lcyI6WyJ1c2VTdGF0ZSIsIkJveCIsIkJ1dHRvbiIsIkNoaXAiLCJEaXZpZGVyIiwiU3RhY2siLCJUZXh0RmllbGQiLCJUeXBvZ3JhcGh5IiwiU2VjdGlvblRpdGxlIiwidXNlU29sYXJpdW0iLCJub3ciLCJ1aWQiLCJyZXRyaWV2ZVdvcmxkRW50cmllcyIsIldvcmxkcyIsIl9zIiwid29ya3NwYWNlIiwibXV0YXRlIiwic3BhcmtJZCIsInNldFNwYXJrSWQiLCJzZWxlY3RlZFNwYXJrSWQiLCJxdWVyeSIsInNldFF1ZXJ5Iiwid29ybGRzIiwiZmlsdGVyIiwidyIsImFkZFdvcmxkIiwicHVzaCIsImlkIiwidGl0bGUiLCJkZXNjcmlwdGlvbiIsImVudHJpZXMiLCJjcmVhdGVkQXQiLCJlZGl0Iiwid29ybGRJZCIsImNoYW5nZSIsIndvcmxkIiwiZmluZCIsIml0ZW0iLCJzcGFya3MiLCJtYXAiLCJzcGFyayIsIm5hbWUiLCJtYXhXaWR0aCIsIm1iIiwiZSIsInRhcmdldCIsInZhbHVlIiwiY29uZmlybSIsIngiLCJteSIsImxlbmd0aCIsImVudHJ5IiwiZTIiLCJtdCIsImtleXdvcmRzIiwiam9pbiIsInNwbGl0IiwicyIsInRyaW0iLCJCb29sZWFuIiwic2xpY2UiLCJjb250ZW50IiwiZW5hYmxlZCIsIm1yIiwiX2MiXSwiaWdub3JlTGlzdCI6W10sInNvdXJjZXMiOlsiV29ybGRzLnRzeCJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyB1c2VTdGF0ZSB9IGZyb20gJ3JlYWN0JztcbmltcG9ydCB7IEJveCwgQnV0dG9uLCBDaGlwLCBEaXZpZGVyLCBTdGFjaywgVGV4dEZpZWxkLCBUeXBvZ3JhcGh5IH0gZnJvbSAnQG11aS9tYXRlcmlhbCc7XG5pbXBvcnQgeyBTZWN0aW9uVGl0bGUgfSBmcm9tICcuLi9jb21wb25lbnRzL1NlY3Rpb25UaXRsZSc7XG5pbXBvcnQgeyB1c2VTb2xhcml1bSB9IGZyb20gJy4uL3N0YXRlL3VzZVNvbGFyaXVtJztcbmltcG9ydCB7IG5vdywgdWlkLCB0eXBlIFNwYXJrV29ybGQgfSBmcm9tICcuLi9kb21haW4vdHlwZXMnO1xuaW1wb3J0IHsgcmV0cmlldmVXb3JsZEVudHJpZXMgfSBmcm9tICcuLi9kb21haW4vd29ybGRzJztcbmV4cG9ydCBmdW5jdGlvbiBXb3JsZHMoKSB7XG4gIGNvbnN0IHsgd29ya3NwYWNlLCBtdXRhdGUgfSA9IHVzZVNvbGFyaXVtKCk7XG4gIGNvbnN0IFtzcGFya0lkLCBzZXRTcGFya0lkXSA9IHVzZVN0YXRlKHdvcmtzcGFjZS5zZWxlY3RlZFNwYXJrSWQpO1xuICBjb25zdCBbcXVlcnksIHNldFF1ZXJ5XSA9IHVzZVN0YXRlKCcnKTtcbiAgY29uc3Qgd29ybGRzID0gKHdvcmtzcGFjZS53b3JsZHMgPz8gW10pLmZpbHRlcigodykgPT4gdy5zcGFya0lkID09PSBzcGFya0lkKTtcbiAgZnVuY3Rpb24gYWRkV29ybGQoKSB7IG11dGF0ZSgodykgPT4geyAody53b3JsZHMgPz89IFtdKS5wdXNoKHsgaWQ6IHVpZCgpLCBzcGFya0lkLCB0aXRsZTogJ05ldyB3b3JsZCcsIGRlc2NyaXB0aW9uOiAnJywgZW50cmllczogW10sIGNyZWF0ZWRBdDogbm93KCkgfSk7IH0pOyB9XG4gIGZ1bmN0aW9uIGVkaXQod29ybGRJZDogc3RyaW5nLCBjaGFuZ2U6ICh3b3JsZDogU3BhcmtXb3JsZCkgPT4gdm9pZCkgeyBtdXRhdGUoKHcpID0+IHsgY29uc3Qgd29ybGQgPSAody53b3JsZHMgPz8gW10pLmZpbmQoKGl0ZW0pID0+IGl0ZW0uaWQgPT09IHdvcmxkSWQpOyBpZiAod29ybGQpIGNoYW5nZSh3b3JsZCk7IH0pOyB9XG4gIHJldHVybiA8Qm94IGNsYXNzTmFtZT1cInZpZXctc2Nyb2xsIHBhZ2UtcGFkZGluZ1wiPjxTZWN0aW9uVGl0bGUgZXllYnJvdz1cIlBFUlNJU1RFTlQgS05PV0xFREdFXCIgdGl0bGU9XCJTcGFyayBXb3JsZHNcIiBkZXNjcmlwdGlvbj1cIlByaXZhdGUgbG9jYWwgbG9yZWJvb2tzIGFuZCByZWZlcmVuY2UgY29sbGVjdGlvbnMuIFJlbGV2YW50IG5vdGVzIGFyZSByZXRyaWV2ZWQgYnkga2V5d29yZHMgd2hlbiB0aGUgU3BhcmsgYW5zd2Vycywgbm90IGluc2VydGVkIGludG8gZXZlcnkgcHJvbXB0LlwiIGFjdGlvbj17PEJ1dHRvbiB2YXJpYW50PVwiY29udGFpbmVkXCIgb25DbGljaz17YWRkV29ybGR9PkNyZWF0ZSB3b3JsZDwvQnV0dG9uPn0gLz5cbiAgICA8U3RhY2sgZGlyZWN0aW9uPVwicm93XCIgZ2FwPXsxfSBmbGV4V3JhcD1cIndyYXBcIiBtYj17Mn0+e3dvcmtzcGFjZS5zcGFya3MubWFwKChzcGFyaykgPT4gPENoaXAga2V5PXtzcGFyay5pZH0gY2xpY2thYmxlIGNvbG9yPXtzcGFya0lkID09PSBzcGFyay5pZCA/ICdwcmltYXJ5JyA6ICdkZWZhdWx0J30gbGFiZWw9e3NwYXJrLm5hbWV9IG9uQ2xpY2s9eygpID0+IHNldFNwYXJrSWQoc3BhcmsuaWQpfSAvPil9PC9TdGFjaz5cbiAgICB7d29ybGRzLm1hcCgod29ybGQpID0+IDxCb3ggY2xhc3NOYW1lPVwiZ2xhc3MgcGFuZWxcIiBrZXk9e3dvcmxkLmlkfSBzeD17eyBtYXhXaWR0aDogOTIwLCBtYjogMiB9fT48U3RhY2sgZGlyZWN0aW9uPVwicm93XCIgZ2FwPXsxfSBhbGlnbkl0ZW1zPVwiY2VudGVyXCI+PFRleHRGaWVsZCBmdWxsV2lkdGggbGFiZWw9XCJXb3JsZCBuYW1lXCIgdmFsdWU9e3dvcmxkLnRpdGxlfSBvbkNoYW5nZT17KGUpID0+IGVkaXQod29ybGQuaWQsICh3KSA9PiB7IHcudGl0bGUgPSBlLnRhcmdldC52YWx1ZTsgfSl9Lz48QnV0dG9uIGNvbG9yPVwiZXJyb3JcIiBvbkNsaWNrPXsoKSA9PiB7IGlmIChjb25maXJtKCdEZWxldGUgdGhpcyB3b3JsZCBhbmQgaXRzIGVudHJpZXM/JykpIG11dGF0ZSgodykgPT4geyB3LndvcmxkcyA9ICh3LndvcmxkcyA/PyBbXSkuZmlsdGVyKCh4KSA9PiB4LmlkICE9PSB3b3JsZC5pZCk7IH0pOyB9fT5EZWxldGU8L0J1dHRvbj48L1N0YWNrPjxUZXh0RmllbGQgc3g9e3sgbXk6IDEuNSB9fSBmdWxsV2lkdGggbGFiZWw9XCJEZXNjcmlwdGlvblwiIHZhbHVlPXt3b3JsZC5kZXNjcmlwdGlvbn0gb25DaGFuZ2U9eyhlKSA9PiBlZGl0KHdvcmxkLmlkLCAodykgPT4geyB3LmRlc2NyaXB0aW9uID0gZS50YXJnZXQudmFsdWU7IH0pfS8+PERpdmlkZXIgLz48VHlwb2dyYXBoeSBmb250V2VpZ2h0PXs3MDB9IGZvbnRTaXplPXsxMn0gc3g9e3sgbXk6IDEgfX0+S25vd2xlZGdlIGVudHJpZXMgwrcge3dvcmxkLmVudHJpZXMubGVuZ3RofTwvVHlwb2dyYXBoeT5cbiAgICAgIHt3b3JsZC5lbnRyaWVzLm1hcCgoZW50cnkpID0+IDxCb3gga2V5PXtlbnRyeS5pZH0gY2xhc3NOYW1lPVwid29ybGQtZW50cnlcIj48U3RhY2sgZGlyZWN0aW9uPVwicm93XCIgZ2FwPXsxfT48VGV4dEZpZWxkIGZ1bGxXaWR0aCBsYWJlbD1cIlRpdGxlXCIgdmFsdWU9e2VudHJ5LnRpdGxlfSBvbkNoYW5nZT17KGUpID0+IGVkaXQod29ybGQuaWQsICh3KSA9PiB7IGNvbnN0IGUyID0gdy5lbnRyaWVzLmZpbmQoKHgpID0+IHguaWQgPT09IGVudHJ5LmlkKTsgaWYgKGUyKSBlMi50aXRsZSA9IGUudGFyZ2V0LnZhbHVlOyB9KX0vPjxCdXR0b24gY29sb3I9XCJlcnJvclwiIG9uQ2xpY2s9eygpID0+IGVkaXQod29ybGQuaWQsICh3KSA9PiB7IHcuZW50cmllcyA9IHcuZW50cmllcy5maWx0ZXIoKHgpID0+IHguaWQgIT09IGVudHJ5LmlkKTsgfSl9PlJlbW92ZTwvQnV0dG9uPjwvU3RhY2s+PFRleHRGaWVsZCBmdWxsV2lkdGggc3g9e3sgbXQ6IDEgfX0gbGFiZWw9XCJUcmlnZ2VyIGtleXdvcmRzIMK3IGNvbW1hIHNlcGFyYXRlZFwiIHZhbHVlPXtlbnRyeS5rZXl3b3Jkcy5qb2luKCcsICcpfSBvbkNoYW5nZT17KGUpID0+IGVkaXQod29ybGQuaWQsICh3KSA9PiB7IGNvbnN0IGUyID0gdy5lbnRyaWVzLmZpbmQoKHgpID0+IHguaWQgPT09IGVudHJ5LmlkKTsgaWYgKGUyKSBlMi5rZXl3b3JkcyA9IGUudGFyZ2V0LnZhbHVlLnNwbGl0KCcsJykubWFwKChzKSA9PiBzLnRyaW0oKSkuZmlsdGVyKEJvb2xlYW4pLnNsaWNlKDAsIDI0KTsgfSl9Lz48VGV4dEZpZWxkIGZ1bGxXaWR0aCBtdWx0aWxpbmUgbWluUm93cz17M30gc3g9e3sgbXQ6IDEgfX0gbGFiZWw9XCJMb3JlIC8gY29udGV4dCBub3Rlc1wiIHZhbHVlPXtlbnRyeS5jb250ZW50fSBvbkNoYW5nZT17KGUpID0+IGVkaXQod29ybGQuaWQsICh3KSA9PiB7IGNvbnN0IGUyID0gdy5lbnRyaWVzLmZpbmQoKHgpID0+IHguaWQgPT09IGVudHJ5LmlkKTsgaWYgKGUyKSBlMi5jb250ZW50ID0gZS50YXJnZXQudmFsdWUuc2xpY2UoMCwgMTJfMDAwKTsgfSl9Lz48QnV0dG9uIHNpemU9XCJzbWFsbFwiIG9uQ2xpY2s9eygpID0+IGVkaXQod29ybGQuaWQsICh3KSA9PiB7IGNvbnN0IGUyID0gdy5lbnRyaWVzLmZpbmQoKHgpID0+IHguaWQgPT09IGVudHJ5LmlkKTsgaWYgKGUyKSBlMi5lbmFibGVkID0gIWUyLmVuYWJsZWQ7IH0pfT57ZW50cnkuZW5hYmxlZCA/ICdFbmFibGVkIMK3IGNsaWNrIHRvIGRpc2FibGUnIDogJ0Rpc2FibGVkIMK3IGNsaWNrIHRvIGVuYWJsZSd9PC9CdXR0b24+PC9Cb3g+KX1cbiAgICAgIDxCdXR0b24gb25DbGljaz17KCkgPT4gZWRpdCh3b3JsZC5pZCwgKHcpID0+IHsgdy5lbnRyaWVzLnB1c2goeyBpZDogdWlkKCksIHRpdGxlOiAnTmV3IGVudHJ5Jywga2V5d29yZHM6IFtdLCBjb250ZW50OiAnJywgZW5hYmxlZDogdHJ1ZSB9KTsgfSl9PisgTmV3IGVudHJ5PC9CdXR0b24+PC9Cb3g+KX1cbiAgICA8Qm94IGNsYXNzTmFtZT1cImdsYXNzIHBhbmVsXCIgc3g9e3sgbWF4V2lkdGg6IDkyMCB9fT48VHlwb2dyYXBoeSBmb250V2VpZ2h0PXs3MDB9IG1iPXsxfT5UZXN0IGtub3dsZWRnZSByZXRyaWV2YWw8L1R5cG9ncmFwaHk+PFRleHRGaWVsZCBmdWxsV2lkdGggbGFiZWw9XCJFeGFtcGxlIHVzZXIgcXVlc3Rpb25cIiB2YWx1ZT17cXVlcnl9IG9uQ2hhbmdlPXsoZSkgPT4gc2V0UXVlcnkoZS50YXJnZXQudmFsdWUpfS8+PFR5cG9ncmFwaHkgZm9udFNpemU9ezExfSBjb2xvcj1cInRleHQuc2Vjb25kYXJ5XCIgbXQ9ezF9PlRoaXMgaXMgbGV4aWNhbCBrZXl3b3JkIG1hdGNoaW5nLCBub3Qgc2VtYW50aWMgc2VhcmNoLiBObyBkYXRhIGxlYXZlcyB5b3VyIGNvbXB1dGVyLjwvVHlwb2dyYXBoeT57cmV0cmlldmVXb3JsZEVudHJpZXMod29ya3NwYWNlLndvcmxkcyA/PyBbXSwgc3BhcmtJZCwgcXVlcnkpLm1hcCgoZW50cnkpID0+IDxDaGlwIGtleT17ZW50cnkuaWR9IHN4PXt7IG10OiAxLCBtcjogMSB9fSBsYWJlbD17ZW50cnkudGl0bGV9IC8+KX08L0JveD5cbiAgPC9Cb3g+O1xufVxuIl0sImZpbGUiOiJFOi9DaGF0R1BUUHJvamVjdHMvU29sYXJpdW0vc3JjL3ZpZXdzL1dvcmxkcy50c3gifQ==

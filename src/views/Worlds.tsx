@@ -1,0 +1,21 @@
+import { useState } from 'react';
+import { Box, Button, Chip, Divider, Stack, TextField, Typography } from '@mui/material';
+import { SectionTitle } from '../components/SectionTitle';
+import { useSolarium } from '../state/useSolarium';
+import { now, uid, type SparkWorld } from '../domain/types';
+import { retrieveWorldEntries } from '../domain/worlds';
+export function Worlds() {
+  const { workspace, mutate } = useSolarium();
+  const [sparkId, setSparkId] = useState(workspace.selectedSparkId);
+  const [query, setQuery] = useState('');
+  const worlds = (workspace.worlds ?? []).filter((w) => w.sparkId === sparkId);
+  function addWorld() { mutate((w) => { (w.worlds ??= []).push({ id: uid(), sparkId, title: 'New world', description: '', entries: [], createdAt: now() }); }); }
+  function edit(worldId: string, change: (world: SparkWorld) => void) { mutate((w) => { const world = (w.worlds ?? []).find((item) => item.id === worldId); if (world) change(world); }); }
+  return <Box className="view-scroll page-padding"><SectionTitle eyebrow="PERSISTENT KNOWLEDGE" title="Spark Worlds" description="Private local lorebooks and reference collections. Relevant notes are retrieved by keywords when the Spark answers, not inserted into every prompt." action={<Button variant="contained" onClick={addWorld}>Create world</Button>} />
+    <Stack direction="row" gap={1} flexWrap="wrap" mb={2}>{workspace.sparks.map((spark) => <Chip key={spark.id} clickable color={sparkId === spark.id ? 'primary' : 'default'} label={spark.name} onClick={() => setSparkId(spark.id)} />)}</Stack>
+    {worlds.map((world) => <Box className="glass panel" key={world.id} sx={{ maxWidth: 920, mb: 2 }}><Stack direction="row" gap={1} alignItems="center"><TextField fullWidth label="World name" value={world.title} onChange={(e) => edit(world.id, (w) => { w.title = e.target.value; })}/><Button color="error" onClick={() => { if (confirm('Delete this world and its entries?')) mutate((w) => { w.worlds = (w.worlds ?? []).filter((x) => x.id !== world.id); }); }}>Delete</Button></Stack><TextField sx={{ my: 1.5 }} fullWidth label="Description" value={world.description} onChange={(e) => edit(world.id, (w) => { w.description = e.target.value; })}/><Divider /><Typography fontWeight={700} fontSize={12} sx={{ my: 1 }}>Knowledge entries · {world.entries.length}</Typography>
+      {world.entries.map((entry) => <Box key={entry.id} className="world-entry"><Stack direction="row" gap={1}><TextField fullWidth label="Title" value={entry.title} onChange={(e) => edit(world.id, (w) => { const e2 = w.entries.find((x) => x.id === entry.id); if (e2) e2.title = e.target.value; })}/><Button color="error" onClick={() => edit(world.id, (w) => { w.entries = w.entries.filter((x) => x.id !== entry.id); })}>Remove</Button></Stack><TextField fullWidth sx={{ mt: 1 }} label="Trigger keywords · comma separated" value={entry.keywords.join(', ')} onChange={(e) => edit(world.id, (w) => { const e2 = w.entries.find((x) => x.id === entry.id); if (e2) e2.keywords = e.target.value.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 24); })}/><TextField fullWidth multiline minRows={3} sx={{ mt: 1 }} label="Lore / context notes" value={entry.content} onChange={(e) => edit(world.id, (w) => { const e2 = w.entries.find((x) => x.id === entry.id); if (e2) e2.content = e.target.value.slice(0, 12_000); })}/><Button size="small" onClick={() => edit(world.id, (w) => { const e2 = w.entries.find((x) => x.id === entry.id); if (e2) e2.enabled = !e2.enabled; })}>{entry.enabled ? 'Enabled · click to disable' : 'Disabled · click to enable'}</Button></Box>)}
+      <Button onClick={() => edit(world.id, (w) => { w.entries.push({ id: uid(), title: 'New entry', keywords: [], content: '', enabled: true }); })}>+ New entry</Button></Box>)}
+    <Box className="glass panel" sx={{ maxWidth: 920 }}><Typography fontWeight={700} mb={1}>Test knowledge retrieval</Typography><TextField fullWidth label="Example user question" value={query} onChange={(e) => setQuery(e.target.value)}/><Typography fontSize={11} color="text.secondary" mt={1}>This is lexical keyword matching, not semantic search. No data leaves your computer.</Typography>{retrieveWorldEntries(workspace.worlds ?? [], sparkId, query).map((entry) => <Chip key={entry.id} sx={{ mt: 1, mr: 1 }} label={entry.title} />)}</Box>
+  </Box>;
+}

@@ -1,0 +1,31 @@
+/* Original console-inspired materials, never Nintendo assets. All theme colors inherit Solarium variables. */
+.console-home { padding: clamp(18px,3vw,40px); background: radial-gradient(circle at 68% 13%,var(--glow),transparent 38%); }
+.console-welcome { display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap; border:1px solid var(--line); background:var(--surface); border-radius:24px; box-shadow:var(--shadow); padding:clamp(14px,2vw,26px); backdrop-filter:blur(var(--blur)); }
+.console-tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(146px,1fr)); gap:clamp(10px,1.5vw,19px); max-width:1100px; }
+.console-tile { position:relative; width:100%; min-height:148px; border:1px solid color-mix(in srgb,var(--accent) 29%,var(--line)); border-radius:23px; color:inherit; cursor:pointer; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; gap:6px; background:linear-gradient(155deg,rgba(255,255,255,.24),transparent 52%),var(--surface); box-shadow:inset 0 2px 1px rgba(255,255,255,.17),0 10px 24px rgba(0,0,0,.12); backdrop-filter:blur(var(--blur)); transition:transform .23s cubic-bezier(.2,.8,.25,1.2),box-shadow .23s,background .23s; }
+.console-tile:hover,.console-tile:focus-visible { transform:translateY(-5px) scale(1.025); box-shadow:inset 0 2px 2px rgba(255,255,255,.3),0 17px 32px var(--glow); }
+.console-tile:active { transform:scale(.97); }
+.console-tile-icon { display:grid; place-items:center; border:1px solid var(--line); background:radial-gradient(circle at 28% 18%,rgba(255,255,255,.3),transparent 65%),var(--surface-hover); color:var(--accent); width:59px; height:59px; border-radius:18px; box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 4px 10px rgba(0,0,0,.08); font-size:30px; }
+.console-tile-icon svg { width:32px; height:32px; }
+.console-tile strong { font-size:12px; max-width:96%; text-wrap:balance; }
+.console-tile small { font-size:10px; color:var(--ink-muted); max-width:90%; }
+.console-add { border-style:dashed; }
+.console-channel { position:relative!important; background:transparent!important; box-shadow:none!important; }
+.console-channel .channel-remove { position:absolute; right:7px; top:7px; z-index:2; }
+.project-tile .console-tile-icon { border-radius:14px; }
+.conversation-sidebar .project-tree { padding:0 10px 9px; }
+.conversation-sidebar .sidebar-project-button { text-transform:none; width:100%; justify-content:flex-start; font-size:11px; border-radius:9px; margin:2px 0; }
+.project-scope-title { border-top:1px solid var(--line); padding:11px 13px 5px; }
+@media (max-width:750px){.console-tiles{grid-template-columns:repeat(auto-fill,minmax(115px,1fr))}.console-tile{min-height:125px;border-radius:17px}.console-tile-icon{height:48px;width:48px}}
+:root[data-motion='reduced'] .console-tile{transition:none!important;}
+
+/* Material upgrades extend to the complete application, not just the launcher. */
+:root { --console-highlight: color-mix(in srgb, white 15%, transparent); }
+.app-shell .nav-rail .rail-button { border-radius:14px; background:linear-gradient(140deg,var(--console-highlight),transparent 75%); border:1px solid transparent; box-shadow:inset 0 1px rgba(255,255,255,.06); }
+.app-shell .nav-rail .rail-active { border-color:color-mix(in srgb,var(--accent) 36%,var(--line)); box-shadow:inset 0 1px rgba(255,255,255,.18),0 5px 12px var(--glow); }
+.app-shell .new-chat, .app-shell .MuiCard-root { box-shadow:inset 0 1px rgba(255,255,255,.07),0 5px 20px rgba(0,0,0,.065); }
+.app-shell .MuiButton-contained { border-radius:10px; background-image:linear-gradient(to bottom,rgba(255,255,255,.17),transparent 55%); box-shadow:inset 0 1px rgba(255,255,255,.18),0 3px 8px rgba(0,0,0,.08); }
+.app-shell .MuiDialog-paper { border:1px solid var(--line); border-radius:18px; background-image:linear-gradient(145deg,rgba(255,255,255,.12),transparent 48%); backdrop-filter:blur(var(--blur)); }
+.app-shell .MuiButton-root,.app-shell .MuiIconButton-root { transition:transform .2s ease,background-color .2s ease,box-shadow .2s ease; }
+.app-shell .MuiButton-root:hover:not(:disabled) { transform:translateY(-1px); }
+:root[data-motion='reduced'] .app-shell .MuiButton-root,:root[data-motion='reduced'] .app-shell .MuiIconButton-root { transition:none!important; }

@@ -1,0 +1,16 @@
+/* Black cherry preserve: lacquered plum, jewel red and dark botanical stems. */
+:root[data-theme='cherry'] {
+  color-scheme:dark;--app-bg:#160b18;--surface:rgba(57,23,39,.86);--surface-strong:#331629;
+  --surface-hover:rgba(241,74,104,.15);--line:rgba(255,178,176,.19);--ink-muted:#c9a3ad;
+  --glow:rgba(228,42,84,.22);--radius:13px;--shadow:0 18px 48px rgba(0,0,0,.45);
+  --blur:19px;--accent:#ff6d7c;--side-surface:rgba(35,14,28,.95);
+  --rail-surface:linear-gradient(180deg,#2a1023,#180e1b);--title-surface:linear-gradient(90deg,#35152b,#280e1e);
+  --user-message:rgba(153,40,71,.37);
+  --app-decoration:radial-gradient(circle at 87% 18%,rgba(180,30,70,.23),transparent 38%),
+    radial-gradient(circle at 10% 89%,rgba(97,34,63,.55),transparent 44%),linear-gradient(140deg,#150b1c,#311429);
+}
+:root[data-theme='cherry'] .spark-card {background:linear-gradient(160deg,rgba(88,29,48,.76),rgba(30,13,32,.92));border-bottom:2px solid #9d3650;box-shadow:inset 0 2px 2px rgba(255,194,205,.09)}
+:root[data-theme='cherry'] .spark-card::after {content:'';position:absolute;right:8px;top:0;width:74px;height:70px;opacity:.25;pointer-events:none;background:radial-gradient(circle at 26% 68%,#fa3b60 0 22%,transparent 23%),radial-gradient(circle at 70% 69%,#e91d4e 0 22%,transparent 23%),linear-gradient(119deg,transparent 49%,#7cb677 50% 52%,transparent 53%);}
+:root[data-theme='cherry'] .MuiButton-containedPrimary {background:linear-gradient(130deg,#e44b67,#ab234a);color:#fff}
+:root[data-theme='cherry'] .eyebrow {color:#f3b7a7!important}
+:root[data-theme='cherry'] .glass.panel {box-shadow:inset 0 1px rgba(255,225,233,.07),0 10px 30px rgba(12,2,12,.10)}
