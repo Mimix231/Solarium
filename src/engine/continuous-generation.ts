@@ -3,6 +3,7 @@ import type { InferenceAdapter } from './backends';
 import { generationMetrics } from './backends';
 import { prepareGeneration, CHUNK_SIZE, CONTEXT_HEADROOM } from './context-window';
 import type { GenerationRequestOptions, LlamaMessage, LlamaTurnResult } from './llama';
+export interface GenerationOutcome {backend:string;reason:'natural_eos'|'tool_call'|'output_or_context_limit'|'content_filter'|'unknown'|'cancelled'|'transport_error'|'input_limit';contextSize:number|null;promptTokens:number|null;contextShift:'supported'|'unsupported'|'unknown';detail?:string}
 
 /** Retained for compatibility: 2048 is a streaming *batch*, not a new LLM request. */
 export const OUTPUT_SEGMENT_TOKENS = CHUNK_SIZE;
@@ -19,6 +20,7 @@ export interface ContinuousAnswerOptions {
   onToolDelta?(index: number, name: string, argsSoFar: string): void;
   onReasoningState?(active: boolean): void;
   onMetrics?(metrics: GenerationMetrics): void;
+  onOutcome?(outcome:GenerationOutcome):void;
 }
 
 export interface ContinuousAnswerResult {
@@ -78,8 +80,11 @@ export async function streamContinuousAnswer(options: ContinuousAnswerOptions): 
   };
 
   let result: LlamaTurnResult;
+  let promptTokens:number|null=null;
+  let contextSize:number|null=capabilities.contextSize??model.contextSize??null;
   try {
     const prepared = await prepareGeneration(adapter, model, capabilities, messages, signal, request);
+    promptTokens=prepared.promptTokens;contextSize=prepared.contextSize;
     // Continue on the same loaded engine: -1 asks llama.cpp to keep streaming
     // until the model's own stop or a genuine server limitation. The server
     // handles context shifting without a fresh chat/reasoning exchange.
@@ -89,16 +94,21 @@ export async function streamContinuousAnswer(options: ContinuousAnswerOptions): 
     result = await adapter.generate(model, prepared.messages, capabilities,
       { answer: onAnswer, reasoning: onReasoning, toolDelta: options.onToolDelta }, signal,
       { ...request, tools: prepared.tools, outputTokens });
+  } catch(error){
+    options.onOutcome?.({backend:adapter.kind,reason:signal.aborted?'cancelled':error instanceof Error&&(/INPUT context|oversized context|ModelContextError/i.test(error.message)||error.name==='ModelContextError')?'input_limit':'transport_error',contextSize,promptTokens,contextShift:capabilities.contextShift??'unknown',detail:String(error)});
+    throw error;
   } finally {
     setThinking(false);
   }
-  onMetrics?.(generationMetrics(adapter.kind, model.modelId, started, firstToken, performance.now(), answer,
+  const generated=reasoning+answer+result.calls.map(call=>call.function.arguments).join('');
+  onMetrics?.(generationMetrics(adapter.kind, model.modelId, started, firstToken, performance.now(), generated,
     result.usage?.completionTokens));
+  options.onOutcome?.({backend:adapter.kind,reason:result.calls.length&&result.finishReason!=='length'?'tool_call':result.finishReason==='stop'?'natural_eos':result.finishReason==='tool_calls'?'tool_call':result.finishReason==='length'?'output_or_context_limit':result.finishReason==='content_filter'?'content_filter':'unknown',contextSize,promptTokens,contextShift:capabilities.contextShift??'unknown'});
   const warning = result.finishReason === 'length'
     ? (reasoning && !answer
       ? 'The inference backend reached its context/output capacity during reasoning before producing an answer. The reasoning is saved; enlarge the loaded model context to allow completion.'
       : 'The inference backend reached its context/output capacity before reporting a natural end. The generated content has been preserved.')
-    : !answer && reasoning
+    : !answer && reasoning && !result.calls.length
       ? 'The model finished reasoning without emitting a final answer. Check the model chat template/reasoning configuration; the emitted reasoning was preserved.'
       : undefined;
   return { answer, result, segments: 1, ...(warning ? { warning } : {}) };

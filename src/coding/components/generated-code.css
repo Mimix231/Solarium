@@ -1,0 +1,15 @@
+.generated-code-artifact{--code-font:"Cascadia Code",Consolas,"Liberation Mono",monospace;margin:12px 0;border:1px solid rgba(174,154,230,.17);border-radius:15px;overflow:hidden;background:linear-gradient(120deg,rgba(34,39,64,.7),rgba(15,30,42,.8));box-shadow:0 8px 25px rgba(0,0,0,.11);transition:border-color .25s,box-shadow .25s,transform .25s}
+.generated-code-artifact:hover{border-color:rgba(177,154,239,.3);box-shadow:0 12px 35px rgba(0,0,0,.19)}
+.generated-code-artifact>.solarium-block{margin:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+.generated-code-artifact .block-titlebar{background:rgba(26,31,50,.65);border-bottom:1px solid rgba(170,183,214,.09);min-height:43px}
+.generated-code-artifact .block-code-lines{font-family:var(--code-font);font-size:12px;line-height:1.85;background:rgba(8,15,26,.6);padding:13px 0}
+.generated-code-artifact .block-code-value{font-family:var(--code-font)}
+.generated-code-artifact .code-studio-action{border:1px solid rgba(166,149,224,.22);border-radius:8px;background:rgba(166,149,224,.065);color:#cbbcf2;font-size:10px;white-space:nowrap;transition:background .2s,transform .15s}
+.generated-code-artifact .code-studio-action:hover{background:rgba(166,149,224,.16);transform:translateY(-1px)}
+.generated-code-artifact .code-studio-action:active{transform:scale(.96)}
+.generated-code-meta{padding:8px 11px;border-top:1px solid rgba(170,183,214,.07);color:#9dacc3;font-family:"Segoe UI Variable Text","Segoe UI",sans-serif;font-size:9px;line-height:1.6;flex-wrap:wrap}
+.generated-code-meta .MuiChip-root{height:20px;font-size:8px;color:#a9ddcf;border:1px solid rgba(145,203,185,.14);background:rgba(145,203,185,.045)}
+.block-file-collection .generated-code-artifact{margin:0;border:0;border-radius:0;box-shadow:none;transform:none}
+@media(prefers-reduced-motion:reduce){.generated-code-artifact,.generated-code-artifact *{transition:none!important;animation:none!important}}
+
+.generated-code-artifact[data-motion="off"],.generated-code-artifact[data-motion="off"] *{transition:none!important;animation:none!important}

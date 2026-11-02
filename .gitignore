@@ -7,6 +7,17 @@ src-tauri/target/
 .env
 *.log
 .test-dist/
+junk/
+output/
 
 # Managed inference engines, packages and model caches (large / local only)
 runtime/
+
+# Imported Python service bytecode and local merge diagnostics
+__pycache__/
+*.py[cod]
+.merge-*
+
+# Reproducible source identity and local development diagnostics
+src/quality/source-identity.generated.ts
+.coding-*

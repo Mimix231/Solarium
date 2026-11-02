@@ -10,5 +10,6 @@ export function detectCapabilities(props: unknown): Capabilities {
   const ctx = typeof settings.n_ctx === 'number' ? settings.n_ctx : null;
   const toolFlag = p.chat_template_tool_use === true || p.supports_tools === true || /tools|tool_calls|function_call/.test(templ);
   const visionFlag = p.mmproj_loaded === true || p.vision === true || metadata['vision.enabled'] === 'true';
-  return { reasoning: 'unknown', tools: toolFlag ? 'supported' : 'unknown', vision: visionFlag ? 'supported' : 'unknown', contextSize: ctx, source: 'server-properties' };
+  const shift=p.context_shift??settings.context_shift;
+  return { reasoning: 'unknown', tools: toolFlag ? 'supported' : 'unknown', vision: visionFlag ? 'supported' : 'unknown', contextSize: ctx, source: 'server-properties',contextShift:shift===true?'supported':shift===false?'unsupported':'unknown' };
 }

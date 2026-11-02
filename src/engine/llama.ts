@@ -51,6 +51,13 @@ function baseUrl(endpoint: string): URL {
   return url;
 }
 const pathFor = (endpoint: string, path: string): string => new URL(path.replace(/^\//, ''), baseUrl(endpoint)).toString();
+/** Many local templates were trained with one leading system turn. Preserve
+ * every instruction, but serialize that prefix as one system message. */
+export function mergeSystemPrefix(messages:LlamaMessage[]):LlamaMessage[]{
+  let end=0;while(messages[end]?.role==='system')end++;if(end<2)return messages;
+  const prefix=messages.slice(0,end).map(m=>typeof m.content==='string'?m.content:m.content.filter(p=>p.type==='text').map(p=>p.text).join('\n')).join('\n\n');
+  return [{role:'system',content:prefix},...messages.slice(end)];
+}
 async function readJson(url: string, signal?: AbortSignal): Promise<unknown> {
   const response = await fetch(url, { signal });
   if (!response.ok) throw new Error(`Inference server responded ${response.status}.`);
@@ -78,7 +85,7 @@ export async function countInputTokens(model: LocalModel, messages: LlamaMessage
   if (model.backend !== 'llama.cpp') return null;
   // Apply the loaded model's chat template first. Tokenizing bare message text
   // undercounts delimiters, role headers and special model tokens.
-  const applied = await post('/apply-template', { messages });
+  const applied = await post('/apply-template', { messages:mergeSystemPrefix(messages) });
   if (!applied || typeof applied !== 'object' || typeof (applied as { prompt?: unknown }).prompt !== 'string') return null;
   const tokenized = await post('/tokenize', { content: (applied as { prompt: string }).prompt, add_special: false });
   if (tokenized && typeof tokenized === 'object') {
@@ -94,9 +101,14 @@ export async function inspectModel(model: LocalModel, signal?: AbortSignal): Pro
     readJson(pathFor(model.endpoint, '/props'), signal).catch(() => null),
   ]);
   const collection = models as { data?: { id?: string }[] };
+  let runtimeShift:Capabilities['contextShift'];
+  if(model.backend==='llama.cpp'&&typeof window!=='undefined'&&'__TAURI_INTERNALS__' in window)try{
+    const {invoke}=await import('@tauri-apps/api/core');const status=await invoke<{managed:boolean;contextShift:Capabilities['contextShift']}>('inference_runtime_status',{gguf:model.ggufPath??model.modelId,port:Number(new URL(model.endpoint).port)||80});
+    if(status.managed&&status.contextShift!=='unknown')runtimeShift=status.contextShift;
+  }catch{/* External/older runtimes can still supply their own /props evidence. */}
   return {
     ids: (collection?.data ?? []).map((item) => item.id).filter((id): id is string => typeof id === 'string'),
-    capabilities: (() => { const c = detectCapabilities(props); return { ...c, tools: c.tools === 'supported' || model.toolCalling ? 'supported' as const : 'unknown' as const, vision: c.vision === 'supported' ? 'supported' as const : model.visionEnabled ? 'user-enabled' as const : 'unknown' as const }; })(),
+    capabilities: (() => { const c = detectCapabilities(props); return { ...c,...(runtimeShift?{contextShift:runtimeShift}:{}), tools: c.tools === 'supported' || model.toolCalling ? 'supported' as const : 'unknown' as const, vision: c.vision === 'supported' ? 'supported' as const : model.visionEnabled ? 'user-enabled' as const : 'unknown' as const }; })(),
   };
 }
 export async function streamLlamaTurn(
@@ -110,8 +122,10 @@ export async function streamLlamaTurn(
   const response = await fetch(pathFor(model.endpoint, '/v1/chat/completions'), {
     method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: model.modelId, messages, stream: true,
+      model: model.modelId, messages:mergeSystemPrefix(messages), stream: true,
       temperature: model.temperature, max_tokens: options.outputTokens ?? model.maxTokens,
+      // Keep the fitted task/persona/tool prompt when native context shifting evicts output.
+      ...((model.backend??'llama.cpp') === 'llama.cpp' ? { n_keep: -1 } : {}),
       ...(model.backend === 'vllm' ? { stream_options: { include_usage: true } } : {}),
       ...(capabilities.tools === 'supported' && options.tools?.length ? { tools: options.tools, tool_choice: options.toolChoice ?? 'auto' } : {}),
     }),

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState,type ReactNode } from 'react';
 import { Box, Button, Chip, IconButton, Stack, Tooltip, Typography } from '@mui/material';
 import ContentCopyRounded from '@mui/icons-material/ContentCopyRounded';
 import OpenInFullRounded from '@mui/icons-material/OpenInFullRounded';
@@ -96,8 +96,9 @@ export interface BlockCardProps {
   onOpen?: (block: ContentBlock) => void;
   onSaveAsset?: (block: ContentBlock) => void;
   expanded?: boolean;
+  toolbar?:ReactNode;
 }
-export function BlockCard({ block, onOpen, onSaveAsset, expanded }: BlockCardProps) {
+export function BlockCard({ block, onOpen, onSaveAsset, expanded,toolbar }: BlockCardProps) {
   const [copied, setCopied] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const previewable = block.kind === 'code' && ['html', 'htm', 'css', 'js', 'javascript'].includes(block.language.toLowerCase());
@@ -109,6 +110,7 @@ export function BlockCard({ block, onOpen, onSaveAsset, expanded }: BlockCardPro
       {block.status === 'streaming' && <Chip size="small" label="Streaming…" className="block-streaming" />}
       {block.status === 'incomplete' && <Chip size="small" color="warning" label="Incomplete output" />}
       {block.kind === 'code' && <Chip variant="outlined" size="small" label={block.language}/>}<Box flex={1}/>
+      {toolbar}
       {previewable && <Button size="small" sx={{ minWidth: 48, fontSize: 10 }} onClick={() => setShowPreview((value) => !value)}>{showPreview ? 'Code' : 'Preview'}</Button>}
       <Tooltip title={copied ? 'Copied' : 'Copy content'}><IconButton size="small" aria-label="Copy block" onClick={() => void copy()}><ContentCopyRounded sx={{ fontSize: 14 }}/></IconButton></Tooltip>
       <Tooltip title="Export file"><IconButton size="small" aria-label="Export block" onClick={() => exportBlock(block)}><DownloadRounded sx={{ fontSize: 14 }}/></IconButton></Tooltip>

@@ -61,5 +61,6 @@ export async function scanGGUFDirectory(directory: string): Promise<GGUFFile[]> 
 export async function activateGGUFModel(options: { executable: string; gguf: string; port: number; context: number; gpuLayers?: number }): Promise<{modelId: string; detail: string}> {
   if (!isDesktop()) throw new Error('Load a GGUF through the desktop application.');
   const { invoke } = await import('@tauri-apps/api/core');
-  return invoke<{modelId: string; detail: string}>('activate_gguf_model', { ...options, gpuLayers: options.gpuLayers ?? 20 });
+  const {workLifecycle}=await import('./work-lifecycle');workLifecycle.assertIdle();
+  return invoke<{modelId: string; detail: string}>('activate_gguf_model',options);
 }

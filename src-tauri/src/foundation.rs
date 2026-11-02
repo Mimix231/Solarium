@@ -26,12 +26,13 @@ async fn open_database(path: &std::path::Path) -> Result<SqliteConnection, Strin
     let options = sqlx::sqlite::SqliteConnectOptions::new().filename(path).create_if_missing(true)
         .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal).busy_timeout(std::time::Duration::from_secs(15)).foreign_keys(true);
     let mut db = SqliteConnection::connect_with(&options).await.map_err(|e| e.to_string())?;
-    for statement in [
+    let version: (i64,) = sqlx::query_as("PRAGMA user_version").fetch_one(&mut db).await.map_err(|e| e.to_string())?;
+    if version.0 == 0 { for statement in [
         "CREATE TABLE IF NOT EXISTS foundation_records (id TEXT PRIMARY KEY, collection TEXT NOT NULL, scope_kind TEXT NOT NULL, scope_id TEXT NOT NULL, story_id TEXT, title TEXT NOT NULL, data TEXT NOT NULL, version INTEGER NOT NULL, updated_at TEXT NOT NULL)",
         "CREATE INDEX IF NOT EXISTS foundation_scope ON foundation_records(scope_kind,scope_id,collection,story_id)",
         "CREATE TABLE IF NOT EXISTS foundation_content (id TEXT PRIMARY KEY REFERENCES foundation_records(id) ON DELETE CASCADE, body TEXT NOT NULL)",
         "PRAGMA user_version=1"
-    ] { sqlx::query(statement).execute(&mut db).await.map_err(|e| e.to_string())?; }
+    ] { sqlx::query(statement).execute(&mut db).await.map_err(|e| e.to_string())?; } }
     Ok(db)
 }
 #[tauri::command]
@@ -69,7 +70,9 @@ async fn apply(db: &mut SqliteConnection, puts: Vec<Write>, deletes: Vec<Delete>
         if !seen.insert(r.id.clone()) || r.id.is_empty() || r.id.len() > 180 || !valid_scope(&r.scope) || r.version != p.expected.unwrap_or(0) + 1 || r.title.len() > 1000 || r.data.to_string().len() > 2_500_000 || p.body.as_ref().is_some_and(|b| b.len() > 8_000_000) { return Err("Invalid record or revision".into()); }
     }
     for d in &deletes { if !seen.insert(d.id.clone()) { return Err("Duplicate transaction target".into()); } }
-    let mut tx = db.begin().await.map_err(|e| e.to_string())?;
+    // Acquire the writer before reading CAS versions. A deferred WAL snapshot
+    // cannot upgrade after a concurrent commit, even with busy_timeout set.
+    let mut tx = db.begin_with("BEGIN IMMEDIATE").await.map_err(|e| e.to_string())?;
     for p in puts {
         let existing: Option<(i64,)> = sqlx::query_as("SELECT version FROM foundation_records WHERE id=?").bind(&p.record.id).fetch_optional(&mut *tx).await.map_err(|e| e.to_string())?;
         if existing.map(|r| r.0) != p.expected { return Err("Revision conflict: item changed; reload before saving".into()); }
@@ -103,4 +106,32 @@ mod tests {
             db.close().await.unwrap(); let _ = std::fs::remove_file(path);
         });
     }
+    #[test]
+    fn concurrent_native_saves_keep_all_records_and_enforce_cas() {
+        tauri::async_runtime::block_on(async {
+            let path = std::env::temp_dir().join(format!("solarium-concurrent-{}.db", std::process::id()));
+            let mut left = open_database(&path).await.unwrap();
+            sqlx::query("DELETE FROM foundation_records").execute(&mut left).await.unwrap();
+            let mut right = open_database(&path).await.unwrap();
+            let make = |prefix: &str| (0..32).map(|i| Write { record: Record {
+                id: format!("{prefix}-{i}"), collection: "source".into(), scope: Scope {kind:"chat".into(),id:"c".into()},
+                story_id:None, title:"Concurrent save".into(),data:serde_json::json!({}),version:1,updated_at:"now".into()
+            }, expected:None, body:Some("actual persisted content".into()) }).collect();
+            let a = make("left"); let b = make("right");
+            let one = tauri::async_runtime::spawn(async move { let result = apply(&mut left,a,vec![]).await; (left,result) });
+            let two = tauri::async_runtime::spawn(async move { let result = apply(&mut right,b,vec![]).await; (right,result) });
+            let (mut left,first) = one.await.unwrap(); let (mut right,second) = two.await.unwrap();
+            assert!(first.is_ok(), "{first:?}"); assert!(second.is_ok(), "{second:?}");
+            let count:(i64,) = sqlx::query_as("SELECT count(*) FROM foundation_content").fetch_one(&mut left).await.unwrap(); assert_eq!(count.0,64);
+            let a = make("same"); let b = make("same");
+            let one = tauri::async_runtime::spawn(async move { let result = apply(&mut left,a,vec![]).await; (left,result) });
+            let two = tauri::async_runtime::spawn(async move { let result = apply(&mut right,b,vec![]).await; (right,result) });
+            let (mut left,first) = one.await.unwrap(); let (right,second) = two.await.unwrap();
+            assert_ne!(first.is_ok(),second.is_ok());
+            assert!(first.err().or(second.err()).unwrap().contains("Revision conflict"));
+            let count:(i64,) = sqlx::query_as("SELECT count(*) FROM foundation_content").fetch_one(&mut left).await.unwrap(); assert_eq!(count.0,96);
+            left.close().await.unwrap(); right.close().await.unwrap(); let _=std::fs::remove_file(path);
+        });
+    }
+
 }

@@ -8,10 +8,11 @@ export function fileExtension(block: ContentBlock): string {
   if (block.kind === 'equation') return 'tex';
   if (block.kind === 'workflow') return 'mmd';
   if (block.kind === 'writing') return 'md';
-  return block.language.replace(/[^a-z0-9]/gi, '').slice(0, 10) || 'txt';
+  const aliases:Record<string,string>={javascript:'js',typescript:'ts',python:'py',rust:'rs',bash:'sh',shell:'sh',powershell:'ps1',xml:'xml'};
+  return (aliases[block.language.toLowerCase()]??block.language.replace(/[^a-z0-9]/gi, '').slice(0, 10)) || 'txt';
 }
 export function suggestedFileName(block: ContentBlock): string {
-  const basename = [...block.title].map(char=>char.charCodeAt(0)<32?'-':char).join('').replace(/[\\/:*?"<>|]/g, '-').trim().slice(0, 90) || block.kind;
+  const basename = [...(block.fileName??block.title).split(/[\\/]/).at(-1)!].map(char=>char.charCodeAt(0)<32?'-':char).join('').replace(/[\\/:*?"<>|]/g, '-').trim().slice(0, 90) || block.kind;
   const ext = fileExtension(block);
   return new RegExp(`\\.${ext}$`, 'i').test(basename) ? basename : `${basename}.${ext}`;
 }

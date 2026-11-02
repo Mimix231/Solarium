@@ -23,3 +23,7 @@ sha2 = "0.10"
 zip = { version = "2.4", default-features = false, features = ["deflate"] }
 sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio"] }
 scraper = "0.24"
+
+# Glitch workspace: native PTY and filesystem events.
+portable-pty = "0.9"
+notify = "8"

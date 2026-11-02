@@ -48,7 +48,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const jobs = useInstallJobs((state) => state.jobs);
   const currentInstall = [...jobs].reverse().find((job) => (job.status === 'running' || job.status === 'cancelling'));
   const selected = workspace.sparks.find((s) => s.id === workspace.selectedSparkId) ?? workspace.sparks[0]!;
-  const sidebar = workspace.preferences.sidebarOpen;
+  const sidebar = view === 'chat' && workspace.preferences.sidebarOpen;
   const currentProject = (workspace.projects ?? []).find((p) => p.id === workspace.activeProjectId);
   const scopeCount = workspace.sessions.filter((s) => (s.projectId ?? null) === (currentProject?.id ?? null)).length;
   return <Box className="app-shell">
@@ -63,7 +63,7 @@ export function Shell({ children }: { children: ReactNode }) {
         {currentInstall && <Tooltip title={`${currentInstall.engine}: ${currentInstall.phase}`}><Button size="small" variant="outlined" className="runtime-title-progress" onClick={() => setView('runtime')}><DownloadForOfflineRounded sx={{ fontSize: 14, mr: .5 }}/>{currentInstall.engine} {installProgress(currentInstall) === null ? '…' : `${Math.round(installProgress(currentInstall)!)}%`}</Button></Tooltip>}
         <Tooltip title="Switch between Companion and Workspace layouts"><Button size="small" variant="text" onClick={() => updatePreferences({ workspaceMode: workspace.preferences.workspaceMode === 'workspace' ? 'companion' : 'workspace' })}><AutoModeRounded sx={{ fontSize: 15, mr: .6 }}/>{workspace.preferences.workspaceMode === 'workspace' ? 'Workspace' : 'Companion'}</Button></Tooltip>
         <ThemePicker />
-        <Tooltip title={sidebar ? 'Hide sidebar' : 'Show sidebar'}><IconButton aria-label="Toggle sidebar" onClick={() => updatePreferences({ sidebarOpen: !sidebar })}><MenuOpenRounded fontSize="small" /></IconButton></Tooltip>
+        {view==='chat'&&<Tooltip title={sidebar ? 'Hide sidebar' : 'Show sidebar'}><IconButton aria-label="Toggle sidebar" onClick={() => updatePreferences({ sidebarOpen: !sidebar })}><MenuOpenRounded fontSize="small" /></IconButton></Tooltip>}
         <WindowButtons />
       </Stack>
     </header>

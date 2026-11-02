@@ -6,10 +6,12 @@ export interface ContentBlock {
   kind: BlockKind;
   title: string;
   language: string;
+  fileName?:string;
   content: string;
   status: 'streaming' | 'complete' | 'incomplete';
   /** Terminal output and generated file manifests are proposals unless backed by an actual tool record. */
   provenance: 'model' | 'tool';
+  issues?: string[];
 }
 export type MessagePart = { type: 'markdown'; text: string } | { type: 'block'; block: ContentBlock };
 
@@ -25,7 +27,7 @@ function classify(info: string, offset: number, complete: boolean, content: stri
   const language = kind === 'code' ? (token.includes(':') && !token.startsWith('solarium:') ? token.split(':')[0]! : token || 'text') : kind;
   const title = titleMatch?.[1] ?? titleMatch?.[2] ?? titleMatch?.[3] ?? fileMatch?.[1] ?? fileMatch?.[2] ?? fileMatch?.[3] ?? (token.includes(':') && kind === 'code' ? token.slice(token.indexOf(':') + 1) : '');
   return { id: `block-${offset}`, kind, title: title || defaultTitle(kind, language), language,
-    content, status: complete ? 'complete' : 'streaming', provenance: 'model' };
+    content, ...(fileMatch?{fileName:fileMatch[1]??fileMatch[2]??fileMatch[3]}:{}), status: complete ? 'complete' : 'streaming', provenance: 'model' };
 }
 function defaultTitle(kind: BlockKind, language: string): string {
   return kind === 'code' ? `${language.toUpperCase()} code` : `${kind.charAt(0).toUpperCase()}${kind.slice(1)}`;
@@ -33,30 +35,11 @@ function defaultTitle(kind: BlockKind, language: string): string {
 
 /**
  * Parse complete or partial Markdown. A trailing incomplete fence remains an open block
- * across any number of 2048-token backend continuations. Never infer closing from a segment boundary.
+ * throughout the real model stream. Never infer closing from a segment boundary.
  * During streaming, a partial ``` prefix stays in Markdown until its newline arrives.
  */
 export function parseMessageParts(text: string): MessagePart[] {
-  const parts: MessagePart[] = [];
-  let cursor = 0;
-  const opener = /^```([^\r\n]*)\r?\n/gm;
-  while (cursor < text.length) {
-    opener.lastIndex = cursor;
-    const start = opener.exec(text);
-    if (!start) break;
-    if (start.index > cursor) parts.push({ type: 'markdown', text: text.slice(cursor, start.index) });
-    const bodyStart = opener.lastIndex;
-    const closer = /^```\s*$/gm;
-    closer.lastIndex = bodyStart;
-    const end = closer.exec(text);
-    const content = text.slice(bodyStart, end?.index ?? text.length);
-    parts.push({ type: 'block', block: classify(start[1] ?? '', start.index, Boolean(end), content) });
-    cursor = end ? closer.lastIndex : text.length;
-    if (!end) break;
-  }
-  if (cursor < text.length) parts.push({ type: 'markdown', text: text.slice(cursor) });
-  if (!parts.length) return [{ type: 'markdown', text }];
-  return parts;
+  const assembler = new BlockStreamAssembler(); assembler.push(text); return assembler.snapshot();
 }
 
 /** Hints are intentionally simple: capable models may opt into structured fences; basic GGUFs can use normal Markdown. */
@@ -97,7 +80,7 @@ export function groupCodeFiles(parts: MessagePart[]): RenderPart[] {
 
 /**
  * Incremental fence scanner used for live model output. Each character is scanned once;
- * the backend's 2048-token request boundaries have no special meaning to this parser.
+ * model transport chunks have no special meaning to this parser.
  * Snapshotting yields immutable views safe to pass to React.
  */
 export class BlockStreamAssembler {
@@ -124,7 +107,10 @@ export class BlockStreamAssembler {
       this.offset += line.length;
       const opening = /^```([^\r\n]*)\r?\n$/.exec(line);
       if (this.open) {
-        if (/^```[ \t]*\r?\n$/.test(line)) {
+        if (opening && this.open.kind === 'writing' && classify(opening[1] ?? '', start, false, '').kind === 'writing') {
+          this.open.issues = [...(this.open.issues ?? []), 'The model reopened the current writing document. All prose was preserved; check for a restarted scene.'];
+          this.open.content += '\n';
+        } else if (/^```[ \t]*\r?\n$/.test(line)) {
           this.open.status = 'complete';
           this.emitted.push({ type: 'block', block: this.open });
           this.open = null;

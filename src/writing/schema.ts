@@ -26,3 +26,9 @@ export function readWritingContent(body:string):WritingContent {
   if(content.schemaVersion!==1) throw Error('This document schema is newer than Solarium supports.');
   validateBody(content.markdownProjection);validateStructured(content.structuredJson);return content;
 }
+
+/** Exact rendered words survive formatting-only edits; changed events do not. */
+export function containsWritingPassage(content:WritingContent,quote:string):boolean {
+  const plain=(value:WritingContent)=>schema.nodeFromJSON(value.structuredJson).textBetween(0,schema.nodeFromJSON(value.structuredJson).content.size,'\n').replace(/\s+/g,' ').trim();
+  const passage=plain(markdownContent(quote));return passage.length>=8&&(content.markdownProjection.includes(quote)||plain(content).includes(passage));
+}

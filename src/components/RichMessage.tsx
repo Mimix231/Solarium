@@ -4,15 +4,19 @@ import CloseRounded from '@mui/icons-material/CloseRounded';
 import type { ChatAttachment, ChatSource, TerminalRun } from '../domain/types';
 import type { ContentBlock } from '../blocks/protocol';
 import { BlockStreamAssembler, groupCodeFiles, INLINE_FORMAT_KINDS } from '../blocks/protocol';
+import { GeneratedCodeCard } from '../coding/components/GeneratedCodeCard';
+import type { CodeBlockContext } from '../coding/artifacts/context';
 import { CodeCollection } from '../blocks/CodeCollection';
 import { BlockCard, ContentBlockBody } from '../blocks/BlockCard';
 import { parseDataTable } from '../blocks/data';
 import { MarkdownBody } from './MarkdownBody';
+import { CommandOutput } from './CommandOutput';
+import { InlineWritingBlock, type WritingBlockContext } from './InlineWritingBlock';
 
 /** Stable streaming blocks render from the entire accumulated answer; stream boundaries never close fences. */
-export function RichMessage({ text, attachments = [], sources = [], assets = {}, terminalRuns = [], onOpenBlock, onSaveAsset, streaming = false }:
+export function RichMessage({ text, attachments = [], sources = [], assets = {}, terminalRuns = [], projectFolder,onOpenBlock, onSaveAsset, writingContext,codeContext, streaming = false }:
   { text: string; attachments?: ChatAttachment[]; sources?: ChatSource[]; assets?: Record<string, string>; terminalRuns?: TerminalRun[];
-    onOpenBlock?: (block: ContentBlock) => void; onSaveAsset?: (block: ContentBlock) => void; streaming?: boolean }) {
+    projectFolder?:string;codeContext?:CodeBlockContext;writingContext?:WritingBlockContext;onOpenBlock?: (block: ContentBlock) => void; onSaveAsset?: (block: ContentBlock) => void; streaming?: boolean }) {
   const [lightbox, setLightbox] = useState<string | null>(null);
   const assembler = useRef(new BlockStreamAssembler());
   const parts = useMemo(() => {
@@ -36,13 +40,15 @@ export function RichMessage({ text, attachments = [], sources = [], assets = {},
   return <div className="rich-message">
     {parts.map((part, i) => part.type === 'markdown'
       ? <MarkdownBody key={`md-${i}`} text={part.text}/>
-      : part.type === 'collection' ? <CodeCollection key={part.id} blocks={part.blocks} assets={assets} onOpen={onOpenBlock} onSaveAsset={onSaveAsset}/>
+      : part.type === 'collection' ? <CodeCollection key={part.id} blocks={part.blocks} codeContext={codeContext} assets={assets} onOpen={onOpenBlock} onSaveAsset={onSaveAsset}/>
       : INLINE_FORMAT_KINDS.has(part.block.kind)
         ? <div key={part.block.id} className="rich-inline-format">{formattedPart(part.block)}</div>
         : part.block.kind === 'terminal' || part.block.kind === 'file'
           ? <details key={part.block.id} className="verified-output"><summary>{part.block.kind === 'terminal' ? '▸ Proposed terminal text · not executed' : '▸ Proposed file · not saved'}</summary><pre>{part.block.content}</pre></details>
+          : part.block.kind === 'writing' && writingContext ? <InlineWritingBlock key={part.block.id} block={part.block} context={writingContext} onAdvanced={() => onOpenBlock?.(part.block)}/>
+          : codeContext&&['code','preview'].includes(part.block.kind)?<GeneratedCodeCard key={part.block.id} block={part.block} legacyContent={assets[part.block.id]} context={codeContext}/>
           : <BlockCard key={part.block.id} block={assets[part.block.id] !== undefined ? { ...part.block, content: assets[part.block.id]! } : part.block} onOpen={onOpenBlock} onSaveAsset={onSaveAsset}/>)}
-    {terminalRuns.map((run, index) => <details className="verified-output" key={`terminal-${index}`}><summary>◉ Ran {run.command} · {run.timedOut ? 'Timed out' : `Exit ${run.exitCode ?? 'unknown'}`} · verified</summary><pre>{run.stdout}{run.stderr && `\n[stderr]\n${run.stderr}`}</pre></details>)}
+    {terminalRuns.map((run,index)=><CommandOutput key={`terminal-${index}`} run={run} root={projectFolder}/>)}
     {attachments.length > 0 && <div className="message-attachments">{attachments.map((attachment) => <div className="attachment-card" key={attachment.id}>
       {attachment.kind === 'image' && attachment.dataUrl ? <button className="attachment-image" onClick={() => setLightbox(attachment.dataUrl!)}><img src={attachment.dataUrl} alt={attachment.name} loading="lazy" /></button> : <span className="attachment-file-icon">▤</span>}
       <Stack minWidth={0}><Typography fontSize={11} fontWeight={700} noWrap>{attachment.name}</Typography><Typography fontSize={9} color="text.secondary">{attachment.kind} · {(attachment.size / 1024).toFixed(0)} KB</Typography></Stack>

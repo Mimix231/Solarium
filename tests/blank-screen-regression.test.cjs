@@ -12,7 +12,7 @@ test('removed Activity rail cannot trigger the old unstable Zustand selector loo
   assert.doesNotMatch(chat, /function ActivityPanel\(/);
   assert.doesNotMatch(chat, /<ActivityPanel\s*\/?/);
   assert.doesNotMatch(chat, /useSolarium\(\(s\) => \(s\.workspace\.workEvents \?\? \[\]\)\.filter\(/);
-  assert.match(chat, /<VisualActionCard /);
+  assert.match(chat, /<WorkLog /);
 });
 
 test('Tool permission history remains persisted while conversation navigation stays safe', () => {

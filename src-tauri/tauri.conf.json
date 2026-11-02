@@ -10,11 +10,48 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{ "label": "main", "title": "Solarium", "width": 1190, "height": 770, "minWidth": 690, "minHeight": 480, "decorations": false, "backgroundColor": "#10141f" }],
+    "windows": [
+      {
+        "label": "main",
+        "title": "Solarium",
+        "width": 1190,
+        "height": 770,
+        "minWidth": 690,
+        "minHeight": 480,
+        "decorations": false,
+        "backgroundColor": "#10141f"
+      }
+    ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: asset:; connect-src ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:* ws://127.0.0.1:1420; style-src 'self' 'unsafe-inline'; script-src 'self'"
+      "csp": "default-src 'self'; frame-src 'self' http://127.0.0.1:* http://localhost:*; img-src 'self' data: asset:; connect-src ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:* ws://127.0.0.1:1420; style-src 'self' 'unsafe-inline'; script-src 'self'"
     }
   },
-  "bundle": { "active": true, "targets": "all", "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico", "icons/icon.icns"] },
-  "plugins": { "sql": { "preload": ["sqlite:solarium.db"] } }
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ],
+    "resources": {
+      "../backend/solarium.py": "backend/solarium.py",
+      "../backend/project/context.py": "backend/project/context.py",
+      "../backend/project/database.py": "backend/project/database.py",
+      "../backend/project/git.py": "backend/project/git.py",
+      "../backend/project/indexer.py": "backend/project/indexer.py",
+      "../backend/project/lsp.py": "backend/project/lsp.py",
+      "../backend/project/__init__.py": "backend/project/__init__.py",
+      "../backend/project/processes.py": "backend/project/processes.py"
+    }
+  },
+  "plugins": {
+    "sql": {
+      "preload": [
+        "sqlite:solarium.db"
+      ]
+    }
+  }
 }

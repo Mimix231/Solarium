@@ -49,6 +49,14 @@ export class WritingRepository {
     const body=await this.store.body(document.data.currentRevisionId,this.scopes());if(body===null)throw Error('Document revision is missing.');
     return {document,content:readWritingContent(body)};
   }
+  async bind(document:WritingDocument,messageId:string,storyId=document.storyId??null,legacyBlockId?:string):Promise<WritingDocument>{
+    const actual=(await this.get(document.id)).document;if(actual.version!==document.version)throw Error('Document changed before continuation.');
+    if(storyId){const worlds=await this.store.list({collection:'story_world',scopes:this.scopes()});if(!worlds.some(w=>w.id===storyId&&sameScope(w.scope,document.scope)))throw Error('Continuation story is outside the document owner.');}
+    if(document.storyId&&document.storyId!==storyId)throw Error('An existing chapter cannot be silently moved into a different story.');
+    const records=(await this.store.list({scopes:[document.scope]})).filter(r=>(r.data as {documentId?:string}).documentId===document.id);
+    const next={...actual,storyId,version:actual.version+1,updatedAt:now(),data:{...actual.data,categoryId:document.storyId===storyId?actual.data.categoryId:null,legacyBlockId:legacyBlockId??actual.data.legacyBlockId,messageBindings:[...new Set([...(actual.data.messageBindings??[]),...(actual.data.originMessageId?[actual.data.originMessageId]:[]),messageId])]}};
+    await this.store.batch([{record:next,expected:actual.version},...records.filter(r=>r.storyId!==storyId).map(r=>({record:{...r,storyId,version:r.version+1,updatedAt:now()},expected:r.version}))]);return next;
+  }
   async revisions(id:string):Promise<WritingRevision[]>{await this.get(id);return (await this.store.list<WritingRevisionData>({collection:'writing_revision',scopes:this.scopes()})).filter(r=>r.data.documentId===id).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));}
   async save(document:WritingDocument,content:WritingContent,patch:Partial<WritingData>={},partial=false):Promise<WritingDocument>{
     assertScope(document.scope,this.context,true);validateBody(content.markdownProjection);validateStructured(content.structuredJson);

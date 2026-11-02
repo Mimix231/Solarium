@@ -4,9 +4,9 @@ export type WritingKind = typeof writingKinds[number];
 export interface WritingData {
   schemaVersion: 1; kind: WritingKind; categoryId: string | null; currentRevisionId: string;
   status: 'generating'|'draft'|'review'|'final'|'archived'; tags: string[];
-  originConversationId: string | null; originMessageId: string | null; legacyBlockId?: string;
+  originConversationId: string | null; originMessageId: string | null; legacyBlockId?: string; messageBindings?: string[];
   createdAt: string; wordCount: number; sourceIds: string[]; characterIds: string[];
-  metadata: {chapterNumber?:number;sceneOrder?:number;povCharacterId?:string;tense?:string;language?:string;targetWordCount?:number};
+  metadata: {chapterNumber?:number;sceneOrder?:number;povCharacterId?:string;tense?:string;language?:string;targetWordCount?:number;targetCharacters?:number;writingTaskId?:string};
 }
 export type WritingDocument = StoredRecord<WritingData>;
 export interface WritingRevisionData {documentId:string;parentRevisionId:string|null;schemaVersion:1;isPartialDraft:boolean;reason:'generated'|'user_edit'|'spark_revision'|'import';createdAt:string}

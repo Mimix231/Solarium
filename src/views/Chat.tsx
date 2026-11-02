@@ -1,3 +1,4 @@
+import { readyModel } from '../engine/model-ready';
 import { useShallow } from 'zustand/react/shallow';
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { Alert, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, IconButton, MenuItem, ListSubheader, Select, Stack, TextField, Tooltip, Typography } from '@mui/material';
@@ -16,14 +17,16 @@ import { now as currentIsoTime, type BlockAsset } from '../domain/types';
 import { ThinkingPanel, type ThinkingSnapshot } from '../components/ThinkingPanel';
 import { ChangesetReview } from '../components/ChangesetReview';
 import { LiveWorkspace } from '../components/LiveWorkspace';
-import { VisualActionCard } from '../components/VisualActionCard';
+import { WorkLog } from '../components/WorkLog';
+import { StoryCast } from '../components/StoryCast';
 import { evolveVisualAction, type VisualAction, type ActionUpdate } from '../engine/visual-actions';
-import { workTitle, type LiveWorkspaceUpdate } from '../engine/live-workspace';
+import { type LiveWorkspaceUpdate } from '../engine/live-workspace';
 import { researchTopic, nativeSearchProvider } from '../research/research';
 
 import { WritingRepository } from '../writing/repository';
-import { WritingDraftStream } from '../writing/stream';
+import { InlineWritingBlock } from '../components/InlineWritingBlock';
 import { WritingWorkspace } from '../components/WritingWorkspace';
+import { TaskStatus } from '../components/TaskStatus';
 import { SaveToSources } from '../components/sources/SaveToSources';
 import { shouldAutoResearch } from '../engine/task-intent';
 import { ACTION_MODE_HELP, taskGrantForTool } from '../engine/action-permissions';
@@ -37,20 +40,22 @@ import { AvatarView } from '../components/AvatarView';
 import { useSolarium } from '../state/useSolarium';
 import { suggestExpression } from '../domain/expressions';
 import { now, uid, type ActionMode, type GenerationMetrics, type SparkMode, type Expression, type ChatAttachment, type ChatSource, type TerminalRun } from '../domain/types';
-import { runAgent } from '../engine/agent';
+import { runConversation } from '../engine/conversation-run';
 import { AgentEventEmitter } from '../engine/activity';
-import { activateGGUFModel, scanGGUFDirectory } from '../engine/desktop';
+import { scanGGUFDirectory } from '../engine/desktop';
 import { catalogToModels } from '../engine/catalog';
 
 const modes: SparkMode[] = ['conversation', 'work', 'research', 'creative'];
 type Decision = 'allow' | 'deny';
 type ReplyRequest = { kind: 'new' } | { kind: 'retry'; sessionId: string; messageId: string; editedContent?: string };
-export function Chat() {
-  const { workspace, createSession, appendMessage, setSessionMode, updatePreferences, pushEvent, clearEvents, setView } = useSolarium(useShallow((state) => ({ workspace: state.workspace, createSession: state.createSession, appendMessage: state.appendMessage, setSessionMode: state.setSessionMode, updatePreferences: state.updatePreferences, pushEvent: state.pushEvent, clearEvents: state.clearEvents, setView: state.setView })));
+export function Chat({embedded=false}:{embedded?:boolean}={}) {
+  const { workspace, createSession:makeSession, setSessionMode, updatePreferences, pushEvent, clearEvents, setView } = useSolarium(useShallow((state) => ({ workspace: state.workspace, createSession: state.createSession, setSessionMode: state.setSessionMode, updatePreferences: state.updatePreferences, pushEvent: state.pushEvent, clearEvents: state.clearEvents, setView: state.setView })));
+  const createSession=()=>{const id=makeSession();if(embedded)useSolarium.getState().setView('code');return id;};
   const spark = workspace.sparks.find((s) => s.id === workspace.selectedSparkId) ?? workspace.sparks[0]!;
   const session = workspace.sessions.find((s) => s.id === workspace.activeSessionId);
   const modelId = session?.modelId ?? spark.preferredModelId ?? workspace.models[0]?.id ?? '';
   const model = workspace.models.find((m) => m.id === modelId);
+  const projectFolder=(workspace.projects??[]).find(p=>p.id===session?.projectId)?.folder;
   const actionMode = workspace.preferences.actionMode ?? 'ask';
   const [input, setInput] = useState('');
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -94,17 +99,9 @@ export function Chat() {
     return [...persisted, ...activeActions.filter(item => item.id && item.messageId === messageId && item.sessionId === session?.id)];
   }
 
-  const workspaceKey = useRef('');
   const workspaceCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   function updateLiveWorkspace(update: LiveWorkspaceUpdate) {
-    if (workspaceCloseTimer.current !== null) { clearTimeout(workspaceCloseTimer.current); workspaceCloseTimer.current = null; }
     setLiveWorkspace(update);
-    const key = `${update.kind}:${update.activeFile ?? update.url ?? update.title}`;
-    if (key !== workspaceKey.current && update.status === 'running' && (['search','writing','inspect','check','execute'].includes(update.kind) || (Boolean(update.files?.length) && ['generate','edit','save'].includes(update.kind)) || update.kind === 'check')) {
-      workspaceKey.current = key;
-      setShowLiveWorkspace(true);
-    }
-    if (update.status !== 'running') workspaceCloseTimer.current = setTimeout(() => { setShowLiveWorkspace(false); workspaceCloseTimer.current = null; }, 950);
   }
   const [chatStatus, setChatStatus] = useState<'searching' | 'loading' | 'generating'>('generating');
   const thinkingPhaseStart = useRef<number | null>(null);
@@ -116,6 +113,7 @@ export function Chat() {
   const research=useSolarium(state=>state.webEnabled);
   const setWebEnabled=useSolarium(state=>state.setWebEnabled);
   const [writingId,setWritingId]=useState<string|null>(null);
+  const [recoveredWriting,setRecoveredWriting]=useState<{document:import('../writing/types').WritingDocument;content:string}|null>(null);
   const [usedSavedSources,setUsedSavedSources]=useState<import('../sources/repository').RetrievedSource[]>([]);
   useEffect(()=>{const prompt=useSolarium.getState().pendingComposer;if(prompt){setInput(prompt);useSolarium.setState({pendingComposer:null});}},[]);
   const [researchStatus, setResearchStatus] = useState('');
@@ -129,7 +127,7 @@ export function Chat() {
   const bottom = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // Do not show another conversation's source when the user switches chats.
-    setWritingId(null);setUsedSavedSources([]);setLiveWorkspace(null); setShowLiveWorkspace(false); setActiveActions([]); workspaceKey.current = '';
+    setWritingId(null);setRecoveredWriting(null);setUsedSavedSources([]);setLiveWorkspace(null); setShowLiveWorkspace(false); setActiveActions([]);
     if (workspaceCloseTimer.current !== null) clearTimeout(workspaceCloseTimer.current);
   }, [workspace.activeSessionId]);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [draft, session?.messages.length]);
@@ -150,20 +148,15 @@ export function Chat() {
   }, [workspace.preferences.ggufDirectory, workspace.preferences.serverPort]);
   async function ensureGGUF(modelToLoad: NonNullable<typeof model>): Promise<NonNullable<typeof model>> {
     if (!modelToLoad.ggufPath) return modelToLoad;
-    const preferences = useSolarium.getState().workspace.preferences;
-    if (!preferences.llamaExecutable) throw Error('Install llama.cpp first in Models → Inference Engines.');
-    const result = await activateGGUFModel({ executable: preferences.llamaExecutable, gguf: modelToLoad.ggufPath,
-      port: preferences.serverPort, context: modelToLoad.contextSize, gpuLayers: 20 });
-    const ready = { ...modelToLoad, endpoint: `http://127.0.0.1:${preferences.serverPort}`, modelId: result.modelId };
-    useSolarium.getState().upsertModel(ready);
-    setLoadedModel(result.detail);
+    const result=await readyModel(modelToLoad,useSolarium.getState().workspace.preferences);
+    const ready=result.model;useSolarium.getState().upsertModel(ready);setLoadedModel(result.detail);
     return ready;
   }
   async function changeModel(id: string) {
     if (busy || modelBusy) return;
     const selected = useSolarium.getState().workspace.models.find((m) => m.id === id);
     if (!selected) return;
-    const target = useSolarium.getState().workspace.activeSessionId ?? useSolarium.getState().createSession();
+    const target = useSolarium.getState().workspace.activeSessionId ?? createSession();
     useSolarium.getState().updateSession(target, { modelId: selected.id });
     setLoadedModel(''); setError('');
     if (selected.ggufPath) {
@@ -233,7 +226,7 @@ export function Chat() {
     pendingActions.current = new Map(); setActiveActions([]); currentActionId.current = null;
     const abort = new AbortController(); controller.current = abort;
     const willSearch = research && shouldAutoResearch(text);
-    workspaceKey.current = ''; setLiveWorkspace(null); setShowLiveWorkspace(false); clearEvents();
+    setLiveWorkspace(null); setShowLiveWorkspace(false); clearEvents();
     const researchEmitter = new AgentEventEmitter(pushEvent, replySession?.id ?? before.activeSessionId ?? undefined);
     setBusy(true); setBusyStartedAt(performance.now()); setChatStatus(willSearch ? 'searching' : 'loading'); setReaction(null);
     thinkingPhaseStart.current = null;
@@ -254,7 +247,7 @@ export function Chat() {
     if (abort.signal.aborted) { controller.current = null; setBusy(false); setBusyStartedAt(null); return; }
 
     const current = useSolarium.getState();
-    const targetId = request.kind === 'retry' ? request.sessionId : current.workspace.activeSessionId ?? current.createSession();
+    const targetId = request.kind === 'retry' ? request.sessionId : current.workspace.activeSessionId ?? createSession();
     if (request.kind === 'retry') {
       // Only discard the old response after the model is ready. A failed
       // load/search leaves all previous messages intact.
@@ -283,25 +276,20 @@ export function Chat() {
     const events = new AgentEventEmitter(pushEvent, targetId);
     setLiveMessageId(assistantId);
     let completed = '';
-    const writingRepo=new WritingRepository({sessionId:targetId,projectId:chat.projectId??null});
-    const writingStream=new WritingDraftStream(writingRepo,chat.projectId?{kind:'project',id:chat.projectId}:{kind:'chat',id:targetId},assistantId,chat.storyId??null,error=>setError(`Draft checkpoint failed: ${String(error)}`));
     const rewrite=useSolarium.getState().writingRewrite;
     const terminalRuns: TerminalRun[] = [];
     setPendingTerminalRuns([]);
     let thinkingSnapshot: ThinkingSnapshot | undefined;
-    let generationWarning: string | undefined;
-    let suppliedSources:import('../sources/repository').RetrievedSource[]=[];
-    const researchSources = new Map(web.sources.map((source) => [source.url, source]));
     try {
-      completed = await runAgent({
+      completed = await runConversation({
         spark: activeSpark, model: activeModel, session: chat,
         memories: updated.memories, worlds: updated.worlds ?? [], preferences: updated.preferences, events, signal: abort.signal,
         supplementalContext: web.context, projects: updated.projects ?? [],
-        onSource: (source) => { researchSources.set(source.url, source); },
-        messageId:assistantId,onStory:id=>useSolarium.getState().updateSession(targetId,{storyId:id}),onSavedSources:refs=>{suppliedSources=refs;setUsedSavedSources(refs);},
+        messageId:assistantId,onSavedSources:refs=>setUsedSavedSources(refs),
         onWorkspace: updateAction,
+        onWorkUpdate:text=>{completed=completed.slice(0,-text.length);setDraft(completed);},
         onMetrics: setMetrics, webEnabled: research,
-        onWarning: (message) => { generationWarning = message; },
+        onWritingTask:progress=>{setLoadedModel(`${progress.characters.toLocaleString()} characters · ${progress.words.toLocaleString()} words · ${progress.state}`);},
         onTerminal: (record) => { terminalRuns.push(record); setPendingTerminalRuns([...terminalRuns]); },
         onThinking: (state) => {
           if (state.active && thinkingPhaseStart.current === null) thinkingPhaseStart.current = performance.now();
@@ -310,44 +298,20 @@ export function Chat() {
           thinkingSnapshot = snapshot;
           if (thinkingFrame.current === null) thinkingFrame.current = requestAnimationFrame(() => { thinkingFrame.current = null; setThinking(thinkingSnapshot); });
         },
+        onAnswerReplace:text=>{completed=text;setDraft(text);},
         onAnswer: (delta) => {
           completed += delta;
-          writingStream.push(delta);
           if (displayFrame.current === null) displayFrame.current = requestAnimationFrame(() => {
             displayFrame.current = null; setDraft(completed);
-            if (completed.includes('```solarium-writing')) for (const part of parseMessageParts(completed)) {
-              if (part.type !== 'block' || part.block.kind !== 'writing') continue;
-              updateAction({ operationId:`document:${assistantId}:${part.block.id}`, kind:'writing',
-                status:part.block.status === 'complete' ? 'completed' : 'running',
-                title:workTitle('writing',part.block.title),
-                detail:part.block.status === 'complete' ? 'Document draft generated in chat; not saved to a file.' : 'Streaming document draft · not saved to disk',
-                output:part.block.content });
-            }
           });
         },
         onApproval: (name, args) => requestApproval(name, args, abort.signal),
-      });
+      },useSolarium.getState(),web.sources);
     } catch (e) {
       if (!abort.signal.aborted) { events.emit('error', String(e)); setError(String(e)); }
     } finally {
-      let autoCategory:string|null|undefined;
-      if(!abort.signal.aborted&&/\b(save|store)\b/i.test(text)&&/\b(chapter|document|story|essay|article)\b/i.test(text)){
-        const categoryMatch=/\b(?:save|store)\b.{0,50}?\b(?:under|to|in)\s+["“]?([^"”\n.]{2,160})/i.exec(text);
-        try{autoCategory=categoryMatch?await writingRepo.ensureCategoryPath(categoryMatch[1]!.replace(/\s+category$/i,''),chat.projectId?{kind:'project',id:chat.projectId}:{kind:'chat',id:targetId},chat.storyId??null):null;}catch(error){setError(String(error));}
-      }
-      await writingStream.finish(abort.signal.aborted,autoCategory);
       if(rewrite&&completed.trim()&&!abort.signal.aborted){const parts=parseMessageParts(completed);const block=parts.find(p=>p.type==='block'&&p.block.kind==='writing');useSolarium.setState({writingRewrite:{...rewrite,replacement:block?.type==='block'?block.block.content:completed.trim()}});}
-      if (completed.includes('```solarium-writing')) for (const part of parseMessageParts(completed)) {
-        if (part.type !== 'block' || part.block.kind !== 'writing') continue;
-        updateAction({operationId:`document:${assistantId}:${part.block.id}`,kind:'writing',
-          status:part.block.status === 'complete' ? 'completed' : 'failed',title:workTitle('writing',part.block.title),
-          detail:part.block.status === 'complete' ? 'Document draft generated in chat; not saved to a file.' : 'Document generation stopped before the closing fence.', output:part.block.content});
-      }
       if (completed.trim()) { if (autoReact) setReaction(suggestExpression(completed)); }
-      if (completed.trim() || thinkingSnapshot?.text || pendingActions.current.size) appendMessage(targetId, { id: assistantId, role: 'assistant', content: completed, savedSourceRefs:suppliedSources.map(r=>({id:r.sourceId,title:r.title})), sources: [...researchSources.values()], terminalRuns, sparkId: activeSpark.id, ...(generationWarning ? { generationWarning } : {}), ...(thinkingSnapshot?.text ? { reasoning: thinkingSnapshot.text, reasoningMs: thinkingSnapshot.elapsedMs } : {}), createdAt: now() });
-      for (const action of pendingActions.current.values()) {
-        useSolarium.getState().upsertVisualAction(action.status === 'running' ? {...action, status:'failed', detail:`${action.detail}\nExecution stopped without a confirmed result.`} : action);
-      }
       pendingActions.current = new Map(); setActiveActions([]);
       if (displayFrame.current !== null) { cancelAnimationFrame(displayFrame.current); displayFrame.current = null; }
       if (thinkingFrame.current !== null) { cancelAnimationFrame(thinkingFrame.current); thinkingFrame.current = null; }
@@ -400,6 +364,10 @@ export function Chat() {
     if (editedContent !== undefined && !editedContent.trim()) { setError('A user message cannot be empty.'); return; }
     void send({ kind: 'retry', sessionId: session.id, messageId, editedContent });
   }
+  async function openSavedChapter(id:string){
+    const existing=document.getElementById(`inline-writing-${id}`);if(existing){existing.scrollIntoView({behavior:'smooth',block:'start'});return;}
+    if(!session)return;try{const saved=await new WritingRepository({sessionId:session.id,projectId:session.projectId??null}).get(id);setRecoveredWriting({document:saved.document,content:saved.content.markdownProjection});}catch(error){setError(String(error));}
+  }
   function keydown(e: KeyboardEvent<HTMLDivElement>) { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }
   return <div className="chat-layout" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
     <section className="chat-primary">
@@ -429,6 +397,9 @@ export function Chat() {
             {!model && <Button onClick={() => setView('models')} startIcon={<SmartToyOutlined />} variant="contained">Connect a model</Button>}
           </Stack>
         </div>}
+        {session&&<StoryCast key={session.id} session={session} busy={busy}/>}
+        {session&&<TaskStatus access={{sessionId:session.id,projectId:session.projectId??null}} busy={busy} onResume={setInput} onDocument={id=>void openSavedChapter(id)}/>}
+        {recoveredWriting&&session&&<div><Button size="small" onClick={()=>setRecoveredWriting(null)}>Close saved chapter</Button><InlineWritingBlock block={{id:recoveredWriting.document.data.legacyBlockId??'saved-chapter',kind:'writing',language:'writing',title:recoveredWriting.document.title,content:recoveredWriting.content,status:'complete',provenance:'tool'}} context={{access:{sessionId:session.id,projectId:session.projectId??null},documentId:recoveredWriting.document.id,messageId:recoveredWriting.document.data.originMessageId??'recovery',storyId:recoveredWriting.document.storyId,onContinue:title=>setInput(`Continue "${title}" from its saved ending in a writing block.`)}} onAdvanced={()=>setWritingId(recoveredWriting.document.id)}/></div>}
         {session?.messages.map((message) => <div className={`message-row ${message.role}`} key={message.id}>
           {message.role === 'assistant' && <AvatarView avatar={workspace.sparks.find((s) => s.id === message.sparkId)?.avatar ?? spark.avatar} size={26} />}
           <div className="message-content">
@@ -446,7 +417,7 @@ export function Chat() {
                     <Button size="small" disabled={busy || modelBusy} onClick={() => { setEditingMessageId(null); setEditingText(''); }}>Cancel</Button>
                     <Button size="small" variant="contained" disabled={!editingText.trim() || busy || modelBusy} startIcon={<CheckRounded sx={{ fontSize: 14 }}/>} onClick={() => retryUserMessage(message.id, editingText)}>Save & retry</Button>
                   </Stack>
-                </Stack> : <><RichMessage text={message.content} attachments={message.attachments} sources={message.sources} assets={blockAssets(message.id)} terminalRuns={message.terminalRuns} onOpenBlock={(block) => openBlock(message.id, block)} onSaveAsset={(block) => saveBlock(message.id, block)}/>{session&&<SaveToSources text={message.content} origin={{kind:'message',sessionId:session.id,messageId:message.id}} access={{sessionId:session.id,projectId:session.projectId??null}} projectName={(workspace.projects??[]).find(p=>p.id===session.projectId)?.name}/>}</>}
+                </Stack> : <><RichMessage text={message.content} attachments={message.attachments} sources={message.sources} assets={blockAssets(message.id)} projectFolder={projectFolder} writingContext={{access:{sessionId:session.id,projectId:session.projectId??null},messageId:message.id,storyId:session.storyId,onContinue:title=>setInput(`Continue "${title}" from its saved ending, preserving character voices, knowledge and story memories. Write in a writing block.`)}} onOpenBlock={(block) => openBlock(message.id, block)} onSaveAsset={(block) => saveBlock(message.id, block)}/>{session&&<SaveToSources text={message.content} origin={{kind:'message',sessionId:session.id,messageId:message.id}} access={{sessionId:session.id,projectId:session.projectId??null}} projectName={(workspace.projects??[]).find(p=>p.id===session.projectId)?.name}/>}</>}
               </div>
               <div className="user-message-actions" aria-label="User message actions">
                 <Tooltip title="Copy this message"><span><Button aria-label="Copy user message" size="small" startIcon={<ContentCopyRounded sx={{ fontSize: 13 }}/>} onClick={() => void copyUserMessage(message.content)}>Copy</Button></span></Tooltip>
@@ -456,9 +427,9 @@ export function Chat() {
               </div>
             </> : <>
               <Typography fontWeight={700} fontSize={11} color="text.secondary" mb={.45}>{workspace.sparks.find((s) => s.id === message.sparkId)?.name ?? spark.name}</Typography>
-              {actionList(message.id).map(action => <VisualActionCard key={action.id} action={action} onExpandWorkspace={(selected) => { setLiveWorkspace(selected); setShowLiveWorkspace(true); }}/>) }
+              <WorkLog actions={actionList(message.id)} runs={message.terminalRuns} root={projectFolder} onOpen={selected => { setLiveWorkspace(selected); setShowLiveWorkspace(true); }}/>
               <ThinkingPanel snapshot={message.reasoning ? { text: message.reasoning, elapsedMs: message.reasoningMs ?? 0, active: false } : undefined}/>
-              <RichMessage text={message.content} attachments={message.attachments} sources={message.sources} assets={blockAssets(message.id)} terminalRuns={message.terminalRuns} onOpenBlock={(block) => openBlock(message.id, block)} onSaveAsset={(block) => saveBlock(message.id, block)}/>{session&&<SaveToSources text={message.content} origin={{kind:'message',sessionId:session.id,messageId:message.id}} access={{sessionId:session.id,projectId:session.projectId??null}} projectName={(workspace.projects??[]).find(p=>p.id===session.projectId)?.name}/>}
+              <RichMessage codeContext={message.role==='assistant'?{access:{sessionId:session!.id,projectId:session!.projectId??null},messageId:message.id,sparkId:message.sparkId,naturalEnd:message.generationOutcomes?.at(-1)?.reason==='natural_eos'}:undefined} text={message.content} attachments={message.attachments} sources={message.sources} assets={blockAssets(message.id)} projectFolder={projectFolder} writingContext={{access:{sessionId:session.id,projectId:session.projectId??null},messageId:message.id,storyId:session.storyId,onContinue:title=>setInput(`Continue "${title}" from its saved ending, preserving character voices, knowledge and story memories. Write in a writing block.`)}} onOpenBlock={(block) => openBlock(message.id, block)} onSaveAsset={(block) => saveBlock(message.id, block)}/>{session&&<SaveToSources text={message.content} origin={{kind:'message',sessionId:session.id,messageId:message.id}} access={{sessionId:session.id,projectId:session.projectId??null}} projectName={(workspace.projects??[]).find(p=>p.id===session.projectId)?.name}/>}
               {Boolean(message.savedSourceRefs?.length)&&<Button size="small" onClick={()=>setView('sources')}>Saved references supplied: {message.savedSourceRefs!.map(r=>r.title).join(', ')}</Button>}
               {message.generationWarning && <Typography className="generation-warning" title={message.generationWarning} fontSize={10} color="text.secondary">◌ Response may be incomplete · {message.generationWarning}</Typography>}
               <Button sx={{ mt: .35, opacity: .7, fontSize: 10 }} size="small" disabled={busy} onClick={() => { if (session) useSolarium.getState().branchSession(session.id, message.id); }} title="Create an independent conversation from this message">↳ Branch from here</Button>
@@ -466,7 +437,7 @@ export function Chat() {
           </div>
         </div>)}
         {usedSavedSources.length>0&&busy&&<Typography fontSize={10} color="text.secondary">Saved references supplied: {usedSavedSources.map(s=>s.title).join(', ')}</Typography>}
-        {busy && <div className="message-row assistant"><AvatarView avatar={reaction ? { ...spark.avatar, expression: reaction } : spark.avatar} size={26} active /><div className="message-content"><Typography fontSize={11} fontWeight={700} mb={.6}>{spark.name} <CircularProgress size={10} sx={{ ml: .8 }} /></Typography><ThinkingPanel snapshot={thinking} busy busyStartedAt={busyStartedAt} status={chatStatus}/>{activeActions.filter(action => action.messageId === liveMessageId && action.sessionId === session?.id).map(action => <VisualActionCard key={action.id} action={action} onExpandWorkspace={(selected) => { setLiveWorkspace(selected); setShowLiveWorkspace(true); }}/>) }<RichMessage streaming text={draft || researchStatus || ''} terminalRuns={pendingTerminalRuns} onOpenBlock={liveMessageId ? (block) => openBlock(liveMessageId, block) : undefined}/></div></div>}
+        {busy && <div className="message-row assistant"><AvatarView avatar={reaction ? { ...spark.avatar, expression: reaction } : spark.avatar} size={26} active /><div className="message-content"><Typography fontSize={11} fontWeight={700} mb={.6}>{spark.name} <CircularProgress size={10} sx={{ ml: .8 }} /></Typography><ThinkingPanel snapshot={thinking} busy busyStartedAt={busyStartedAt} status={chatStatus}/><WorkLog busy actions={activeActions.filter(action => action.messageId === liveMessageId && action.sessionId === session?.id)} runs={pendingTerminalRuns} root={projectFolder} onOpen={selected => { setLiveWorkspace(selected); setShowLiveWorkspace(true); }}/><RichMessage streaming codeContext={session&&liveMessageId?{access:{sessionId:session.id,projectId:session.projectId??null},messageId:liveMessageId,sparkId:spark.id,streaming:true}:undefined} text={draft || researchStatus || ''} projectFolder={projectFolder} writingContext={session&&liveMessageId?{access:{sessionId:session.id,projectId:session.projectId??null},messageId:liveMessageId,storyId:session.storyId}:undefined} onOpenBlock={liveMessageId ? (block) => openBlock(liveMessageId, block) : undefined}/></div></div>}
         <div ref={bottom} />
       </div>}
       <div className="composer-wrap">

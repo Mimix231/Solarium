@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { CssBaseline, CircularProgress, Box, Alert } from '@mui/material';
 import { ThemeProvider } from '@mui/material/styles';
 import { createSolariumTheme } from './themes/registry';
+import { ApplicationClose } from './components/ApplicationClose';
 import { Shell } from './components/Shell';
 import { SourcesLibrary } from './components/sources/SourcesLibrary';
 import { WritingLibrary } from './components/WritingLibrary';
@@ -52,7 +53,7 @@ function App() {
   return <ThemeProvider theme={mui}><CssBaseline />{!ready ? <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}><CircularProgress /></Box> : <>
     {error && <Alert severity="warning" sx={{ position: 'fixed', bottom: 5, left: 64, zIndex: 2000, maxWidth: 600 }}>{error}</Alert>}
     <RenderErrorBoundary key={view} onRecover={() => updatePreferences({ showActivity: false })} onHome={() => setView('home')}>
-    <Shell>{view === 'sources' ? <SourcesLibrary/> : view === 'writing' ? <WritingLibrary/> : view === 'stories' ? <StoryBible/> : view === 'home' ? <ConsoleHome /> : view === 'chat' ? <Chat /> : view === 'projects' ? <Projects /> : view === 'code' ? <CodeWorkspace /> : view === 'sparks' ? <SparkStudio /> : view === 'models' ? <Models /> : view === 'runtime' ? <RuntimeCenter /> : view === 'worlds' ? <Worlds /> : view === 'laboratory' ? <Laboratory /> : view === 'teams' ? <Teams /> : view === 'memories' ? <Memories /> : <Settings />}</Shell>
+    <ApplicationClose/><Shell>{view === 'sources' ? <SourcesLibrary/> : view === 'writing' ? <WritingLibrary/> : view === 'stories' ? <StoryBible/> : view === 'home' ? <ConsoleHome /> : view === 'chat' ? <Chat /> : view === 'projects' ? <Projects /> : view === 'code' ? <CodeWorkspace /> : view === 'sparks' ? <SparkStudio /> : view === 'models' ? <Models /> : view === 'runtime' ? <RuntimeCenter /> : view === 'worlds' ? <Worlds /> : view === 'laboratory' ? <Laboratory /> : view === 'teams' ? <Teams /> : view === 'memories' ? <Memories /> : <Settings />}</Shell>
     </RenderErrorBoundary>
   </>}</ThemeProvider>;
 }

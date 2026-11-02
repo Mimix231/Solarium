@@ -19,11 +19,11 @@ export interface LiveWorkspaceUpdate {
 export const workKindForTool = (name: string): WorkKind | null => ({
   search_web: 'search', open_web_page: 'search', inspect_project: 'inspect',
   list_project_files: 'inspect', read_project_file: 'inspect', search_project_code: 'inspect',
-  apply_project_changes: 'generate', replace_project_text: 'edit',
-  run_project_check: 'check',
+  create_video_editor_project:'generate',apply_project_changes: 'generate', replace_project_text: 'edit',
+  run_project_check: 'check', run_project_command:'check',list_project_commands:'inspect',read_command_output:'inspect',get_project_map:'inspect',query_project_intelligence:'inspect',read_project_symbol:'inspect',choose_project_tools:'inspect',recall_context:'inspect',complete_project_task:'check',report_project_blocker:'check',
   install_project_dependencies:'check',search_saved_sources:'inspect',search_specific_scene:'search',research_character:'search',
-  create_writing_document:'writing',finalize_writing_document:'writing',move_writing_document:'writing',create_writing_category:'writing',
-  create_story_world:'writing',create_story_character:'writing',update_character_claims:'writing',suggest_story_consistency_issues:'check',list_writing_categories:'inspect',
+  create_writing_document:'writing',finalize_writing_document:'writing',move_writing_document:'writing',create_writing_category:'writing',read_story_memory:'inspect',remember_story_event:'save',remember_character_fact:'save',
+  read_task_brief:'inspect',save_story_context:'save',create_story_world:'writing',create_story_character:'writing',update_character_claims:'writing',suggest_story_consistency_issues:'check',list_writing_categories:'inspect',
 } as Record<string, WorkKind>)[name] ?? null;
 
 /**

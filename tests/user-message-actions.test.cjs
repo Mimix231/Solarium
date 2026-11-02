@@ -73,7 +73,9 @@ test('chat has copy, edit, retry actions and shares the normal streaming pipelin
   assert.match(chat, /aria-label="Edit user message"/);
   assert.match(chat, /aria-label="Retry user message"/);
   assert.match(chat, /Save & retry/);
-  assert.match(chat, /await runAgent\(/);
+  assert.match(chat, /await runConversation\(/);
+  const controller=fs.readFileSync(path.join(__dirname,'../src/engine/conversation-run.ts'),'utf8');
+  assert.match(controller,/await runAgent\(/);
   assert.match(chat, /current\.rewindUserTurn\(/);
   assert.match(store, /rewindUserTurn: \(id, messageId, editedContent\)/);
 });

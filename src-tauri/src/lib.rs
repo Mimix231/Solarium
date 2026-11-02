@@ -1,3 +1,5 @@
+mod glitch;
+mod glitch_terminal;
 use std::fs::{self, File};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -8,7 +10,14 @@ use serde::Serialize;
 use tauri::{Manager, State};
 
 mod creator;
+mod project_commands;
+mod project_services;
+mod registered_commands;
+mod dependency_api;
+mod project_snapshot;
 mod foundation;
+mod quality;
+mod runtime_profile;
 #[cfg(windows)] mod windows_job;
 mod runtime;
 mod llama_installer;
@@ -23,6 +32,7 @@ struct EngineProcesses {
     llama: Mutex<Option<Child>>,
     llama_model: Mutex<Option<String>>,
     llama_port: Mutex<Option<u16>>,
+    llama_config:Mutex<Option<(u32,i32)>>,
     vllm: Mutex<Option<Child>>,
     #[cfg(windows)] job: Mutex<Option<windows_job::JobObject>>,
 }
@@ -47,6 +57,7 @@ impl Drop for EngineProcesses {
 }
 
 fn start_managed(state: &EngineProcesses, slot: &Mutex<Option<Child>>, command: &mut Command, label: &str, log_path: &Path) -> Result<String, String> {
+    #[cfg(windows)]{use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}
     let mut guard = slot.lock().map_err(|_| "Engine lock unavailable")?;
     if let Some(child) = guard.as_mut() {
         if child.try_wait().map_err(|e| e.to_string())?.is_none() {
@@ -105,7 +116,7 @@ fn start_llama_server(
     }
     let mut command = Command::new(path);
     command.args(["-m", &gguf, "--host", "127.0.0.1", "--port", &port.to_string(),
-        "-c", &context.to_string(), "--n-gpu-layers", &gpu_layers.to_string(), "--context-shift", "--no-webui"]);
+        "-c", &context.to_string(), "--n-gpu-layers", &gpu_layers.to_string(), "--context-shift", "--jinja", "--parallel", "1", "--no-webui"]);
     if let Some(folder) = path.parent() { command.current_dir(folder); }
     if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
         if let Some(existing_id) = compatible_existing_llama(port, &gguf) {
@@ -117,6 +128,7 @@ fn start_llama_server(
     let outcome = start_managed(&state, &state.llama, &mut command, "llama.cpp", &log)?;
     *state.llama_model.lock().map_err(|_| "Model state lock unavailable")? = Some(gguf);
     *state.llama_port.lock().map_err(|_| "Engine port lock unavailable")? = Some(port);
+    *state.llama_config.lock().map_err(|_| "Engine configuration lock unavailable")?=Some((context,gpu_layers));
     Ok(outcome)
 }
 
@@ -168,7 +180,8 @@ fn activate_gguf_model_inner(state: &EngineProcesses, executable: String, gguf: 
     }
     let same = state.llama_model.lock().map_err(|_| "Model state lock unavailable")?
         .as_deref() == Some(gguf.as_str()) &&
-        *state.llama_port.lock().map_err(|_| "Engine port lock unavailable")? == Some(port);
+        *state.llama_port.lock().map_err(|_| "Engine port lock unavailable")? == Some(port) &&
+        *state.llama_config.lock().map_err(|_| "Engine configuration lock unavailable")? == Some((context,gpu_layers));
     let alive = {
         let mut child = state.llama.lock().map_err(|_| "Engine state lock unavailable")?;
         child.as_mut().is_some_and(|c| c.try_wait().ok().flatten().is_none())
@@ -185,11 +198,12 @@ fn activate_gguf_model_inner(state: &EngineProcesses, executable: String, gguf: 
         if alive { let _ = stop_managed(&state.llama, "llama.cpp"); }
         let mut command = Command::new(&executable);
         command.args(["-m", &gguf, "--host", "127.0.0.1", "--port", &port.to_string(),
-            "-c", &context.to_string(), "--n-gpu-layers", &gpu_layers.to_string(), "--context-shift", "--no-webui"]);
+            "-c", &context.to_string(), "--n-gpu-layers", &gpu_layers.to_string(), "--context-shift", "--jinja", "--parallel", "1", "--no-webui"]);
         if let Some(folder) = Path::new(&executable).parent() { command.current_dir(folder); }
         start_managed(&state, &state.llama, &mut command, "llama.cpp", &ensure_runtime_dir()?.join("logs/llama.log"))?;
         *state.llama_model.lock().map_err(|_| "Model state lock unavailable")? = Some(gguf.clone());
         *state.llama_port.lock().map_err(|_| "Engine port lock unavailable")? = Some(port);
+    *state.llama_config.lock().map_err(|_| "Engine configuration lock unavailable")?=Some((context,gpu_layers));
     }
     let client = reqwest::blocking::Client::builder().timeout(Duration::from_secs(3))
         .build().map_err(|e| e.to_string())?;
@@ -218,6 +232,19 @@ fn activate_gguf_model_inner(state: &EngineProcesses, executable: String, gguf: 
     *state.llama_port.lock().map_err(|_| "Engine port lock unavailable")? = None;
     Err("llama.cpp failed to become ready within 90 seconds. Check Models → View logs for DLL, CUDA or memory errors.".into())
 }
+
+#[tauri::command]
+async fn model_load_plan(app:tauri::AppHandle,gguf:String,context:u32)->Result<runtime_profile::LoadPlan,String>{
+    tauri::async_runtime::spawn_blocking(move||{
+        let state=app.state::<EngineProcesses>();
+        let same=state.llama_model.lock().map_err(|e|e.to_string())?.as_deref()==Some(gguf.as_str());
+        let alive=state.llama.lock().map_err(|e|e.to_string())?.as_mut().is_some_and(|c|c.try_wait().ok().flatten().is_none());
+        let resident=if same&&alive{state.llama_config.lock().map_err(|e|e.to_string())?.filter(|(size,_)|*size==context).map(|(_,layers)|layers)}else{None};
+        runtime_profile::plan(&gguf,context,resident)
+    }).await.map_err(|e|e.to_string())?
+}
+#[tauri::command]
+fn local_coding_probe()->serde_json::Value{use std::time::{SystemTime,UNIX_EPOCH};serde_json::json!({"value":format!("SOLARIUM-{}-{}",std::process::id(),SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos()),"source":"executed native read-only probe"})}
 
 #[tauri::command]
 async fn activate_gguf_model(app: tauri::AppHandle, executable: String, gguf: String,
@@ -358,6 +385,32 @@ fn read_engine_log(engine: String) -> Result<String, String> {
     Ok(result)
 }
 
+#[derive(Serialize)]
+#[serde(rename_all="camelCase")]
+struct InferenceRuntimeStatus {managed:bool,pid:Option<u32>,context_shift:String}
+fn context_shift_evidence(log:&str)->&'static str{
+    if log.contains("KV cache shifting is not supported")||log.contains("disabling KV cache shifting"){"unsupported"}
+    else if log.contains("KV cache shifting enabled"){"supported"}else{"unknown"}
+}
+#[cfg(test)]
+mod inference_status_tests{
+    #[test]fn context_shift_status_requires_actual_runtime_evidence(){
+        assert_eq!(super::context_shift_evidence("KV cache shifting is not supported for this context, disabling KV cache shifting"),"unsupported");
+        assert_eq!(super::context_shift_evidence("KV cache shifting enabled"),"supported");
+        assert_eq!(super::context_shift_evidence("model loaded; --context-shift requested"),"unknown");
+    }
+}
+#[tauri::command]
+fn inference_runtime_status(state:State<'_,EngineProcesses>,gguf:String,port:u16)->Result<InferenceRuntimeStatus,String>{
+    let model=state.llama_model.lock().map_err(|_|"Model state lock unavailable")?.clone();
+    let actual_port=*state.llama_port.lock().map_err(|_|"Port state lock unavailable")?;
+    let matches=model.and_then(|m|Path::new(&m).canonicalize().ok()).zip(Path::new(&gguf).canonicalize().ok()).is_some_and(|(a,b)|a==b)&&actual_port==Some(port);
+    let mut process=state.llama.lock().map_err(|_|"Process state lock unavailable")?;
+    let pid=if matches{if let Some(p)=process.as_mut(){if p.try_wait().map_err(|e|e.to_string())?.is_none(){Some(p.id())}else{None}}else{None}}else{None};
+    let evidence=if pid.is_some(){let bytes=fs::read(runtime_dir()?.join("logs/llama.log")).map_err(|e|e.to_string())?;context_shift_evidence(&String::from_utf8_lossy(&bytes)).to_owned()}else{"unknown".into()};
+    Ok(InferenceRuntimeStatus{managed:pid.is_some(),pid,context_shift:evidence})
+}
+
 #[tauri::command]
 fn get_runtime_location() -> Result<String, String> {
     Ok(ensure_runtime_dir()?.display().to_string())
@@ -377,11 +430,21 @@ pub fn run() {
     }
     tauri::Builder::default()
         .manage(EngineProcesses::default())
+        .manage(glitch::ProjectService::default())
+        .manage(project_services::ProjectServices::default())
+        .manage(glitch::WorkspaceWatch::default())
+        .manage(glitch_terminal::Terminals::default())
         .manage(jobs)
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
-            creator::inspect_project_environment, creator::read_research_page,
+            glitch::glitch_workspace_action, glitch::glitch_project_request, glitch::glitch_watch, glitch::glitch_workspace_settings,
+            glitch_terminal::glitch_terminal_create, glitch_terminal::glitch_terminal_read,
+            glitch_terminal::glitch_terminal_write, glitch_terminal::glitch_terminal_resize, glitch_terminal::glitch_terminal_kill,
+            quality::create_quality_fixture,
+            quality::coding_quality_identity,model_load_plan,local_coding_probe,
+            project_services::list_project_services,project_services::start_project_service,project_services::inspect_project_service,project_services::stop_project_service,dependency_api::inspect_dependency_api,registered_commands::register_project_command,project_snapshot::project_source_snapshot,project_commands::list_project_commands, project_commands::run_project_command, project_commands::cancel_project_command, project_commands::read_command_output,
+            inference_runtime_status, creator::inspect_project_environment, creator::read_research_page,
             foundation::foundation_list, foundation::foundation_body, foundation::foundation_batch,
             start_llama_server, stop_llama_server, start_vllm_server, stop_vllm_server,
             nvidia_gpu_status, read_engine_log,
@@ -393,6 +456,9 @@ pub fn run() {
         .expect("failed to initialize Solarium")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
+                project_services::shutdown(app);
+                glitch_terminal::shutdown(app);
+                glitch::shutdown(app);
                 let engines = app.state::<EngineProcesses>();
                 let had_vllm = engines.vllm.lock().is_ok_and(|slot| slot.is_some());
                 let _ = stop_managed(&engines.llama, "llama.cpp");

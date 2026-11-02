@@ -1,3 +1,4 @@
+import { rankedEvidence } from '../foundation/relevance';
 import { now, uid } from '../domain/types';
 import { foundationStore, newRecord } from '../foundation/store';
 import { accessibleScopes, assertScope, sameScope, validateBody, type AccessContext, type RecordStore, type SourceScope, type StoredRecord } from '../foundation/types';
@@ -90,11 +91,7 @@ export class SourceRepository {
     const sources=(await this.list()).filter(s=>s.data.enabled && (options.arc===undefined||s.data.arc===undefined||s.data.arc<options.arc||s.data.arc===options.arc&&(options.chapter===undefined||s.data.chapter===undefined||s.data.chapter<=options.chapter)) && (!options.continuity||!s.data.continuity||s.data.continuity===options.continuity));
     const byId=new Map(sources.map(s=>[s.id,s])); const terms=words(query); if (!terms.length) return [];
     const candidates=await this.store.list<SourceChunk>({collection:'source_chunk',scopes:this.scopes()});
-    const ranked=candidates.flatMap(c=>{
-      const s=byId.get(c.data.sourceId); if(!s) return []; const text=c.data.text.toLowerCase(), title=`${s.title} ${s.data.tags.join(' ')}`.toLowerCase();
-      const score=terms.reduce((sum,t)=>sum+(text.includes(t)?1:0)+(title.includes(t)?2:0),0)/Math.sqrt(Math.max(1,text.length/1500));
-      return score>0?[{sourceId:s.id,chunkId:c.id,title:s.title,excerpt:c.data.text,origin:s.data.origin,score,location:c.data.location}]:[];
-    }).sort((a,b)=>b.score-a.score);
+    const ranked=rankedEvidence(candidates.filter(c=>byId.has(c.data.sourceId)),query,c=>{const source=byId.get(c.data.sourceId)!;return `${source.title} ${source.data.tags.join(' ')} ${c.data.text}`;}).filter(r=>r.score>0).map(({item:c,score})=>{const source=byId.get(c.data.sourceId)!;return {sourceId:source.id,chunkId:c.id,title:source.title,excerpt:c.data.text,origin:source.data.origin,score,location:c.data.location};});
     let remaining=options.maxChars??3600; const result:RetrievedSource[]=[];const counts=new Map<string,number>();
     for(const item of ranked){ if(result.length>=(options.maxChunks??5)||remaining<150) break; if((counts.get(item.sourceId)??0)>=2) continue;
       const excerpt=item.excerpt.slice(0,Math.min(1400,remaining));result.push({...item,excerpt});remaining-=excerpt.length;counts.set(item.sourceId,(counts.get(item.sourceId)??0)+1); }

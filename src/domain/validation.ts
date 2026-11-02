@@ -117,6 +117,7 @@ function validateModel(data: unknown): LocalModel | null {
       endpoint: url.origin, modelId: identifier,
       ...(typeof m.ggufPath === 'string' ? { ggufPath: text(m.ggufPath, 1200) } : {}),
       visionEnabled: m.visionEnabled === true, toolCalling: m.toolCalling === true,
+      runtime:{mode:object(m.runtime).mode==='manual'?'manual':'auto',gpuLayers:number(object(m.runtime).gpuLayers,0,-1,999)},
       contextSize: number(m.contextSize, 4096, 256, 262144),
       temperature: number(m.temperature, .7, 0, 2),
       maxTokens: number(m.maxTokens, 2048, 32, 131072),
@@ -134,9 +135,10 @@ function validateMessage(data: unknown): ChatMessage | null {
     ...(typeof m.sparkId === 'string' ? { sparkId: text(m.sparkId, 100) } : {}),
     ...(typeof m.reasoning === 'string' ? { reasoning: text(m.reasoning, 2_000_000) } : {}),
     ...(typeof m.generationWarning === 'string' ? { generationWarning: text(m.generationWarning, 1200) } : {}),
+    generationOutcomes:(Array.isArray(m.generationOutcomes)?m.generationOutcomes:[]).map((value:unknown)=>{const o=object(value);return {backend:text(o.backend,30),reason:option(o.reason,['natural_eos','tool_call','output_or_context_limit','content_filter','unknown','cancelled','transport_error','input_limit'] as const,'unknown'),contextSize:typeof o.contextSize==='number'?number(o.contextSize,0,0,10_000_000):null,promptTokens:typeof o.promptTokens==='number'?number(o.promptTokens,0,0,10_000_000):null,contextShift:option(o.contextShift,['supported','unsupported','unknown'] as const,'unknown'),...(typeof o.detail==='string'?{detail:text(o.detail,1500)}:{})};}),
     ...(typeof m.reasoningMs === 'number' && Number.isFinite(m.reasoningMs) ? { reasoningMs: number(m.reasoningMs, 0, 0, 100_000_000) } : {}),
     attachments: (Array.isArray(m.attachments) ? m.attachments : []).slice(0, 8).map((a: unknown) => { const x = object(a); const image = text(x.dataUrl, 2_500_000); return { id: text(x.id,100) || uid(), name: text(x.name,180), mime: text(x.mime,100), kind: option(x.kind,['image','text','document'] as const,'document'), size: number(x.size,0,0,10_000_000), ...(image.length < 2_500_000 && /^data:image\/(?:png|jpeg|webp);base64,/i.test(image) ? { dataUrl: image } : {}), ...(x.text ? { text: text(x.text,120_000) } : {}) }; }).filter((a) => a.name),
-    terminalRuns: (Array.isArray(m.terminalRuns) ? m.terminalRuns : []).slice(0, 20).map((run: unknown) => { const item = object(run); return { command: text(item.command, 1000), exitCode: typeof item.exitCode === 'number' ? number(item.exitCode, 0, -100000, 100000) : null, stdout: text(item.stdout, 80_000), stderr: text(item.stderr, 80_000), timedOut: item.timedOut === true }; }),
+    terminalRuns: (Array.isArray(m.terminalRuns) ? m.terminalRuns : []).slice(-20).map((run: unknown) => { const item = object(run); return { command: text(item.command, 1000), exitCode: typeof item.exitCode === 'number' ? number(item.exitCode, 0, -100000, 100000) : null, stdout: text(item.stdout, 80_000), stderr: text(item.stderr, 80_000), timedOut: item.timedOut === true,...(typeof item.runId==='string'?{runId:text(item.runId,100),cancelled:item.cancelled===true,outputComplete:item.outputComplete!==false}:{}) }; }),
     savedSourceRefs:(Array.isArray(m.savedSourceRefs)?m.savedSourceRefs:[]).slice(0,10).map((s:unknown)=>{const r=object(s);return {id:text(r.id,180),title:text(r.title,180)};}).filter(s=>s.id),
     sources: (Array.isArray(m.sources) ? m.sources : []).slice(0, 16).map((s: unknown) => object(s)).filter((s) => typeof s.url === 'string' && /^https:\/\//.test(s.url)).map((s) => ({ title: text(s.title,200), url: text(s.url,1500), excerpt: text(s.excerpt,4000), readState:option(s.readState,['found','read'] as const,'found') })),
   };
@@ -155,7 +157,7 @@ function validateSession(data: unknown, sparkIds: Set<string>): ChatSession | nu
     title: text(d.title, 100) || 'Conversation', modelId: text(d.modelId, 100) || null, projectId: text(d.projectId, 100) || null,
     mode: option(d.mode, ['conversation', 'work', 'research', 'creative'] as const, 'conversation'),
     createdAt: text(d.createdAt, 40) || now(), updatedAt: text(d.updatedAt, 40) || now(),
-    messages: raw.map(validateMessage).filter((message): message is ChatMessage => message !== null).slice(-2_000),
+    messages: raw.map(validateMessage).filter((message): message is ChatMessage => message !== null),
   };
 }
 
@@ -185,7 +187,7 @@ function validatePreferences(data: unknown): Preferences {
     serverPort: number(p.serverPort, 8080, 1024, 65535),
     ggufDirectory: text(p.ggufDirectory, 2048),
     toolPermissions: allowed,
-    searchProvider: {kind: option(object(p.searchProvider).kind,['bing','searxng'] as const,'bing'),endpoint:text(object(p.searchProvider).endpoint,1000)},
+    searchProvider: {kind: option(object(p.searchProvider).kind,['bing','searxng','duckduckgo'] as const,'bing'),endpoint:text(object(p.searchProvider).endpoint,1000)},
     startupView: option(p.startupView, ['home','chat'] as const, 'home'),
     consoleChannels: (Array.isArray(p.consoleChannels) ? p.consoleChannels : []).slice(0, 80).map((value: unknown) => {
       const c = object(value);

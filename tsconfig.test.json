@@ -44,11 +44,19 @@
     "src/engine/action-permissions.ts",
     "src/engine/live-workspace.ts",
     "src/engine/visual-actions.ts",
+    "src/engine/work-log.ts",
     "src/foundation/types.ts",
     "src/foundation/store.ts",
     "src/foundation/backup.ts",
     "src/writing/**/*.ts",
     "src/stories/**/*.ts",
-    "src/research/**/*.ts"
+    "src/research/**/*.ts",
+    "src/quality/cases.ts",
+    "src/coding/integration/session.ts",
+    "src/coding/artifacts/repository.ts",
+    "src/coding/artifacts/stream.ts",
+    "src/engine/conversation-run.ts",
+    "src/engine/close-coordinator.ts",
+    "src/engine/work-lifecycle.ts"
   ]
 }

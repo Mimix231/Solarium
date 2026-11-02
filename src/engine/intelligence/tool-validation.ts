@@ -24,8 +24,9 @@ export function validateToolArguments(name:string,raw:string|unknown,definitions
     if(typeof value==='number'&&(!Number.isFinite(value)||value<(schema.minimum??-Infinity)||value>(schema.maximum??Infinity)))issues.push({field:path,message:'Number is outside the supported range.'});
   }
   if(definition)validate(data,definition.function.parameters as Schema,name);
+  if(name==='replace_project_text'&&data&&typeof data==='object'){const a=data as Record<string,unknown>;if(typeof a.expected_fragment==='string'&&a.expected_fragment===a.replacement)issues.push({field:name,message:'Replacement is identical to the original. No edit would occur; choose a real change or a different action.'});}
   if(name==='apply_project_changes'&&data&&typeof data==='object'){
-    const files=(data as {files?:unknown}).files;if(Array.isArray(files)){if(files.length<1||files.length>12)issues.push({field:`${name}.files`,message:'Provide 1–12 files.'});const paths=files.map(f=>String(f?.path??'').replaceAll('\\','/').toLowerCase());if(new Set(paths).size!==paths.length)issues.push({field:`${name}.files`,message:'Duplicate file paths.'});}
+    const files=(data as {files?:unknown}).files;if(Array.isArray(files)){if(files.length<1||files.length>12)issues.push({field:`${name}.files`,message:'Provide 1–12 files.'});for(const f of files)if(f&&typeof f.expected==='string'&&f.expected===f.content)issues.push({field:`${name}.files`,message:'A file matches its expected original exactly. Omit unchanged files; no edit would occur.'});const paths=files.map(f=>String(f?.path??'').replaceAll('\\','/').toLowerCase());if(new Set(paths).size!==paths.length)issues.push({field:`${name}.files`,message:'Duplicate file paths.'});}
   }
   return issues.length?{ok:false,error:{code:'INVALID_ARGUMENTS',tool:name,issues,message:issues.map(i=>`${i.field} ${i.message}`).join(' ')}}:{ok:true,value:data as Record<string,unknown>};
 }

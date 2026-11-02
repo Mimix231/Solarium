@@ -49,12 +49,16 @@ interface SolariumState {
   restore: (workspace: Workspace) => void;
 }
 const initial = defaultWorkspace();
+let hydration:Promise<void>|null=null;
 export const useSolarium = create<SolariumState>((set, get) => ({
   webEnabled:false,setWebEnabled:webEnabled=>set({webEnabled}),pendingComposer:null,writingRewrite:null,
   workspace: initial, ready: false, error: null, view: 'home', editingSparkId: null, events: [],
   hydrate: async () => {
-    try { const workspace = await loadWorkspace(); set({ workspace, view: workspace.preferences.startupView ?? 'home', ready: true, error: null }); }
-    catch (error) { set({ ready: true, error: `Storage could not be loaded: ${String(error)}` }); }
+    if(get().ready)return;
+    if(hydration)return hydration;
+    hydration=(async()=>{try { const workspace = await loadWorkspace(); set({ workspace, view: workspace.preferences.startupView ?? 'home', ready: true, error: null }); }
+      catch (error) { set({ ready: true, error: `Storage could not be loaded: ${String(error)}` }); }})();
+    try{await hydration;}finally{hydration=null;}
   },
   setView: (view) => set({ view }),
   setEditingSparkId: (editingSparkId) => set({ editingSparkId }),
@@ -185,12 +189,14 @@ export const useSolarium = create<SolariumState>((set, get) => ({
   restore: (workspace) => set({ workspace, view: 'chat', editingSparkId: null, events: [] }),
 }));
 let timer: ReturnType<typeof setTimeout> | undefined;
+let saveQueue=Promise.resolve();
 useSolarium.subscribe((state, prev) => {
   if (state.ready && state.workspace !== prev.workspace) {
-    if(prev.workspace.sessions.some(s=>!state.workspace.sessions.some(c=>c.id===s.id))||(prev.workspace.projects??[]).some(p=>!(state.workspace.projects??[]).some(q=>q.id===p.id))){void cleanupDeletedOwners(prev.workspace,state.workspace).catch(error=>useSolarium.setState({error:`Deleted-owner cleanup failed: ${String(error)}`}));}
+    if(prev.ready&&(prev.workspace.sessions.some(s=>!state.workspace.sessions.some(c=>c.id===s.id))||(prev.workspace.projects??[]).some(p=>!(state.workspace.projects??[]).some(q=>q.id===p.id)))){void cleanupDeletedOwners(prev.workspace,state.workspace).catch(error=>useSolarium.setState({error:`Deleted-owner cleanup failed: ${String(error)}`}));}
     clearTimeout(timer);
     timer = setTimeout(() => {
-      void saveWorkspace(useSolarium.getState().workspace).catch((error: unknown) => {
+      const snapshot=useSolarium.getState().workspace;
+      saveQueue=saveQueue.catch(()=>{}).then(()=>saveWorkspace(snapshot)).catch((error: unknown) => {
         useSolarium.setState({ error: `Changes could not be saved: ${String(error)}` });
       });
     }, 250);

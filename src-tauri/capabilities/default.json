@@ -3,5 +3,5 @@
   "identifier": "desktop",
   "description": "Local desktop data and file-selection permissions",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default", "sql:default", "sql:allow-execute", "core:window:allow-minimize", "core:window:allow-toggle-maximize", "core:window:allow-close", "core:window:allow-start-dragging"]
+  "permissions": ["core:default", "dialog:default", "sql:default", "sql:allow-execute", "core:window:allow-minimize", "core:window:allow-toggle-maximize", "core:window:allow-close", "core:window:allow-destroy", "core:window:allow-start-dragging"]
 }

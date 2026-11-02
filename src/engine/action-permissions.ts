@@ -8,19 +8,22 @@ export type ToolDecision = 'allow' | 'ask' | 'deny';
 export type TaskGrant = 'write' | 'check';
 import { knowledgeNames, knowledgeWebNames } from './intelligence/knowledge-tools';
 
-const WEB_TOOLS = new Set(['search_web', 'open_web_page',...knowledgeWebNames]);
+import { codingNames, codingWebNames } from './intelligence/coding-tools';
+const WEB_TOOLS = new Set(['search_web', 'open_web_page',...knowledgeWebNames,...codingWebNames]);
 const PROJECT_TOOLS = new Set([
   'list_project_files', 'read_project_file', 'inspect_project', 'search_project_code',
   'replace_project_text', 'apply_project_changes', 'run_project_check',
-  'install_project_dependencies',
+  'install_project_dependencies',...codingNames.filter(n=>!['recall_context','list_generated_code','read_generated_code'].includes(n)),
 ]);
 const KNOWN_TOOLS = new Set([
-  ...WEB_TOOLS, ...PROJECT_TOOLS,...knowledgeNames, 'get_current_time', 'calculate', 'search_memories',
+  ...WEB_TOOLS, ...PROJECT_TOOLS,...knowledgeNames,'recall_context','list_generated_code','read_generated_code', 'get_current_time', 'calculate', 'search_memories',
 ]);
 
 export function taskGrantForTool(name: string, args: Record<string, unknown>): TaskGrant | null {
-  if (name === 'replace_project_text' || name === 'apply_project_changes' || ['create_writing_document','finalize_writing_document','move_writing_document','create_writing_category','create_story_world','create_story_character','update_character_claims'].includes(name)) return 'write';
-  if(name==='install_project_dependencies')return 'check';
+  if (name === 'create_video_editor_project') return 'write';
+  if (name === 'replace_project_text' || name === 'apply_project_changes' || ['save_story_context','create_writing_document','finalize_writing_document','move_writing_document','create_writing_category','create_story_world','create_story_character','update_character_claims','remember_story_event','remember_character_fact'].includes(name)) return 'write';
+  if(['register_project_command','start_project_service','stop_project_service'].includes(name))return 'check';
+  if(name==='install_project_dependencies'||name==='run_project_command')return 'check';
   if (name === 'run_project_check' && !['git_status', 'git_diff'].includes(String(args.check ?? ''))) return 'check';
   return null;
 }

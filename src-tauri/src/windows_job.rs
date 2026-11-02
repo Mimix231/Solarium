@@ -35,6 +35,7 @@ extern "system" {
     fn SetInformationJobObject(job: *mut c_void, class: u32, info: *const c_void, length: u32) -> i32;
     fn AssignProcessToJobObject(job: *mut c_void, process: *mut c_void) -> i32;
     fn CloseHandle(handle: *mut c_void) -> i32;
+    fn OpenProcess(access:u32,inherit:i32,pid:u32)->*mut c_void;
 }
 
 pub struct JobObject { handle: *mut c_void }
@@ -58,6 +59,12 @@ impl JobObject {
         let ok = unsafe { AssignProcessToJobObject(self.handle, process.as_raw_handle() as *mut c_void) };
         if ok == 0 { return Err(format!("AssignProcessToJobObject failed: {}", std::io::Error::last_os_error())); }
         Ok(())
+    }
+    pub fn attach_pid(&self,pid:u32)->Result<(),String>{
+        let process=unsafe{OpenProcess(0x0100|0x0001|0x1000,0,pid)};
+        if process.is_null(){return Err(format!("OpenProcess for managed terminal failed: {}",std::io::Error::last_os_error()))}
+        let assigned=unsafe{AssignProcessToJobObject(self.handle,process)};let error=std::io::Error::last_os_error();unsafe{CloseHandle(process);}
+        if assigned==0{return Err(format!("Assign managed terminal to Job Object failed: {error}"))}Ok(())
     }
 }
 impl Drop for JobObject { fn drop(&mut self) { unsafe { CloseHandle(self.handle); } } }

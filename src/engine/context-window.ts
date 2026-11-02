@@ -100,6 +100,18 @@ export async function prepareGeneration(
     discardedHistory++;
     promptTokens = await count();
   }
+  // Long coding tasks have tool exchanges AFTER the original user goal. Page
+  // whole completed exchanges out of the temporary request, preserving the
+  // latest exchange, tool-call/result pairing and the durable verification
+  // state. Their full originals remain in task archives and `original`.
+  while(promptTokens+MIN_OUTPUT+headroom>contextSize){
+    const groups=messages.flatMap((m,i)=>m.role==='assistant'&&m.tool_calls?.length?[i]:[]);
+    if(groups.length<2)break;
+    const first=groups[0]!,end=groups[1]!;
+    const remove=messages.slice(first,end).filter(m=>m.role!=='system'&&m.role!=='user');
+    for(const item of remove){messages.splice(messages.indexOf(item),1);discardedHistory++;}
+    if(!remove.length)break;promptTokens=await count();
+  }
   while (promptTokens + MIN_OUTPUT + headroom > contextSize) {
     const latestUser = latestUserIndex(messages);
     const oldest = messages.findIndex((message, index) => index < latestUser && message.role !== 'system');
@@ -121,6 +133,17 @@ export async function prepareGeneration(
   } else if (promptTokens + MIN_OUTPUT + headroom > contextSize && tools.length) {
     tools = [];
     promptTokens = await count();
+  }
+  // A latest real result can itself exceed the remaining input. Retain its
+  // identity/status and explicit paging locator, never discard the operation
+  // or mutate the saved/original conversation to fit a request.
+  for(let index=0;index<messages.length&&promptTokens+MIN_OUTPUT+headroom>contextSize;index++){
+    const message=messages[index]!;if(message.role!=='tool'||typeof message.content!=='string'||message.content.length<=900)continue;
+    let value:Record<string,unknown>;try{value=JSON.parse(message.content) as Record<string,unknown>;}catch{continue;}
+    if(!value||typeof value!=='object'||!(value.archiveId||value.run_id||value.path))continue;
+    const metadata=Object.fromEntries(['archiveId','run_id','command_id','command','exit_code','timed_out','cancelled','path','startLine','nextLine','totalLines','hasMore'].filter(key=>key in value).map(key=>[key,value[key]]));
+    messages[index]={...message,content:JSON.stringify({...metadata,inputExcerpt:true,excerpt:message.content.slice(0,240),tail:message.content.slice(-100),notice:'Input excerpt only. Full result remains in the archive/log/file. Use recall_context, read_command_output, or ranged read_project_file for omitted text; do not guess a replacement.'})};
+    discardedHistory++;promptTokens=await count();
   }
   if (request.requireTools && tools.length === 0) {
     throw new Error('This action requires an actual project tool, but none is available in the current conversation.');

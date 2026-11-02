@@ -60,7 +60,7 @@ test('visual workspace replaces activity rail, does not display simulated succes
   const agent=source('src/engine/agent.ts');
   const card=source('src/components/VisualActionCard.tsx');
   assert.doesNotMatch(chat, /<ActivityPanel/);
-  assert.match(chat, /<VisualActionCard/);
+  assert.match(chat, /<WorkLog/);
   assert.match(chat, /pendingActions\.current/);
   assert.match(agent,/const operationId = `tool:\$\{events\.runId\}/);
   assert.match(agent,/selectActionTools\(toolDefinitions/);

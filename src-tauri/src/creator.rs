@@ -25,6 +25,18 @@ pub fn inspect_project_environment(root:String)->Result<ProjectInspection,String
 
 #[derive(serde::Deserialize)]
 pub struct SearchProviderConfig {kind:String,endpoint:Option<String>}
+fn search_duckduckgo(query:String)->Result<Vec<WebResult>,String>{
+    use scraper::{Html,Selector};
+    if query.trim().is_empty()||query.len()>300{return Err("Search query must contain 1–300 characters".into());}
+    let mut url=reqwest::Url::parse("https://html.duckduckgo.com/html/").map_err(|e|e.to_string())?;url.query_pairs_mut().append_pair("q",&query);
+    let (url,ips)=public_https(url.as_str())?;let mut response=client_for(&url,&ips)?.get(url.clone()).send().map_err(|e|e.to_string())?;
+    if response.status()!=reqwest::StatusCode::OK{return Err(format!("DuckDuckGo search unavailable ({}); no challenge was bypassed",response.status()));}
+    let mut bytes=Vec::new();response.by_ref().take(500_001).read_to_end(&mut bytes).map_err(|e|e.to_string())?;if bytes.len()>500_000{return Err("Search response exceeds size limit".into());}
+    let html=Html::parse_document(&String::from_utf8_lossy(&bytes));let result_selector=Selector::parse(".result").map_err(|e|e.to_string())?;let link_selector=Selector::parse(".result__a").map_err(|e|e.to_string())?;let snippet_selector=Selector::parse(".result__snippet").map_err(|e|e.to_string())?;
+    let mut results=Vec::new();for result in html.select(&result_selector){let Some(anchor)=result.select(&link_selector).next()else{continue;};let Some(href)=anchor.value().attr("href")else{continue;};let Ok(link)=url.join(href)else{continue;};let destination=if link.host_str().is_some_and(|h|h.ends_with("duckduckgo.com")){link.query_pairs().find(|(k,_)|k=="uddg").map(|(_,v)|v.into_owned())}else{Some(link.to_string())};let Some(destination)=destination else{continue;};if public_https(&destination).is_err(){continue;}
+        results.push(WebResult{title:anchor.text().collect::<Vec<_>>().join(" "),url:destination,excerpt:result.select(&snippet_selector).next().map(|s|s.text().collect::<Vec<_>>().join(" ")).unwrap_or_default()});if results.len()>=12{break;}
+    }if results.is_empty(){return Err("DuckDuckGo returned no readable search results; it may require interactive verification.".into());}Ok(results)
+}
 fn search_searxng(query:String,endpoint:String)->Result<Vec<WebResult>,String>{
     if query.trim().is_empty()||query.len()>300{return Err("Search query must contain 1–300 characters".into());}
     let (mut url,_)=public_https(&endpoint)?;url.set_path(&format!("{}/search",url.path().trim_end_matches('/')));
@@ -37,8 +49,10 @@ fn search_searxng(query:String,endpoint:String)->Result<Vec<WebResult>,String>{
 }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
-pub struct ResearchPage {url:String,title:String,text:String,retrieved_at:String,content_hash:String,locator:String}
-fn fetch_readable(url:&str)->Result<(String,String,String),String>{
+pub struct ResearchPage {url:String,title:String,text:String,retrieved_at:String,content_hash:String,locator:String,links:Vec<PageLink>}
+#[derive(Serialize)]
+pub struct PageLink {url:String,title:String}
+fn fetch_readable(url:&str)->Result<(String,String,String,Vec<PageLink>),String>{
     use scraper::{Html,Selector};
     let mut current=url.to_owned();
     for _ in 0..5 {
@@ -50,7 +64,7 @@ fn fetch_readable(url:&str)->Result<(String,String,String),String>{
         let mut bytes=Vec::new();response.by_ref().take(2_000_001).read_to_end(&mut bytes).map_err(|e|e.to_string())?;
         if bytes.len()>2_000_000{return Err("Page exceeds 2 MB reader limit".into());}
         let raw=String::from_utf8_lossy(&bytes);
-        if mime.contains("text/plain"){return Ok((current.clone(),current,raw.into_owned()));}
+        if mime.contains("text/plain"){return Ok((current.clone(),current,raw.into_owned(),Vec::new()));}
         let document=Html::parse_document(&raw);let title=document.select(&Selector::parse("h1, title").map_err(|e|e.to_string())?).next().map(|e|e.text().collect::<String>()).unwrap_or_else(||current.clone());
         let content_selector=Selector::parse(".entry-content, article, main, body").map_err(|e|e.to_string())?;
         let preferred=[".entry-content","article","main","body"].into_iter().find_map(|tag|document.select(&Selector::parse(tag).ok()?).next());
@@ -60,7 +74,8 @@ fn fetch_readable(url:&str)->Result<(String,String,String),String>{
                 let text=node.text().collect::<Vec<_>>().join(" ").split_whitespace().collect::<Vec<_>>().join(" ");if !text.is_empty(){lines.push(text);}
             }
         }
-        return Ok((current,title,lines.join("\n\n")));
+        let mut links=Vec::new();for a in document.select(&Selector::parse("a[href]").map_err(|e|e.to_string())?){let Some(href)=a.value().attr("href")else{continue;};let Ok(mut target)=url.join(href)else{continue;};target.set_fragment(None);if target.origin()!=url.origin()||target.scheme()!="https"{continue;}let title=a.text().collect::<Vec<_>>().join(" ").split_whitespace().collect::<Vec<_>>().join(" ");if title.is_empty()||links.iter().any(|l:&PageLink|l.url==target.as_str()){continue;}links.push(PageLink{url:target.into(),title});if links.len()>=300{break;}}
+        return Ok((current,title,lines.join("\n\n"),links));
     }
     Err("Too many redirects".into())
 }
@@ -69,7 +84,7 @@ pub async fn read_research_page(url:String,query:String,web_enabled:bool)->Resul
     if !web_enabled{return Err("Web Search is OFF".into());}
     tauri::async_runtime::spawn_blocking(move||{
         use sha2::{Digest,Sha256};
-        let (url,title,body)=fetch_readable(&url)?;
+        let (url,title,body,links)=fetch_readable(&url)?;
         let terms:Vec<String>=query.to_lowercase().split_whitespace().filter(|t|t.len()>2).map(String::from).collect();
         let mut paragraphs:Vec<(usize,usize,&str)>=body.split("\n\n").enumerate().map(|(i,p)|{let lower=p.to_lowercase();(terms.iter().filter(|t|lower.contains(t.as_str())).count(),i,p)}).collect();
         paragraphs.sort_by(|a,b|b.0.cmp(&a.0));let mut selected=Vec::new();let mut length=0;
@@ -77,16 +92,16 @@ pub async fn read_research_page(url:String,query:String,web_enabled:bool)->Resul
         selected.sort_by_key(|(i,_)|*i);let text=selected.iter().map(|(i,t)|format!("[paragraph {}] {}",i+1,t)).collect::<Vec<_>>().join("\n\n");
         let content_hash=format!("{:x}",Sha256::digest(text.as_bytes()));
         let timestamp=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e|e.to_string())?.as_secs();
-        Ok(ResearchPage{url,title:title.clone(),text,retrieved_at:format!("unix:{timestamp}"),content_hash,locator:title})
+        Ok(ResearchPage{url,title:title.clone(),text,retrieved_at:format!("unix:{timestamp}"),content_hash,locator:title,links})
     }).await.map_err(|e|e.to_string())?
 }
 
-fn safe_root(root: &str) -> Result<PathBuf, String> {
+pub(crate) fn safe_root(root: &str) -> Result<PathBuf, String> {
     let dir = Path::new(root).canonicalize().map_err(|e| format!("Project directory unavailable: {e}"))?;
     if !dir.is_dir() { return Err("The project folder is not a directory.".into()); }
     Ok(dir)
 }
-fn safe_file(root: &str, relative: &str) -> Result<PathBuf, String> {
+pub(crate) fn safe_file(root: &str, relative: &str) -> Result<PathBuf, String> {
     if relative.is_empty() || relative.len() > 1024 { return Err("Invalid file path.".into()); }
     let base = safe_root(root)?;
     let proposed = Path::new(relative);
@@ -95,7 +110,7 @@ fn safe_file(root: &str, relative: &str) -> Result<PathBuf, String> {
     }
     let path = base.join(proposed).canonicalize().map_err(|e| e.to_string())?;
     if !path.starts_with(&base) || !path.is_file() { return Err("File is outside the project or not a regular file.".into()); }
-    let allowed = ["rs", "ts", "tsx", "js", "jsx", "json", "md", "txt", "css", "html", "py", "toml", "yml", "yaml", "xml", "svg", "c", "h", "cpp", "hpp", "java", "go", "sh", "ps1", "sql", "vue", "svelte", "gitignore", "csv", "tex"];
+    let allowed = ["rs", "ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "json", "jsonc", "md", "txt", "css", "html", "py", "toml", "yml", "yaml", "xml", "svg", "c", "h", "cpp", "hpp", "java", "go", "sh", "ps1", "sql", "vue", "svelte", "scss", "sass", "less", "cs", "kt", "swift", "dart", "rb", "php", "lua", "ini", "cfg", "gitignore", "csv", "tex"];
     let ext = path.extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
     if !allowed.contains(&ext.as_str()) && path.file_name().and_then(|x| x.to_str()) != Some(".gitignore") { return Err("This file format is not editable in Solarium.".into()); }
     Ok(path)
@@ -181,7 +196,9 @@ pub async fn run_project_check(root: String, check: String) -> Result<ProjectChe
         let run = (|| -> Result<ProjectCheckResult, String> {
             let stdout = fs::OpenOptions::new().write(true).create_new(true).open(&out_path).map_err(|e| e.to_string())?;
             let stderr = fs::OpenOptions::new().write(true).create_new(true).open(&err_path).map_err(|e| e.to_string())?;
-            let mut process = Command::new(program).args(args).current_dir(&base)
+            let mut command = Command::new(program);
+            crate::project_commands::clean_environment(&mut command);
+            let mut process = command.args(args).current_dir(&base)
                 .stdin(Stdio::null()).stdout(Stdio::from(stdout)).stderr(Stdio::from(stderr))
                 .spawn().map_err(|e| format!("Cannot execute {program}: {e}"))?;
             let started = Instant::now();
@@ -218,11 +235,30 @@ fn safe_generated_target(root: &str, relative: &str) -> Result<PathBuf, String> 
     if rel.is_absolute() || rel.components().any(|c| !matches!(c, std::path::Component::Normal(_))) { return Err("Path traversal is not permitted.".into()); }
     let filename = rel.file_name().and_then(|x| x.to_str()).ok_or("Filename is not valid UTF-8")?;
     let ext = rel.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
-    let allowed = ["rs", "ts", "tsx", "js", "jsx", "json", "md", "txt", "css", "html", "py", "toml", "yml", "yaml", "xml", "svg", "c", "h", "cpp", "hpp", "java", "go", "sh", "ps1", "sql", "vue", "svelte", "csv", "tex"];
+    let allowed = ["rs", "ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "json", "jsonc", "md", "txt", "css", "html", "py", "toml", "yml", "yaml", "xml", "svg", "c", "h", "cpp", "hpp", "java", "go", "sh", "ps1", "sql", "vue", "svelte", "scss", "sass", "less", "cs", "kt", "swift", "dart", "rb", "php", "lua", "ini", "cfg", "csv", "tex"];
     if !allowed.contains(&ext.as_str()) && filename != ".gitignore" { return Err("Unsupported source file extension.".into()); }
-    let parent = base.join(rel.parent().unwrap_or(Path::new(""))).canonicalize().map_err(|e| format!("Project directory does not exist: {e}"))?;
-    if !parent.starts_with(&base) || !parent.is_dir() { return Err("File is outside the selected project.".into()); }
-    let target = parent.join(filename);
+    let target = base.join(rel);
+    // Inspection must not create folders. Validate existing ancestors and permit
+    // missing descendants; the reviewed write creates them in the shared writer.
+    let mut cursor = base.clone();
+    for component in rel.components() {
+        cursor.push(component);
+        match fs::symlink_metadata(&cursor) {
+            Ok(metadata) => {
+                let mut linked = metadata.file_type().is_symlink();
+                #[cfg(windows)] {
+                    use std::os::windows::fs::MetadataExt;
+                    linked |= metadata.file_attributes() & 0x400 != 0;
+                }
+                if linked || !cursor.canonicalize().map_err(|e| e.to_string())?.starts_with(&base) {
+                    return Err("Generated source cannot target a symbolic link, junction or foreign folder.".into());
+                }
+                if cursor != target && !metadata.is_dir() { return Err("A source parent is not a directory.".into()); }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+            Err(error) => return Err(format!("Cannot inspect source parent: {error}")),
+        }
+    }
     if target.exists() { return safe_file(root, relative); }
     Ok(target)
 }
@@ -237,17 +273,9 @@ pub fn inspect_generated_file(root: String, relative: String) -> Result<Generate
 }
 #[tauri::command]
 pub fn save_generated_file(root: String, relative: String, content: String, expected: Option<String>) -> Result<(), String> {
-    use std::io::Write;
     if content.len() > 1_000_000 { return Err("Generated file exceeds the 1 MB limit.".into()); }
-    let target = safe_generated_target(&root, &relative)?;
-    if let Some(original) = expected {
-        // Updates are subject to the same reviewed-diff and backup requirements as the editor.
-        write_project_file(root, relative, content, original)
-    } else {
-        if target.exists() { return Err("File already exists. Review its content before overwriting.".into()); }
-        let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&target).map_err(|e| format!("Could not create source: {e}"))?;
-        file.write_all(content.as_bytes()).map_err(|e| format!("Could not write source: {e}"))
-    }
+    safe_generated_target(&root, &relative)?;
+    apply_project_changes(root, vec![ProjectFileChange { path: relative, content, expected }]).map(|_| ())
 }
 
 /// Only a user-selected parent folder may be used to create a new project.
@@ -321,7 +349,7 @@ pub fn apply_project_changes(root: String, files: Vec<ProjectFileChange>) -> Res
         if rel.is_absolute() || rel.components().any(|component| !matches!(component, std::path::Component::Normal(_))) { return Err("Only project-relative filenames are permitted.".into()); }
         let filename = rel.file_name().and_then(|x| x.to_str()).ok_or("Invalid filename encoding")?;
         let ext = rel.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
-        let allowed = ["rs", "ts", "tsx", "js", "jsx", "json", "md", "txt", "css", "html", "py", "toml", "yml", "yaml", "xml", "svg", "c", "h", "cpp", "hpp", "java", "go", "sh", "ps1", "sql", "vue", "svelte", "csv", "tex"];
+        let allowed = ["rs", "ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "json", "jsonc", "md", "txt", "css", "html", "py", "toml", "yml", "yaml", "xml", "svg", "c", "h", "cpp", "hpp", "java", "go", "sh", "ps1", "sql", "vue", "svelte", "scss", "sass", "less", "cs", "kt", "swift", "dart", "rb", "php", "lua", "ini", "cfg", "csv", "tex"];
         if !allowed.contains(&ext.as_str()) && filename != ".gitignore" { return Err(format!("Unsupported source file extension: {filename}")); }
         let key = change.path.to_lowercase().replace('\\', "/");
         if !seen.insert(key) { return Err("Duplicated target in change set.".into()); }
@@ -416,8 +444,8 @@ fn search_web_inner(query: String) -> Result<Vec<WebResult>, String> {
 }
 #[tauri::command]
 fn read_web_inner(url: String) -> Result<String, String> {
-    let (_, title, body) = fetch_readable(&url)?;
-    Ok(format!("{title}\n{}",body.chars().take(24_000).collect::<String>()))
+    let (_, title, body, _) = fetch_readable(&url)?;
+    Ok(format!("{title}\n{body}"))
 }
 
 #[tauri::command]
@@ -425,6 +453,7 @@ pub async fn search_public_web(query: String, web_enabled: bool, provider: Optio
     if !web_enabled { return Err("Web Search is OFF".into()); }
     tauri::async_runtime::spawn_blocking(move || match provider {
         Some(config) if config.kind == "searxng" => search_searxng(query, config.endpoint.ok_or("Configure a SearXNG HTTPS endpoint")?),
+        Some(config) if config.kind == "duckduckgo" => search_duckduckgo(query),
         _ => search_web_inner(query),
     })
         .await.map_err(|e| format!("Search worker failed: {e}"))?
@@ -466,7 +495,9 @@ pub async fn run_project_check_stream(
             "git_status" => ("git", &["status", "--short"]),
             _ => return Err("Unsupported project check.".into()),
         };
-        let mut child = Command::new(program).args(args).current_dir(base)
+        let mut command = Command::new(program);
+        crate::project_commands::clean_environment(&mut command);
+        let mut child = command.args(args).current_dir(base)
             .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped())
             .spawn().map_err(|e| format!("Could not run {program}: {e}"))?;
         let stdout = child.stdout.take().ok_or("Child stdout could not be captured")?;
@@ -550,5 +581,25 @@ mod foundation_tests {
     #[test]
     fn network_guard_rejects_loopback_and_credential_urls_without_fetching(){
         assert!(public_https("https://127.0.0.1/secret").is_err());assert!(public_https("https://user:password@example.com/").is_err());assert!(public_https("file:///etc/passwd").is_err());
+    }
+    #[test]
+    fn project_scripts_are_readable_and_editable_in_both_module_formats(){
+        let dir=fixture("scripts");let root=dir.to_string_lossy().to_string();
+        apply_project_changes(root.clone(),vec![ProjectFileChange{path:"scripts/check.cjs".into(),content:"console.log('checked');".into(),expected:None},ProjectFileChange{path:"scripts/build.mjs".into(),content:"export const ready = true;".into(),expected:None}]).unwrap();
+        let paths=list_project_files(root.clone()).unwrap();assert!(paths.contains(&"scripts/check.cjs".into()));assert!(paths.contains(&"scripts/build.mjs".into()));assert_eq!(read_project_file(root,"scripts/check.cjs".into()).unwrap(),"console.log('checked');");let _=fs::remove_dir_all(dir);
+    }
+    #[test]
+    fn generated_source_reviews_missing_parents_without_writes_then_applies_with_cas_and_backup(){
+        let dir=fixture("generated-nested");let root=dir.to_string_lossy().to_string();let path="src/new/birds.js".to_string();
+        assert!(!inspect_generated_file(root.clone(),path.clone()).unwrap().exists);
+        assert!(!dir.join("src").exists(),"Review must not create project directories");
+        save_generated_file(root.clone(),path.clone(),"export const birds='水🦜';".into(),None).unwrap();
+        let current=inspect_generated_file(root.clone(),path.clone()).unwrap();assert!(current.exists);assert_eq!(current.current,"export const birds='水🦜';");
+        assert!(save_generated_file(root.clone(),path.clone(),"stale".into(),None).is_err());
+        save_generated_file(root.clone(),path.clone(),"export const birds=2;".into(),Some(current.current.clone())).unwrap();
+        assert_eq!(fs::read_to_string(dir.join("src/new/birds.js.solarium.bak")).unwrap(),current.current);
+        assert!(inspect_generated_file(root.clone(),"../outside.js".into()).is_err());
+        fs::write(dir.join("parent-file"),"not a folder").unwrap();assert!(inspect_generated_file(root,"parent-file/bird.js".into()).is_err());
+        let _=fs::remove_dir_all(dir);
     }
 }

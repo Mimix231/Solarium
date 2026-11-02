@@ -65,6 +65,7 @@ export interface Spark {
   createdAt: string; updatedAt: string;
 }
 export interface LocalModel {
+  runtime?:{mode:'auto'|'manual';gpuLayers?:number};
   backend?: InferenceBackend;
   id: string; name: string; endpoint: string; modelId: string;
   ggufPath?: string; visionEnabled?: boolean; toolCalling?: boolean; contextSize: number; temperature: number;
@@ -77,8 +78,8 @@ export interface BlockAsset {
   projectId: string | null; kind: import('../blocks/protocol').BlockKind; title: string; language: string;
   content: string; updatedAt: string; createdAt: string; history?: { content: string; updatedAt: string }[];
 }
-export interface TerminalRun { command: string; exitCode: number | null; stdout: string; stderr: string; timedOut: boolean }
-export interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; createdAt: string; sparkId?: string; attachments?: ChatAttachment[]; sources?: ChatSource[]; savedSourceRefs?:{id:string;title:string}[]; reasoning?: string; reasoningMs?: number; terminalRuns?: TerminalRun[]; generationWarning?: string }
+export interface TerminalRun { runId?:string;cancelled?:boolean;outputComplete?:boolean; command: string; exitCode: number | null; stdout: string; stderr: string; timedOut: boolean }
+export interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; createdAt: string; sparkId?: string; attachments?: ChatAttachment[]; sources?: ChatSource[]; savedSourceRefs?:{id:string;title:string}[]; reasoning?: string; reasoningMs?: number; terminalRuns?: TerminalRun[]; generationWarning?: string; generationOutcomes?: import('../engine/continuous-generation').GenerationOutcome[] }
 export interface ConsoleChannel { id: string; title: string; projectId: string | null; sparkId: string | null; icon: string; createdAt: string }
 export interface CreatorProject { id: string; name: string; description: string; instructions: string; folder: string; sparkId: string | null; modelId: string | null; createdAt: string; updatedAt: string }
 export interface ChatSession {
@@ -120,6 +121,7 @@ export type ActivityEvent = {
   text?: string; tool?: string;
 };
 export interface Capabilities {
+  contextShift?: 'supported' | 'unsupported' | 'unknown';
   reasoning: 'observed' | 'unknown';
   tools: 'supported' | 'unknown';
   vision: 'supported' | 'unknown' | 'user-enabled';
