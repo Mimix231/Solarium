@@ -39,7 +39,7 @@ export interface AgentToolDefinition {
  */
 export function selectActionTools(
   allowed: readonly AgentToolDefinition[],
-  options: { projectHasFiles: boolean; lastTool?: string | null; researchRequested?: boolean; environment?:ProjectEnvironment|null; pending?:string[]; selected?:string[]; verified?:boolean; stalled?:boolean; contextSize?:number; requireWrite?:boolean; webEnabled?:boolean; bootstrap?:boolean; dependencyFailure?:boolean; failures?:string[]; starterCreated?:boolean; behaviorMissing?:boolean },
+  options: { projectHasFiles: boolean; appStage?:'plan'|'implement'|'verify'; lastTool?: string | null; researchRequested?: boolean; environment?:ProjectEnvironment|null; pending?:string[]; selected?:string[]; verified?:boolean; stalled?:boolean; contextSize?:number; requireWrite?:boolean; webEnabled?:boolean; bootstrap?:boolean; dependencyFailure?:boolean; failures?:string[]; starterCreated?:boolean; behaviorMissing?:boolean },
 ): AgentToolDefinition[] {
   let priority: readonly string[];
   if (options.researchRequested && (!options.lastTool || ['search_web', 'open_web_page'].includes(options.lastTool))) {
@@ -68,7 +68,6 @@ export function selectActionTools(
     if(options.verified)priority=[];
     else if(options.environment?.rootEntryCount===0)priority=options.requireWrite===false?['complete_project_task','choose_project_tools']:options.stalled?['apply_project_changes']:['apply_project_changes',...(options.selected??[]).filter(n=>!['apply_project_changes','get_project_map','list_project_commands','inspect_project'].includes(n)),'choose_project_tools'];
     else if(options.stalled)priority=options.pending.length&&!options.failures?.length&&['run_project_command','run_project_check'].includes(options.lastTool??'')?['run_project_command','read_command_output','read_project_file','choose_project_tools']:['apply_project_changes','read_project_file','replace_project_text','choose_project_tools'];
-    else if(options.selected?.length)priority=options.selected;
     else if(options.lastTool==='run_project_command'||options.lastTool==='run_project_check')priority=options.failures?.length?['read_command_output','read_project_file','replace_project_text','choose_project_tools']:options.pending.length?['run_project_command','read_project_file','choose_project_tools']:['complete_project_task','read_project_file','choose_project_tools'];
     else if(options.lastTool==='register_project_command')priority=['run_project_command','start_project_service','choose_project_tools'];
     else if(options.lastTool==='apply_project_changes'||options.lastTool==='replace_project_text')priority=['run_project_command','read_project_file','replace_project_text','choose_project_tools'];
@@ -85,18 +84,31 @@ export function selectActionTools(
   // tools; a missing behavioral test still exposes the writer. Nothing runs
   // until the model actually requests its next tool.
   if(options.pending&&!options.verified&&!options.behaviorMissing&&!options.failures?.length&&['run_project_command','run_project_check'].includes(options.lastTool??''))priority=options.pending.length?['run_project_command']:['complete_project_task'];
+  if(options.appStage&&!options.verified){
+    if(options.appStage==='plan')priority=['plan_project_app',...priority];
+    else if(['plan_project_app','complete_app_step','read_app_plan'].includes(options.lastTool??''))priority=['apply_project_changes','read_project_file','choose_project_tools'];
+    else if(options.appStage==='implement'&&!options.pending?.length&&!options.failures?.length&&['run_project_command','run_project_check','complete_project_task'].includes(options.lastTool??''))priority=['complete_app_step','read_app_plan','choose_project_tools'];
+    else if(options.lastTool==='complete_project_task'&&options.appStage==='implement')priority=['read_app_plan','apply_project_changes','read_project_file','choose_project_tools'];
+  }
   const availableCommandIds=options.environment?.commands?.filter(c=>!c.service&&(options.webEnabled!==false||c.id!=='install:network'&&!c.network)).map(c=>c.id)??[];
   const pendingCommandIds=availableCommandIds.filter(id=>options.pending?.includes(id));
   // Keep already-passed commands from crowding out an unresolved check at the
   // same file revision. Actual edits invalidate passes through the ledger.
   const commandIds=options.pending?.length&&pendingCommandIds.length?pendingCommandIds:availableCommandIds;
+  if (!options.verified && options.environment?.rootEntryCount !== 0 && options.selected?.length) {
+    const selected = options.selected.filter(name => allowed.some(tool => tool.function.name === name) &&
+      (name !== 'run_project_command' || commandIds.length > 0) &&
+      (name !== 'run_project_check' || Boolean(options.environment?.checks.length)));
+    if (selected.length) priority = selected;
+  }
   return [...new Set(priority)].flatMap((name) => {
     const tool = allowed.find((item) => item.function.name === name);
     if(!tool)return [];
-    if(options.environment&&name==='run_project_command'&&!options.environment.commands.length)return [];
+    if(options.environment&&name==='run_project_command'&&!commandIds.length)return [];
     if(options.environment&&name==='run_project_check'&&!options.environment.checks.length)return [];
     let parameters=name==='run_project_check'&&options.environment?{...tool.function.parameters,properties:{check:{type:'string',enum:options.environment.checks}}}:name==='run_project_command'&&options.environment?{...tool.function.parameters,properties:{command_id:{type:'string',enum:commandIds}}}:tool.function.parameters;
     let description=summaries[name]??tool.function.description;
+    if(name==='run_project_command'&&commandIds.length)description='Run a declared command ID, such as '+commandIds[0]+'. Send command_id to this tool. Command requests do not belong in package.json.';
     if(name==='apply_project_changes'){
       const properties=parameters.properties as Record<string,unknown>;const files=properties.files as {items:{properties:Record<string,unknown>}};
       const batchSize=options.contextSize&&options.contextSize<=8192?2:12;

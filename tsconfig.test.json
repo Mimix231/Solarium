@@ -20,6 +20,7 @@
   "include": [
     "src/domain/**/*.ts",
     "src/blocks/protocol.ts",
+    "src/blocks/code-window.ts",
     "src/blocks/data.ts",
     "src/blocks/exports.ts",
     "src/blocks/workflow.ts",
@@ -52,6 +53,7 @@
     "src/stories/**/*.ts",
     "src/research/**/*.ts",
     "src/quality/cases.ts",
+    "src/quality/scorecard.ts",
     "src/coding/integration/session.ts",
     "src/coding/artifacts/repository.ts",
     "src/coding/artifacts/stream.ts",

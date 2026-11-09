@@ -36,7 +36,7 @@ export default function MonacoEditorHost() {
   const reducedMotion=useSolarium(s=>s.workspace.preferences.reducedMotion);
   const setDiagnostics = useDocumentStore(s => s.setDiagnostics);
   const setViewState = useDocumentStore(s => s.setViewState);
-  const owner=useSolarium(state=>state.workspace.projects?.find(p=>p.id===state.workspace.activeProjectId)?.folder??'');
+  const selectedOwner=useSolarium(state=>state.workspace.projects?.find(p=>p.id===state.workspace.activeProjectId)?.folder??'');
   const lspReady=useRef(false),monacoRef=useRef<Monaco|null>(null);
   const editorOwner=useRef('');
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
@@ -45,6 +45,7 @@ export default function MonacoEditorHost() {
   const changeTimer = useRef<number | undefined>(undefined);
   const active = docs.find(d => d.path === activePath);
   const activeRef=useRef(active);activeRef.current=active;
+  const owner=active?.sourceRoot??selectedOwner;
   const activeFile=active?.path,activeLanguage=active?.language,savedContent=active?.savedContent;
   const activeContent=active?.content;
 

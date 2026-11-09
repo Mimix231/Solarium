@@ -1,7 +1,20 @@
-use std::{fs,path::{Path,PathBuf}};
-fn safe(root:&Path,path:&Path)->Result<PathBuf,String>{let path=path.canonicalize().map_err(|e|e.to_string())?;if !path.starts_with(root){return Err("Installed dependency source is outside the selected project".into())}Ok(path)}
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+fn safe(root: &Path, path: &Path) -> Result<PathBuf, String> {
+    let path = path.canonicalize().map_err(|e| e.to_string())?;
+    if !path.starts_with(root) {
+        return Err("Installed dependency source is outside the selected project".into());
+    }
+    Ok(path)
+}
 #[tauri::command]
-pub async fn inspect_dependency_api(root:String,package_name:String,query:String)->Result<serde_json::Value,String>{
+pub async fn inspect_dependency_api(
+    root: String,
+    package_name: String,
+    query: String,
+) -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(move||{
         if package_name.is_empty()||package_name.len()>200||package_name.split('/').any(|s|s.is_empty()||s=="."||s=="..")||!package_name.chars().all(|c|c.is_ascii_alphanumeric()||"@_./-".contains(c)){return Err("Use an actual installed package name".into())}if query.trim().is_empty()||query.len()>500{return Err("Supply a focused API or type query".into())}
         let base=crate::creator::safe_root(&root)?;let package=safe(&base,&base.join("node_modules").join(&package_name))?;let manifest=safe(&base,&package.join("package.json"))?;let metadata:serde_json::Value=serde_json::from_slice(&fs::read(manifest).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;

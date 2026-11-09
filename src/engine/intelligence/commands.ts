@@ -36,7 +36,7 @@ export class VerificationLedger {
   constructor(state?:VerificationState){this.state=state?structuredClone(state):{revision:0,writes:0,required:[],checks:{}};}
   configure(commands:readonly ProjectCommand[]):void{this.state.required=commands.filter(c=>c.verification&&!c.service&&(/^(script:(check|test|lint|build|typecheck|validate|verify)(:|$))|^(cargo|tauri):(check|test|build)$|^python:(test|check)$|^local:/.test(c.id))).map(c=>c.id);this.state.behaviorCommands=commands.filter(c=>c.behavioral||/^(script:.*(?:test|e2e|integration|verify)|(?:cargo|tauri):test|python:test)$/.test(c.id)).map(c=>c.id);}
   edited(count=1):void{this.state.revision++;this.state.writes+=count;this.state.fingerprint=undefined;}
-  observeSource(fingerprint:string):void{if(this.state.fingerprint&&this.state.fingerprint!==fingerprint)this.state.revision++;this.state.fingerprint=fingerprint;}
+  observeSource(fingerprint:string):void{if(this.state.fingerprint?this.state.fingerprint!==fingerprint:Object.values(this.state.checks).some(c=>c.status==='passed'&&!c.fingerprint))this.state.revision++;this.state.fingerprint=fingerprint;}
   record(id:string,result:ProjectCheckResult&Partial<CommandResult>):void{
     if(result.source_before)this.observeSource(result.source_before);const changed=Boolean(result.source_before&&result.source_after&&result.source_before!==result.source_after);if(result.source_after)this.observeSource(result.source_after);
     const changedCheck=changed&&result.verification!==false&&!id.startsWith('install:');

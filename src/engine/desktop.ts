@@ -6,22 +6,26 @@ export async function chooseFile(filters: { name: string; extensions: string[] }
   return typeof result === 'string' ? result : null;
 }
 export async function startLlamaServer(executable: string, gguf: string, port: number, context: number, gpuLayers = -1): Promise<string> {
+  (await import('./work-lifecycle')).workLifecycle.assertIdle();
   if (!isDesktop()) throw new Error('Start/stop commands require the desktop app.');
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<string>('start_llama_server', { executable, gguf, port, context, gpuLayers });
 }
 export async function stopLlamaServer(): Promise<string> {
+  (await import('./work-lifecycle')).workLifecycle.assertIdle();
   if (!isDesktop()) throw new Error('Start/stop commands require the desktop app.');
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<string>('stop_llama_server');
 }
 
 export async function startVllmServer(model: string, port: number, context: number, gpuMemoryUtilization: number): Promise<string> {
+  (await import('./work-lifecycle')).workLifecycle.assertIdle();
   if (!isDesktop()) throw new Error('WSL2 server launch requires the Windows desktop application.');
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<string>('start_vllm_server', { model, port, context, gpuMemoryUtilization });
 }
 export async function stopVllmServer(): Promise<string> {
+  (await import('./work-lifecycle')).workLifecycle.assertIdle();
   if (!isDesktop()) throw new Error('WSL2 server control requires the Windows desktop application.');
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<string>('stop_vllm_server');

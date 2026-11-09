@@ -1,0 +1,60 @@
+import { createRoot } from 'react-dom/client';
+import { invoke, isTauri } from '@tauri-apps/api/core';
+import plan from './plan.json';
+import * as custom from './custom';
+import './settings.css';
+
+let revision: number;
+const storage: PreferenceStorage = {
+  async load() {
+    const saved = await invoke<{ revision: number; values: Preferences }>('load_preferences');
+    revision = saved.revision;
+    return saved.values;
+  },
+  async save(values) {
+    revision = await invoke('save_preferences', { expected: revision, values });
+  },
+};
+const records: CollectionStore = {
+  list: query => invoke('read_records', { query }),
+  save: record => invoke('save_record', { record }),
+  import: (collection, rows) => invoke('import_records', { collection, rows }),
+};
+
+async function mountApp() {
+  const design = plan as AppPlan;
+  const root = document.getElementById('root')!;
+  const desktop = isTauri();
+  const params = new URLSearchParams(location.search);
+  const webTest = params.get('spica-test');
+  const webKey = params.get('key');
+  const webPhase = params.get('phase') === 'reopen' ? 'reopen' : 'initial';
+  const descriptor = desktop ? await invoke<{ id: string; phase: ScenarioReport['phase'] } | null>('spica_test_case') :
+    webTest && webKey && /^[a-f0-9]{32}$/.test(webKey) ? { id: webTest, phase: webPhase as ScenarioReport['phase'] } : null;
+  const store = desktop ? { storage, records } : webAdapters(design, APP_ID + (descriptor ? '-test-' + webKey : ''));
+  const exports = custom as Record<string, unknown>;
+  const name = design.program?.csvTransform;
+  const transform = name && design.program?.grants.includes('custom.transform') && typeof exports[name] === 'function' ? exports[name] as CsvTransform : undefined;
+  let trace: FlowTrace[] = [];
+  createRoot(root).render(<SpicaApp standalone plan={design} {...store} footer={custom.footerLabel?.(design)} transform={transform}
+    saveExport={desktop ? (name, body, format) => invoke('save_record_export', { name, body, format }) : undefined}
+    onTrace={steps => { trace = steps; }} />);
+  if (!descriptor) return;
+  const scenario = design.program?.scenarios.find(scenario => scenario.id === descriptor.id);
+  if (!scenario) throw Error('Unknown runtime scenario.');
+  const report = { ...await runScenario(root, store.records, scenario, descriptor.phase), trace };
+  if (desktop) await invoke('finish_spica_test', { report });
+  else {
+    const result = document.createElement('pre');
+    result.id = 'spica-test-result';
+    result.textContent = JSON.stringify(report);
+    document.body.append(result);
+  }
+}
+
+void mountApp().catch(error => {
+  const message = document.createElement('p');
+  message.setAttribute('role', 'alert');
+  message.textContent = String(error);
+  document.body.append(message);
+});

@@ -27,9 +27,10 @@ export const useDocumentStore = create<State>((set,get)=>({
   openGenerated:async(id,access)=>{const {artifact,content}=await new CodeRepository(access).get(id);if(artifact.data.state==='streaming')throw Error('This generated draft is still streaming. Stop or wait before editing.');const path=generatedPath(id),aliases:Record<string,string>={js:'javascript',jsx:'javascript',ts:'typescript',tsx:'typescript',py:'python',rs:'rust',html:'html',bash:'shell'};set(s=>{const existing=s.documents.find(d=>d.path===path);return {documents:existing?s.documents.map(d=>d.path===path&&d.content===d.savedContent?{...d,content,savedContent:content,generated:{messageId:artifact.data.origin.messageId,artifactId:id,access,version:artifact.version}}:d):[...s.documents,{path,name:artifact.data.pathHint??artifact.title,language:aliases[artifact.data.language]??artifact.data.language,content,savedContent:content,generated:{messageId:artifact.data.origin.messageId,artifactId:id,access,version:artifact.version},preview:false}],activePath:path};});},
   open: async (path,name,line,column,preview=false) => {
     const generation=documentGeneration,request=++latestOpen;
+    const sourceRoot=selectedRoot();if(!/^(?:[A-Za-z]:[\\/]|[\\/])/.test(path))path=sourceRoot.replace(/[\\/]$/,'')+'/'+path;
     const existing=get().documents.find(d=>d.path===path);
     if(existing){set({activePath:path,reveal:line?{path,line,column:column??1,nonce:Date.now()}:get().reveal});return;}
-    const sourceRoot=selectedRoot();const content=await api.readTextFile(path,sourceRoot);
+    const content=await api.readTextFile(path,sourceRoot);
     if(generation!==documentGeneration)return;
     set(s=>{
       if(s.documents.some(d=>d.path===path))return {activePath:request===latestOpen?path:s.activePath};

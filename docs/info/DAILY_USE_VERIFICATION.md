@@ -115,3 +115,21 @@ exact-passage checks detect specific structural failures, not perfect prose.
 Saved quotations and original messages remain available when a compact working
 context omits detail. The model's reasoning stream stays genuine; none of its
 thoughts are fabricated, replayed as human prompts or parsed into story facts.
+
+## SPICA Notes Organizer and Task Tracker
+
+Reuse the **Implementation checks** conversation in the Notes Organizer project for implementation testing in the normal desktop profile. Both prior SPICA and task-board QA project entries were removed from the workspace.
+
+The Windows Notes executable saved, searched and archived actual SQLite records. Dona added the Pinned record field and list filter in the same conversation. Ask review showed the additive field and backfill before approval. The rebuilt app rejected a deliberately failed SQLite migration while preserving both rows and the original schema. After the failure trigger was removed, the app backfilled the field, kept the Unicode note and archive state, and restored the saved pin after relaunch. Regeneration preserved the custom source module. Task Tracker compiled through the same collection target and saved a completed task with its filter available.
+
+Native run records and SQLite comparisons are in `output/spica/notes-upgrade.json`, `output/spica/notes-data-before.json`, `output/spica/notes-data-after-rejection.json`, `output/spica/notes-upgraded-reopen.json` and `output/spica/tasks-recipe-ui.json`.
+
+## SPICA Design & Preview
+
+The normal Solarium desktop run used the existing Notes Organizer project and **Implementation checks** conversation. The inspector picked the note input, previewed its keyboard focus ring before saving, and saved revision 3. Undo and Redo reached revision 5. Docking and saving the style kept an unsaved sample draft. The sample saved, archived and restored a note. Closing the sample left the standalone checks running.
+
+Dona used the saved Gemma E4B model to save the charcoal theme, amber accent, editor background and rounded Save button in revision 6. Ask showed the before-and-after values and swatches. The first trial exposed a mismatch between the model's `background` property and the theme vocabulary. Both scopes now use `background`, and graph validation precedes approval. The initial standalone visual check also caught WebView blocking runtime inline styles. The revised export bundles the compiled appearance in its stylesheet, and the same graph revision passed all three native checks after rebuilding.
+
+Launch verified app opened the rebuilt Windows executable. Launch rejected stale source and executable hashes. The wide and compact Windows window displayed the expected layout and palette, with an amber Save button and the manual blue keyboard focus ring. Search found the archived note by its body when archived records were visible. Pinned only excluded it. Both existing SQLite records and the custom source hash matched their baselines after inspection.
+
+Current evidence is in `output/spica/design-manual.json`, `output/spica/design-dona.json`, `output/spica/design-rebuild.json`, `output/spica/design-launch-final.json` and `output/spica/design-data-proof.json`. The final JavaScript suite passed 293 tests with the Linux-only Bash check skipped on Windows. Type checking, the production build and Rust checking passed. Lint reported zero errors and three existing hook warnings.

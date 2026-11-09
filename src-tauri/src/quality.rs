@@ -11,11 +11,11 @@ fn valid_file(file: &FixtureFile) -> bool {
     let path = Path::new(&file.path);
     !file.path.is_empty() && !file.path.contains('\\') && !file.path.contains(':') &&
     path.components().all(|c| matches!(c, Component::Normal(_))) &&
-    matches!(path.extension().and_then(|s| s.to_str()), Some("js" | "mjs" | "cjs" | "json" | "md" | "ts")) && file.content.len() <= 100_000
+    matches!(path.extension().and_then(|s| s.to_str()), Some("js" | "mjs" | "cjs" | "json" | "md" | "ts" | "tsx" | "html" | "css" | "py" | "rs" | "toml" | "lock")) && file.content.len() <= 100_000
 }
 #[tauri::command]
 pub fn create_quality_fixture(files: Vec<FixtureFile>) -> Result<Fixture, String> {
-    if files.is_empty() || files.len() > 16 || files.iter().any(|f| !valid_file(f)) || files.iter().map(|f| f.content.len()).sum::<usize>() > 400_000 { return Err("Invalid quality fixture. Only bounded relative source files are accepted.".into()); }
+    if files.len() > 16 || files.iter().any(|f| !valid_file(f)) || files.iter().map(|f| f.content.len()).sum::<usize>() > 400_000 { return Err("Invalid quality fixture. Only bounded relative source files are accepted.".into()); }
     let mut seen = std::collections::HashSet::new();
     if files.iter().any(|f| !seen.insert(f.path.to_lowercase())) { return Err("Duplicate fixture path".into()); }
     let parent = fs::canonicalize(std::env::temp_dir()).map_err(|e| e.to_string())?;

@@ -8,6 +8,7 @@ import StopRounded from '@mui/icons-material/StopRounded';
 import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded';
 import RefreshRounded from '@mui/icons-material/RefreshRounded';
 import DownloadRounded from '@mui/icons-material/DownloadRounded';
+import {LocalModelDownloads} from '../components/LocalModelDownloads';
 import {LocalCodingModels} from '../components/LocalCodingModels';
 import { SectionTitle } from '../components/SectionTitle';
 import { useSolarium } from '../state/useSolarium';
@@ -89,7 +90,7 @@ export function Models() {
     setComparisons(finished); setBusy(false);
   }
   return <Box className="view-scroll page-padding">
-    <LocalCodingModels/><SectionTitle eyebrow="LOCAL COMPUTE" title="Inference Engines" description="Run llama.cpp and vLLM concurrently on different ports. Assign either engine to a Spark or chat." />
+    <LocalCodingModels/><LocalModelDownloads/><SectionTitle eyebrow="LOCAL COMPUTE" title="Inference Engines" description="Run llama.cpp and vLLM concurrently on different ports. Assign either engine to a Spark or chat." />
     <Box className="glass panel" sx={{ maxWidth: 940, mb: 2, py: 1.3 }}><Stack direction="row" alignItems="center" justifyContent="space-between"><Box><Typography fontWeight={750}>Persistent Runtime Center</Typography><Typography fontSize={11} color="text.secondary">Install and update engines while navigating anywhere in Solarium.</Typography></Box><Button variant="contained" startIcon={<DownloadRounded />} onClick={() => useSolarium.getState().setView('runtime')}>Open installer</Button></Stack></Box>
     {message && <Alert severity={failure ? 'warning' : 'success'} onClose={() => setMessage('')} sx={{ mb: 2, maxWidth: 940 }}>{message}</Alert>}
     <Box className="glass panel" sx={{ maxWidth: 940, mb: 2 }}>

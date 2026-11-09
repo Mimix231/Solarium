@@ -27,5 +27,6 @@ export function GeneratedCodeCard({block,context,legacyContent}:{block:ContentBl
     <BlockCard block={displayed} onOpen={()=>void open()} toolbar={<Button className="code-studio-action" size="small" startIcon={<CodeRounded sx={{fontSize:14}}/>} disabled={opening||streaming} onClick={()=>void open()}>Code Studio</Button>}/>
     <Stack className="generated-code-meta" direction="row" gap={.7} alignItems="center"><Chip size="small" label={streaming?'Generating source':saved?.artifact.data.userEdited?'Edited in Code Studio':'Generated code'}/><span>{saved?.artifact.data.applied?`Applied to ${saved.artifact.data.applied.path}`:saved?(saved.artifact.data.state==='ready'?'Saved locally · ready to edit, preview or apply':'Incomplete source saved locally · open to recover'):'Saving source artifact…'}</span></Stack>
     {error&&<Alert severity="warning" onClose={()=>setError('')}>{error}</Alert>}
+    {saved?.artifact.data.diagnostics?.length? <details><summary>Source quality · {saved.artifact.data.diagnostics.length} repetition findings</summary>{saved.artifact.data.diagnostics.map((diagnostic,i)=><Alert severity="warning" key={i}>{diagnostic}</Alert>)}</details>:null}
   </div>;
 }

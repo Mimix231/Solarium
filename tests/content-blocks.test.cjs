@@ -124,11 +124,11 @@ test('native project checks follow composer mode and only allow fixed commands',
   assert.match(rust, /"cargo_check" =>/);
   assert.match(rust, /Unsupported check/);
   assert.match(rust, /Duration::from_secs\(180\)/);
-  assert.match(runtime, /await authorize\(call\.function\.name, args\)/);
+  assert.match(runtime, /await authorize\(call\.function\.name, args, editReview\?\.args\)/);
   assert.match(tools, /runProjectCommand\(project.folder,commandId,/);
   const commands=fs.readFileSync(path.join(base,'src-tauri/src/project_commands.rs'),'utf8');
   assert.match(commands,/Command is not declared by this project's current manifests/);
-  assert.match(commands,/catalogue\(&base\)/);
+  assert.match(commands,/registered_commands::catalogue\(&app,&base\)/);
 });
 
 test('writing document export supports DOCX and HTML without inserting remote resources', () => {

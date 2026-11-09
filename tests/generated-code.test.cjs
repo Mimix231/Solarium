@@ -77,3 +77,11 @@ test('restart recovery preserves the last checkpoint as an incomplete immutable 
  await repo.edit(draft.id,'repaired incomplete source',recovered.version);assert.equal((await repo.revisions(draft.id)).length,2);
  await assert.rejects(()=>repo.read(draft.id,999999),/past the end/);
 });
+
+test('substantial repeated generated code is flagged while exact originals remain saved and repairs clear the finding',async()=>{
+ const repo=new CodeRepository(access,new Store());const repeated=Array.from({length:36},(_,i)=>`const value${i}=input+${i};`).join('\n');const original=block(`function a(input){${repeated}return input;}\nfunction b(input){${repeated}return input;}`);const saved=await repo.capture(original,origin,true);assert.ok(saved.data.diagnostics.length);assert.equal((await repo.get(saved.id)).content,original.content);const fixed=await repo.edit(saved.id,'export const result=42;\n',saved.version);assert.deepEqual(fixed.data.diagnostics,[]);assert.equal((await repo.revisions(saved.id)).length,2);
+});
+
+test('large source blocks can scroll to their actual final line beyond the former 12,000-line display cutoff',()=>{
+ const {codeWindow,CODE_LINE_HEIGHT}=require('../.test-dist/blocks/code-window.js');const lines=Array.from({length:13050},(_,i)=>`line ${i+1} 水😀`);const source=lines.join('\n');const last=codeWindow(lines,lines.length*CODE_LINE_HEIGHT);assert.equal(last.end,13050);assert.equal(last.rows.at(-1),'line 13050 水😀');assert.equal(last.top+last.rows.length*CODE_LINE_HEIGHT+last.bottom,lines.length*CODE_LINE_HEIGHT);assert.equal(lines.join('\n'),source);
+});

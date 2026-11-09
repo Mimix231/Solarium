@@ -1,4 +1,5 @@
 // Test-only ambient contracts for desktop/browser dependencies unavailable in the headless test runner.
+declare module '*?raw' { const source: string; export default source; }
 declare module '@tauri-apps/api/core' {
   export function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>;
   export class Channel<T> { onmessage: (message: T) => void; }

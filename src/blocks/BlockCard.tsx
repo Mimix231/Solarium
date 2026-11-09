@@ -1,4 +1,4 @@
-import { useMemo, useState,type ReactNode } from 'react';
+import { useLayoutEffect,useRef,useMemo, useState,type ReactNode } from 'react';
 import { Box, Button, Chip, IconButton, Stack, Tooltip, Typography } from '@mui/material';
 import ContentCopyRounded from '@mui/icons-material/ContentCopyRounded';
 import OpenInFullRounded from '@mui/icons-material/OpenInFullRounded';
@@ -22,21 +22,27 @@ import { parseWorkflow } from './workflow';
 import { exportBlock, exportedText } from './exports';
 import { MarkdownBody } from '../components/MarkdownBody';
 import { LivePreview } from './LivePreview';
+import {codeWindow,CODE_LINE_HEIGHT} from './code-window';
 
 const grammars = { javascript, typescript, python, rust, css, xml, json, bash, sql, cpp };
 for (const [name, grammar] of Object.entries(grammars)) hljs.registerLanguage(name, grammar);
 const langAliases: Record<string, string> = { js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript', py: 'python', rs: 'rust', html: 'xml', svg: 'xml', sh: 'bash', shell: 'bash', c: 'cpp', h: 'cpp', cxx: 'cpp', 'c++': 'cpp' };
 
 function CodeLines({ content, language }: { content: string; language: string }) {
+  const [scrollTop,setScrollTop]=useState(0),[height,setHeight]=useState(410);
+  const scroller=useRef<HTMLDivElement>(null);
+  useLayoutEffect(()=>{if(!scroller.current)return;const observer=new ResizeObserver(entries=>{if(entries[0])setHeight(entries[0].contentRect.height);});observer.observe(scroller.current);return()=>observer.disconnect();},[]);
+  const lines=useMemo(()=>content.split('\n'),[content]);
+  const window=useMemo(()=>codeWindow(lines,scrollTop,height),[lines,scrollTop,height]);
   const rendered = useMemo(() => {
     const lang = langAliases[language.toLowerCase()] ?? language.toLowerCase();
-    return content.split('\n').slice(0, 12000).map((line) => {
+    return window.rows.map((line) => {
       if (!line) return '&nbsp;';
       try { return hljs.getLanguage(lang) ? hljs.highlight(line, { language: lang, ignoreIllegals: true }).value : hljs.highlightAuto(line).value; }
       catch { return line.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;'); }
     });
-  }, [content, language]);
-  return <div className="block-code-lines" role="region" aria-label={`${language} source code`}>{rendered.map((line, index) => <div className="block-code-line" key={index}><span className="block-line-number" aria-hidden="true">{index + 1}</span><span className="block-code-value hljs" dangerouslySetInnerHTML={{ __html: line }}/></div>)}</div>;
+  }, [window.rows, language]);
+  return <div ref={scroller} className="block-code-lines" role="region" tabIndex={0} aria-label={`${language} source code, ${lines.length} lines`} onScroll={event=>setScrollTop(event.currentTarget.scrollTop)} style={{height:Math.min(410,lines.length*CODE_LINE_HEIGHT+18),maxHeight:410,boxSizing:'border-box'}}><div style={{height:window.top}} aria-hidden="true"/>{rendered.map((line, index) => <div className="block-code-line" key={window.start+index} style={{height:CODE_LINE_HEIGHT,minHeight:CODE_LINE_HEIGHT,lineHeight:`${CODE_LINE_HEIGHT}px`}}><span className="block-line-number" aria-hidden="true">{window.start+index + 1}</span><span className="block-code-value hljs" dangerouslySetInnerHTML={{ __html: line }}/></div>)}<div style={{height:window.bottom}} aria-hidden="true"/></div>;
 }
 export function ContentBlockBody({ block }: { block: ContentBlock }) {
   if (block.kind === 'writing') return <div className="block-document"><MarkdownBody text={block.content} /></div>;

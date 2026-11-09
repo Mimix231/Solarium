@@ -1,3 +1,5 @@
+import {validateAppPlan} from '../engine/intelligence/app-builder';
+import { validateSpicaProject } from '../spica/repository';
 import type { Workspace } from '../domain/types';
 import type { LibraryScope, RecordStore, StoredRecord, RecordWrite } from './types';
 import { MAX_BODY } from './types';
@@ -7,7 +9,7 @@ import { claimKinds, claimSections } from '../stories/repository';
 import { validateCodeArtifact,type CodeArtifactData } from '../coding/artifacts/repository';
 import { uid } from '../domain/types';
 import { validateWorkspaceSnapshot, type WorkspaceSnapshot } from '../coding/integration/session';
-const collections=new Set(['model_compatibility','source','source_chunk','writing_document','writing_revision','writing_category','writing_draft','story_world','story_character','character_claim','character_claim_revision','story_event','story_relation','task_execution','context_archive','context_page','writing_task','conversation_brief','quality_run','code_workspace_state','code_artifact','code_revision']);
+const collections=new Set(['model_compatibility','source','source_chunk','writing_document','writing_revision','writing_category','writing_draft','story_world','story_character','character_claim','character_claim_revision','story_event','story_relation','task_execution','context_archive','context_page','writing_task','conversation_brief','quality_run','code_workspace_state','code_artifact','code_revision','spica_project','spica_build']);
 export function workspaceScopes(workspace:Workspace):LibraryScope[]{return [...workspace.sessions.map(s=>({kind:'chat' as const,id:s.id})),...(workspace.projects??[]).map(p=>({kind:'project' as const,id:p.id})),{kind:'library',id:'personal'}];}
 export async function exportAll(workspace:Workspace,store:RecordStore=foundationStore):Promise<unknown>{
   const records=[];for(const scope of workspaceScopes(workspace)){const archive=await exportFoundation(store,[scope]);records.push(...archive.records);}
@@ -22,10 +24,16 @@ export async function importFoundation(data:unknown,workspace:Workspace,store:Re
     if(!r||typeof r.id!=='string'||!r.id||r.id.length>180||seen.has(r.id)||!collections.has(r.collection)||!r.scope||!scopes.some(s=>s.kind===r.scope.kind&&s.id===r.scope.id)||typeof r.title!=='string'||!r.data||typeof r.data!=='object'||Array.isArray(r.data)||!Number.isSafeInteger(r.version)||r.version<1)throw Error('Archive contains an invalid record, duplicate ID or foreign owner.');
     seen.add(r.id);if(entry.body!==null&&(typeof entry.body!=='string'||entry.body.length>MAX_BODY))throw Error('Invalid archive content.');total+=(entry.body?.length??0)+JSON.stringify(r).length;if(total>100_000_000)throw Error('Archive exceeds 100 MB.');
     const d=r.data as Record<string,unknown>;
+    if(r.collection==='spica_project'){
+      if(r.scope.kind!=='project'||r.id!=='spica:'+r.scope.id)throw Error('Invalid SPICA project owner.');
+      validateSpicaProject(d);
+    }
+    if(r.collection==='spica_build'&&(r.scope.kind!=='project'||typeof d.root!=='string'||typeof d.source!=='string'||!Array.isArray(d.checks)))throw Error('Invalid SPICA build evidence.');
     if(r.collection==='code_workspace_state'){
       if(r.scope.kind!=='project'||r.id!=='code-workspace:'+r.scope.id||typeof d.root!=='string'||entry.body===null)throw Error('Invalid workspace recovery owner.');
       validateWorkspaceSnapshot(JSON.parse(entry.body) as WorkspaceSnapshot,d.root);
     }
+    if(r.collection==='task_execution'&&d.appPlan)validateAppPlan(d.appPlan);
     if(r.collection==='code_artifact'){validateCodeArtifact(d);if(!['chat','project','library'].includes(r.scope.kind))throw Error('Generated source needs an accessible owner.');}
     if(r.collection==='code_revision'&&(typeof d.artifactId!=='string'||!['model','user'].includes(String(d.origin))))throw Error('Invalid code revision.');
     if(r.collection==='writing_revision'&&entry.body!==null){const content=readWritingContent(entry.body);validateStructured(content.structuredJson);}
@@ -52,6 +60,7 @@ export async function importScopedArchive(data:unknown,scope:LibraryScope,worksp
   const archive=data as {schemaVersion:number;records:{record:StoredRecord;body:string|null}[]};
   if(archive?.schemaVersion!==1||!Array.isArray(archive.records)||archive.records.length>20_000)throw Error('Invalid library archive.');
   if(!workspaceScopes(workspace).some(s=>s.kind===scope.kind&&s.id===scope.id))throw Error('Import destination is outside this workspace.');
+  if(archive.records.some(e=>e.record.collection==='spica_project'||e.record.collection==='spica_build'))throw Error('Restore SPICA projects through a full workspace backup to preserve their graph and export identity.');
   if(scope.kind==='library'&&archive.records.some(e=>e.record.collection==='source'))throw Error('Evidence Sources need a conversation or project destination. Open a project before importing this archive.');
   const ids=new Map(archive.records.map(e=>[e.record.id,uid()]));
   const remap=(v:unknown):unknown=>typeof v==='string'?(ids.get(v)??v):Array.isArray(v)?v.map(remap):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).map(([k,value])=>[ids.get(k)??k,remap(value)])):v;
@@ -62,7 +71,7 @@ export async function importScopedArchive(data:unknown,scope:LibraryScope,worksp
 export async function cleanupDeletedOwners(before:Workspace,after:Workspace,store:RecordStore=foundationStore):Promise<void>{
   const live=new Set(workspaceScopes(after).map(s=>`${s.kind}:${s.id}`));
   for(const scope of workspaceScopes(before).filter(s=>!live.has(`${s.kind}:${s.id}`))){
-    const rows=await store.list({scopes:[scope]});const preserve=rows.filter(r=>!['source','source_chunk','task_execution','context_archive','context_page','conversation_brief','quality_run','code_workspace_state'].includes(r.collection));const remove=rows.filter(r=>!preserve.includes(r));
+    const rows=await store.list({scopes:[scope]});const preserve=rows.filter(r=>!['source','source_chunk','task_execution','context_archive','context_page','conversation_brief','quality_run','code_workspace_state','spica_project','spica_build'].includes(r.collection));const remove=rows.filter(r=>!preserve.includes(r));
     await store.batch(preserve.map(r=>({record:{...r,scope:{kind:'library',id:'personal'},version:r.version+1,updatedAt:new Date().toISOString()},expected:r.version})),remove.map(r=>({id:r.id,expected:r.version})));
   }
 }

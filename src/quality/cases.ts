@@ -1,10 +1,11 @@
+import {codingMilestones} from './coding-cases';
 export interface QualityCase {
   id: string; title: string; caseSet?:'regression'|'holdout'; category: 'coding' | 'memory' | 'writing' | 'research';
   messages: { role: 'user' | 'assistant'; content: string }[];
   facts?: string[]; forbidden?: string[]; minimumCharacters?: number; minimumWords?: number;
   approvedBeats?: boolean; review?: string[]; requiresWeb?: boolean; offlineDisclosure?: boolean;
   source?: { title: string; text: string }; cancelAfterCharacters?: number;
-  generatedCode?:boolean;
+  generatedCode?:boolean; minimumChecks?:number;minimumEditedFiles?:number;appAcceptance?:'task-board';
   files?: { path: string; content: string }[];
 }
 const user = (content: string): QualityCase['messages'][number] => ({ role: 'user', content });
@@ -61,4 +62,4 @@ const research: QualityCase[] = [
   { id: 'scene-evidence', title: 'Distinguish an exact scene from a general summary', category: 'research', requiresWeb: true, messages: [user('Research online Re:Zero Arc 7: distinguish the forest/tree arrow incident from the later poisoned-arrow incident. Read the relevant passages and report uncertainty rather than merging them.')], review: ['The two incidents remain distinct and citations support the exact claims.'] },
 ];
 const heldOut=new Set(['quoted-csv','async-results','no-permanent-ignorance','unicode-prose','scene-evidence','complete-short-chapter']);
-export const qualityCases: QualityCase[] = [...coding, ...memory, ...writing, ...research, ...additional].map(test=>({...test,caseSet:heldOut.has(test.id)?'holdout':'regression'}));
+export const qualityCases: QualityCase[] = [...codingMilestones,...coding, ...memory, ...writing, ...research, ...additional].map(test=>({...test,caseSet:test.caseSet??(heldOut.has(test.id)?'holdout':'regression')}));

@@ -15,9 +15,12 @@ mod project_services;
 mod registered_commands;
 mod dependency_api;
 mod project_snapshot;
+mod spica_preview;
 mod foundation;
 mod quality;
 mod runtime_profile;
+mod model_download;
+mod coding_tools;
 #[cfg(windows)] mod windows_job;
 mod runtime;
 mod llama_installer;
@@ -326,12 +329,12 @@ fn get_install_jobs(state: State<'_, InstallJobs>) -> Vec<InstallJob> { state.li
 #[tauri::command]
 fn start_install_job(app: tauri::AppHandle, jobs: State<'_, InstallJobs>, engine: String,
                      cuda: Option<bool>) -> Result<String, String> {
-    if engine != "llama.cpp" && engine != "vllm" { return Err("Unknown installer engine".into()); }
+    if engine != "llama.cpp" && engine != "vllm" && engine != "coding-tools" { return Err("Unknown installer engine".into()); }
     let id = jobs.begin(&engine)?;
     let manager = (*jobs).clone();
     let job_id = id.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let result = if engine == "llama.cpp" {
+        let result = if engine == "coding-tools" {coding_tools::install(|phase,downloaded,total|manager.progress(&app,&job_id,phase,downloaded,total),||manager.cancellation_requested(&job_id))}else if engine == "llama.cpp" {
             match ensure_runtime_dir() {
                 Ok(root) => llama_installer::install_windows(root, cuda.unwrap_or(true), |phase, downloaded, total| {
                     manager.progress(&app, &job_id, phase, downloaded, total);
@@ -439,10 +442,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             glitch::glitch_workspace_action, glitch::glitch_project_request, glitch::glitch_watch, glitch::glitch_workspace_settings,
+            spica_preview::spica_executable_hash, spica_preview::launch_spica_app, spica_preview::run_spica_scenario,
             glitch_terminal::glitch_terminal_create, glitch_terminal::glitch_terminal_read,
             glitch_terminal::glitch_terminal_write, glitch_terminal::glitch_terminal_resize, glitch_terminal::glitch_terminal_kill,
             quality::create_quality_fixture,
-            quality::coding_quality_identity,model_load_plan,local_coding_probe,
+            quality::coding_quality_identity,model_load_plan,local_coding_probe,model_download::list_model_download_files,model_download::start_model_download,coding_tools::coding_tool_status,
             project_services::list_project_services,project_services::start_project_service,project_services::inspect_project_service,project_services::stop_project_service,dependency_api::inspect_dependency_api,registered_commands::register_project_command,project_snapshot::project_source_snapshot,project_commands::list_project_commands, project_commands::run_project_command, project_commands::cancel_project_command, project_commands::read_command_output,
             inference_runtime_status, creator::inspect_project_environment, creator::read_research_page,
             foundation::foundation_list, foundation::foundation_body, foundation::foundation_batch,

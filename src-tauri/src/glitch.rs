@@ -11,6 +11,7 @@ use std::{
 use tauri::{AppHandle, Emitter, Manager, State};
 
 fn hidden(command: &mut Command) {
+    crate::coding_tools::configure(command);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -464,6 +465,7 @@ fn start_worker(app: &AppHandle) -> Result<Worker, String> {
     if let Some(path) = std::env::var_os("SOLARIUM_PYTHON") {
         candidates.push(PathBuf::from(path))
     }
+    if let Some(tools)=crate::coding_tools::installed(){candidates.push(tools.python);}
     candidates.extend([
         PathBuf::from("python"),
         PathBuf::from("python3"),
@@ -570,6 +572,7 @@ pub async fn glitch_project_request(
         "project.context",
         "git.status",
         "lsp.status",
+        "lsp.inspect",
         "lsp.open",
         "lsp.change",
         "lsp.save",

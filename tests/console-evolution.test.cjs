@@ -49,7 +49,7 @@ test('action tools are backed by approved native commands, never simulated succe
   const tools=source('src/engine/tools.ts');
   const rust=source('src-tauri/src/creator.rs');
   for (const action of ['inspect_project','search_project_code','apply_project_changes']) assert.match(tools,new RegExp(action));
-  assert.match(agent,/await authorize\(call\.function\.name, args\)/);
+  assert.match(agent,/await authorize\(call\.function\.name, args, editReview\?\.args\)/);
   assert.match(source('src/engine/action-permissions.ts'), /mode === 'yolo'/);
   assert.match(agent,/events\.emit\('tool_result', output\.slice\(0, 800\), \{ tool: call\.function\.name, status: resultStatus \}\)/);
   assert.match(rust,/pub fn apply_project_changes\(/);
@@ -109,7 +109,7 @@ test('precise replace tool follows composer mode while native verifies exact mat
   const tools=source('src/engine/tools.ts');
   const rust=source('src-tauri/src/creator.rs');
   const agent=source('src/engine/agent.ts');
-  assert.match(agent,/await authorize\(call\.function\.name, args\)/);
+  assert.match(agent,/await authorize\(call\.function\.name, args, editReview\?\.args\)/);
   assert.match(rust,/old\.matches\(&expected_fragment\)\.count\(\)/);
   assert.match(rust,/if matches != 1/);
   assert.match(tools,/replaceProjectText\(project.folder/);

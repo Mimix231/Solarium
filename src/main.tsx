@@ -17,6 +17,7 @@ import './themes/live-workspace.css';
 import { Chat } from './views/Chat';
 import { Projects } from './views/Projects';
 import { CodeWorkspace } from './views/CodeWorkspace';
+import { SpicaStudio } from './views/SpicaStudio';
 import { SparkStudio } from './views/SparkStudio';
 import { Models } from './views/Models';
 import { Memories } from './views/Memories';
@@ -53,7 +54,7 @@ function App() {
   return <ThemeProvider theme={mui}><CssBaseline />{!ready ? <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}><CircularProgress /></Box> : <>
     {error && <Alert severity="warning" sx={{ position: 'fixed', bottom: 5, left: 64, zIndex: 2000, maxWidth: 600 }}>{error}</Alert>}
     <RenderErrorBoundary key={view} onRecover={() => updatePreferences({ showActivity: false })} onHome={() => setView('home')}>
-    <ApplicationClose/><Shell>{view === 'sources' ? <SourcesLibrary/> : view === 'writing' ? <WritingLibrary/> : view === 'stories' ? <StoryBible/> : view === 'home' ? <ConsoleHome /> : view === 'chat' ? <Chat /> : view === 'projects' ? <Projects /> : view === 'code' ? <CodeWorkspace /> : view === 'sparks' ? <SparkStudio /> : view === 'models' ? <Models /> : view === 'runtime' ? <RuntimeCenter /> : view === 'worlds' ? <Worlds /> : view === 'laboratory' ? <Laboratory /> : view === 'teams' ? <Teams /> : view === 'memories' ? <Memories /> : <Settings />}</Shell>
+    <ApplicationClose/><Shell>{view === 'sources' ? <SourcesLibrary/> : view === 'writing' ? <WritingLibrary/> : view === 'stories' ? <StoryBible/> : view === 'home' ? <ConsoleHome /> : view === 'chat' ? <Chat /> : view === 'projects' ? <Projects /> : view === 'code' ? <CodeWorkspace /> : view === 'spica' ? <SpicaStudio /> : view === 'sparks' ? <SparkStudio /> : view === 'models' ? <Models /> : view === 'runtime' ? <RuntimeCenter /> : view === 'worlds' ? <Worlds /> : view === 'laboratory' ? <Laboratory /> : view === 'teams' ? <Teams /> : view === 'memories' ? <Memories /> : <Settings />}</Shell>
     </RenderErrorBoundary>
   </>}</ThemeProvider>;
 }

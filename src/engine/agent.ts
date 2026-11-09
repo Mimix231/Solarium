@@ -1,3 +1,4 @@
+import {AppBuilder,needsAppPlan,APP_AUTHORING_GUIDE} from './intelligence/app-builder';
 import type { ChatSession, ChatMessage, LocalModel, MemoryItem, Preferences, Spark, SparkWorld, Capabilities } from '../domain/types';
 import { composeSparkInstructions } from '../domain/persona';
 import { AgentEventEmitter } from './activity';
@@ -26,6 +27,8 @@ import { parseMessageParts } from '../blocks/protocol';
 import { WorkMemory, withWorkNotes, type WorkNote } from './intelligence/work-memory';
 import { StoryRepository } from '../stories/repository';
 import { StoryMemoryStream, sceneMemoryInstruction, type StoryMemoryInput } from '../stories/memory';
+import { SpicaRepository } from '../spica/repository';
+import { isSpicaProgramRequest, isSpicaStyleRequest, reviewSpicaEdit, selectSpicaTools, spicaEditSignature, spicaToolNames, type SpicaEditResult } from '../spica/tools';
 
 export interface AgentOptions {
   spark: Spark; model: LocalModel; session: ChatSession;
@@ -82,15 +85,29 @@ export async function runAgent(options: AgentOptions): Promise<string> {
   const recordTask=async(fn:()=>Promise<void>)=>{try{await fn();}catch(error){options.onWarning?.(`Task history could not be saved: ${String(error)}`);}};
   let resumed=false;if(task)await recordTask(async()=>{resumed=await task.resume(session);});
   const codeGeneration=isCodeArtifactRequest(userRequest);
-  const wantsAction = isImplementationRequest(userRequest, awareness.projectId !== null)||(resumed&&isImplementationRequest(task!.data.requestedOutcome,Boolean(project)));
+  const goal = resumed && task ? task.data.requestedOutcome : userRequest;
+  const codeStudioRequest = /^(?:please\s+)?(?:in|use)\s+(?:the\s+)?code studio\b/i.test(goal);
+  const spicaStyle = !codeGeneration && isSpicaStyleRequest(goal);
+  const spicaProgramIntent = !codeGeneration && isSpicaProgramRequest(goal);
+  const spicaRequest = !codeGeneration && (spicaStyle || spicaProgramIntent || (/\b(?:spica|toggle|setting|preference|standalone|field|filter|collection)\b/i.test(goal) &&
+    /^(?:please\s+)?(?:add|change|remove|rename|set|edit|export|verify|build|rebuild|test)\b/i.test(goal)));
+  const spica = project && !codeStudioRequest && typeof window !== 'undefined' &&
+    (spicaRequest || isImplementationRequest(goal, true)) ? await new SpicaRepository(project.id).read() : null;
+  const wantsAction = Boolean(spica && spicaRequest) || isImplementationRequest(goal, Boolean(project));
+  let spicaNeedsEdit = Boolean(spica && !/^\s*(?:please\s+)?(?:run|check|test|verify|inspect|read|export|build|rebuild)\b/i.test(goal) &&
+    !task?.data.operations.some(operation => operation.tool === 'edit_spica_graph' && operation.status === 'completed'));
+  const spicaProgram = Boolean(spica && wantsAction && spicaNeedsEdit && !spicaStyle);
+  const rejectedSpicaEdits = new Map<string, string>();
+  let spicaEditDiagnostic = '';
   const verification=new VerificationLedger(task?.data.verification);
   const workMemory=new WorkMemory(task?.data.workMemory);
+  const appBuilder=new AppBuilder(goal,wantsAction&&!spica&&needsAppPlan(goal),task?.data.appPlan);
   if(task?.data.operations.some(o=>o.tool==='create_video_editor_project'&&o.status==='completed'))workMemory.data.starterCreated=true;
   const recipeChecks:{id:string;result:import('./creator').ProjectCheckResult}[]=[];
   // Grants live only for this runAgent invocation: they cannot leak to later
   // messages, projects, sessions or application restarts.
   const taskGrants = new Set<TaskGrant>();
-  async function authorize(name: string, args: Record<string, unknown>): Promise<'allow' | 'deny'> {
+  async function authorize(name: string, args: Record<string, unknown>, review?: Record<string, unknown>): Promise<'allow' | 'deny'> {
     if (signal.aborted) return 'deny';
     const decision = decideToolPermission({
       mode: preferences.actionMode ?? 'ask', name, args,
@@ -98,7 +115,7 @@ export async function runAgent(options: AgentOptions): Promise<string> {
       configured: preferences.toolPermissions[name], taskGrants,
     });
     if (decision !== 'ask') return decision;
-    const approvalArgs=name==='create_video_editor_project'&&project?{...args,files:videoEditorTemplate(project.name)}:args;
+    const approvalArgs = review ?? (name === 'create_video_editor_project' && project ? { ...args, files: videoEditorTemplate(project.name) } : args);
     const consent = await onApproval(name, approvalArgs);
     if (signal.aborted) return 'deny';
     if (consent === 'allow' && (preferences.actionMode ?? 'ask') === 'auto') {
@@ -120,7 +137,7 @@ export async function runAgent(options: AgentOptions): Promise<string> {
   // was inspected. This does not depend on the GGUF supporting tool calls.
   let inspectedContext = '';
   let environment:ProjectEnvironment|null=null;
-  if (wantsAction && awareness.folderAttached) {
+  if (wantsAction && awareness.folderAttached && !spica) {
     const decision = await authorize('inspect_project', { project: awareness.projectName ?? 'Project', folder: awareness.folder });
     if (decision === 'allow') {
       if (signal.aborted) throw new DOMException('Cancelled', 'AbortError');
@@ -170,7 +187,8 @@ export async function runAgent(options: AgentOptions): Promise<string> {
     return output;
   }
 
-  const toolDefinitions = allowedToolDefinitions(Boolean(options.webEnabled), awareness.folderAttached).filter(t=>preferences.toolPermissions[t.function.name]!=='deny');
+  const toolDefinitions = allowedToolDefinitions(Boolean(options.webEnabled), awareness.folderAttached)
+    .filter(t => preferences.toolPermissions[t.function.name] !== 'deny' && (spica || !spicaToolNames.has(t.function.name)));
   // A pre-flight project inspection already happened above. Do not send every
   // project + web tool schema to a 4K model on every turn: advertise the small
   // relevant work-set, then refresh it after the real tool result.
@@ -192,14 +210,14 @@ export async function runAgent(options: AgentOptions): Promise<string> {
   if(recipeWrites)verification.edited(recipeWrites);
   for(const c of recipeChecks)verification.record(c.id.startsWith('npm_')?`script:${c.id.slice(4)}`:c.id==='cargo_check'?'tauri:check':c.id,c.result);
   workMemory.captureEnvironment(environment?{...environment,commands:environment.commands.filter(c=>options.webEnabled||c.id!=='install:network'&&!c.network)}:null);
-  if(task){task.checkpoint(verification.state,workMemory.data);await recordTask(()=>task.persist());}
+  if(task){task.checkpoint(verification.state,workMemory.data,appBuilder.data);await recordTask(()=>task.persist());}
   const archive=typeof window!=='undefined'?new ContextArchive({sessionId:session.id,projectId:project?.id??null}):null;
   if(archive)await recordTask(async()=>{await archive.save(project?{kind:'project',id:project.id}:{kind:'chat',id:session.id},'Conversation at task start',JSON.stringify(session.messages),{kind:'conversation',sessionId:session.id,taskId:task?.id});});
   const verificationMessage:LlamaMessage={role:'system',content:''};
   const storyMessage:LlamaMessage={role:'system',content:storySetupPending?'':storyContext};
   const briefMessage:LlamaMessage={role:'system',content:storySetupPending?storySetupContext(brief,pendingCast):briefContext(brief,wantsAction?1200:1700)};
   const writingFormat='Write the actual prose inside exactly one fenced block: ```solarium-writing title="Chapter title" followed by a newline, the prose, and a closing ``` on its own line. This is the user-requested writing artifact; plain text alone does not fulfil it. Keep memory metadata outside that fence.';
-  const formatMessage:LlamaMessage={role:'system',content:storySetupPending?'':brief.writingRequested?writingFormat:codeGeneration?'Generate the requested complete source directly in fenced code blocks. Use the actual language and file="relative/path.ext" for each named file. Code blocks are durable generated artifacts, available in Code Studio. Give the actual code, not a plan or source-library searches. Project writes/checks require separate real tools; an artifact is not an executed or applied file.':BLOCK_FORMAT_GUIDE};
+  const formatMessage:LlamaMessage={role:'system',content:storySetupPending?'':brief.writingRequested?writingFormat:codeGeneration?APP_AUTHORING_GUIDE+' Generate the requested complete source directly in fenced code blocks. Use the actual language and file="relative/path.ext" for each named file. Code blocks are durable generated artifacts, available in Code Studio. Give the actual code, not a plan or source-library searches. Project writes/checks require separate real tools; an artifact is not an executed or applied file.':BLOCK_FORMAT_GUIDE};
   const messages: LlamaMessage[] = [
     { role: 'system', content: wantsAction?`SOLARIUM ACTION CONTRACT: For implementation tasks, call the real project tools FIRST. Complete requested edits instead of producing a plan, returning a generic discussion, or asking what to build when the conversation already says so. Use existing conversation context and project facts instead of asking for requirements already supplied. Tool calls are performed by Solarium, not by your prose. Never claim that files were inspected, created, changed or checked until an actual tool result confirms it. Only ask questions that genuinely block execution. When the user asks how to do something, answer rather than edit files. Keep your configured personality while doing the work.`:'Complete the requested answer or writing. Keep Spark identity separate from story characters. Only claim saved facts, researched sources or executed commands after actual results.' },
     { role: 'system', content: composeSparkInstructions(spark, session.mode, memories, options.worlds ?? [], userRequest) },
@@ -243,9 +261,15 @@ export async function runAgent(options: AgentOptions): Promise<string> {
     if (signal.aborted) throw new DOMException('Cancelled', 'AbortError');
     events.phase('answering', 'started', 'Streaming model response.');
     workMemory.captureEnvironment(environment?{...environment,commands:environment.commands.filter(c=>options.webEnabled||c.id!=='install:network'&&!c.network)}:null);
-    verificationMessage.content=`${workMemory.context()}\nCODING TASK STATE: ${verification.context()}\nCommands: ${(environment?.commands??[]).filter(c=>verification.pending().includes(c.id)).map(c=>`${c.id}=${c.command}`).join('; ').slice(0,1000)}. Inspect real implementations and callers; preserve the requested interface and settled stack. For functional changes use behavioral tests covering the requested path and relevant failure cases; do not weaken existing assertions to hide a defect. Run checks, read diagnostics, repair and rerun until all current checks pass. Validate with complete_project_task; report_project_blocker needs a concrete external obstacle and evidence.`;
-    const currentTools = wantsAction
-      ? [...(recipeWrites&&!environment?.dependenciesInstalled&&lastExecutedTool!=='install_project_dependencies'?toolDefinitions.filter(t=>t.function.name==='install_project_dependencies'):[]),...selectActionTools(toolDefinitions, { projectHasFiles, lastTool: lastExecutedTool, researchRequested,environment,pending:verification.pending(),selected:selectedTools,verified:taskVerified||taskBlocked,stalled:workMemory.stalled,contextSize:Math.min(model.contextSize,capabilities.contextSize??model.contextSize),requireWrite:requestedCodeChanges,webEnabled:Boolean(options.webEnabled),bootstrap:/\bvideo.?edit/i.test(knownGoal)&&/\btauri\b/i.test(knownGoal)&&!/\b(svelte|vue|angular|solid)\b/i.test(knownGoal),behaviorMissing:verification.behaviorMissing,starterCreated:workMemory.data.starterCreated&&/\b(phase\s*1|skeleton|scaffold)\b/i.test(userRequest+' '+(task?.data.requestedOutcome??'')),failures:Object.values(verification.state.checks).filter(c=>c.status!=='passed').map(c=>c.id),dependencyFailure:Object.values(verification.state.checks).some(c=>c.id.startsWith('install:')&&c.status==='failed'&&c.revision===verification.state.revision) })].slice(0,4).map(withWorkNotes)
+    verificationMessage.content=`${appBuilder.context()}\n${APP_AUTHORING_GUIDE}\n${workMemory.context()}\nCODING TASK STATE: ${verification.context()}\nCommands: ${(environment?.commands??[]).filter(c=>verification.pending().includes(c.id)).map(c=>`${c.id}=${c.command}`).join('; ').slice(0,1000)}. Inspect real implementations and callers; preserve the requested interface and settled stack. For functional changes use behavioral tests covering the requested path and relevant failure cases; do not weaken existing assertions to hide a defect. Run checks, read diagnostics, repair and rerun until all current checks pass. Validate with complete_project_task; report_project_blocker needs a concrete external obstacle and evidence.`;
+    if (spica) verificationMessage.content = 'SPICA project. The graph owns the generated app. Read the graph, apply the requested typed edits using its current revision, export that revision and run verification. Native check results are the evidence. Preserve unrelated settings. Report only the actual result.' +
+      (spicaStyle ? ' Use set_style with target, property and value. Put all requested style changes in one edit. Use app for theme and the exact block ID for a local override.' : '') +
+      (spicaProgram ? ' Search and inspect the bounded local warehouse before choosing reusable components. It lists only registered runtime adapters and recipes; prototype status is not a production-certification claim. Install recipes through the revision-checked graph edit, then export and verify.' : '') +
+      (spicaEditDiagnostic ? '\nLatest graph diagnostic: ' + spicaEditDiagnostic : '');
+    const currentTools = spica && wantsAction
+      ? selectSpicaTools(toolDefinitions, lastExecutedTool, spicaNeedsEdit, taskVerified || taskBlocked, spicaStyle, spicaProgram)
+      : wantsAction
+      ? [...(recipeWrites&&!environment?.dependenciesInstalled&&lastExecutedTool!=='install_project_dependencies'?toolDefinitions.filter(t=>t.function.name==='install_project_dependencies'):[]),...selectActionTools(toolDefinitions, { projectHasFiles, appStage:appBuilder.required||appBuilder.data?(!appBuilder.data?'plan':appBuilder.pending.length?'implement':'verify'):undefined, lastTool: lastExecutedTool, researchRequested,environment,pending:verification.pending(),selected:selectedTools,verified:taskVerified||taskBlocked,stalled:workMemory.stalled,contextSize:Math.min(model.contextSize,capabilities.contextSize??model.contextSize),requireWrite:requestedCodeChanges,webEnabled:Boolean(options.webEnabled),bootstrap:/\bvideo.?edit/i.test(knownGoal)&&/\btauri\b/i.test(knownGoal)&&!/\b(svelte|vue|angular|solid)\b/i.test(knownGoal),behaviorMissing:verification.behaviorMissing,starterCreated:workMemory.data.starterCreated&&/\b(phase\s*1|skeleton|scaffold)\b/i.test(userRequest+' '+(task?.data.requestedOutcome??'')),failures:Object.values(verification.state.checks).filter(c=>c.status!=='passed').map(c=>c.id),dependencyFailure:Object.values(verification.state.checks).some(c=>c.id.startsWith('install:')&&c.status==='failed'&&c.revision===verification.state.revision) })].slice(0,4).map(withWorkNotes)
       : storySetupPending?storySetupTools(toolDefinitions,pendingCast.slice(0,1),!storyReadStalled):session.storyId&&brief.writingRequested&&lastExecutedTool==='save_story_context'?[]:codeGeneration?(/\b(previous|above|saved|existing|revise|update|edit)\b/i.test(userRequest)&&!generatedEmpty&&(lastExecutedTool!=='read_generated_code'||generatedReadMore)?toolDefinitions.filter(t=>(lastExecutedTool==='list_generated_code'||generatedReadMore?['read_generated_code']:['list_generated_code','read_generated_code']).includes(t.function.name)):[]):selectKnowledgeTools(toolDefinitions,userRequest,lastExecutedTool,session.storyId);
     const storyWriting=!storySetupPending&&!wantsAction&&Boolean(session.storyId)&&/\b(write|draft|chapter|story|scene|continue)\b/i.test(userRequest);
     // Setup already retains the original human quotations and remaining cast.
@@ -294,8 +318,8 @@ export async function runAgent(options: AgentOptions): Promise<string> {
       }
       const researchIncomplete=!wantsAction&&/\b(research|look up|search)\b/i.test(userRequest)&&/\b(online|latest|current|web)\b/i.test(userRequest)&&!researchRead;
       if(researchIncomplete)options.onWarning?.(options.webEnabled?'Online research is incomplete: no relevant page was actually read. The answer is preserved as unverified.':'Online research is blocked because Web Search is OFF. The answer can use saved references or existing model knowledge, but is not current online verification.');
-      if(task){task.checkpoint(verification.state,workMemory.data);await recordTask(()=>task.finish(taskBlocked||researchIncomplete?'blocked':wantsAction&&!taskVerified||writingIncomplete||result.finishReason!=='stop'?'failed':'completed'));}
-      if (requestedCodeChanges && committedWrites === 0 && verification.state.writes === 0) options.onWarning?.('No project files were created or modified. The selected model did not complete an authorized source-write operation. Check that its GGUF chat template supports structured tool calls.');
+      if(task){task.checkpoint(verification.state,workMemory.data,appBuilder.data);await recordTask(()=>task.finish(taskBlocked||researchIncomplete?'blocked':wantsAction&&!taskVerified||writingIncomplete||result.finishReason!=='stop'?'failed':'completed'));}
+      if (!spica && requestedCodeChanges && committedWrites === 0 && verification.state.writes === 0) options.onWarning?.('No project files were created or modified. The selected model did not complete an authorized source-write operation. Check that its GGUF chat template supports structured tool calls.');
       if (!answer.trim()) {
         options.onWarning?.(thoughtText.trim()
           ? 'The model generated reasoning but no final answer. Check its chat template and context settings; the reasoning has been preserved.'
@@ -311,7 +335,7 @@ export async function runAgent(options: AgentOptions): Promise<string> {
     for (const [toolIndex, call] of result.calls.entries()) {
       const operationId = `tool:${events.runId}:${turn}:${toolIndex}`;
       if (signal.aborted) throw new DOMException('Cancelled', 'AbortError');
-      const validationDefinitions=storySetupPending?currentTools:registeredTools.map(t=>currentTools.find(offered=>offered.function.name===t.function.name)??(wantsAction?withWorkNotes(t):t));
+      const validationDefinitions=storySetupPending||spica?currentTools:registeredTools.filter(t=>!spicaToolNames.has(t.function.name)).map(t=>currentTools.find(offered=>offered.function.name===t.function.name)??(wantsAction?withWorkNotes(t):t));
       const validation=validateToolArguments(call.function.name,call.function.arguments,validationDefinitions);
       if(!validation.ok||!call.id||seenToolIds.has(call.id)){
         const output=JSON.stringify(!validation.ok?validation.error:{code:'DUPLICATE_TOOL_ID',message:'Tool call ID must be unique. No operation executed.'});
@@ -320,11 +344,13 @@ export async function runAgent(options: AgentOptions): Promise<string> {
         events.emit('tool_result',output,{tool:call.function.name,status:'failed'});
         options.onWorkspace?.({operationId,kind:workKindForTool(call.function.name)??'check',status:'failed',title:`Invalid ${call.function.name}`,detail:!validation.ok?validation.error.message:'Duplicate tool call ID; no operation executed.'});
         workMemory.observe(call.function.name,{},'failed',output);
-        if(task){task.checkpoint(verification.state,workMemory.data);await recordTask(()=>task.operation({archiveId:rejectedArchive,id:operationId,tool:call.function.name,status:'failed'}));}
+        if(task){task.checkpoint(verification.state,workMemory.data,appBuilder.data);await recordTask(()=>task.operation({archiveId:rejectedArchive,id:operationId,tool:call.function.name,status:'failed'}));}
         messages.push({role:'tool',tool_call_id:call.id,content:output});continue;
       }
       seenToolIds.add(call.id);
       const {work,...args}=validation.value;
+      const editSignature = spica && call.function.name === 'edit_spica_graph' ? spicaEditSignature(args) : undefined;
+      const repeatedEdit = editSignature ? rejectedSpicaEdits.get(editSignature) : undefined;
       const noteConflicts=workMemory.note(work as WorkNote|undefined);
       const kind = workKindForTool(call.function.name);
       const subject = String(args.path ?? args.check ?? args.query ?? args.url ?? (kind === 'generate' ? 'project files' : call.function.name)).slice(0, 240);
@@ -343,12 +369,24 @@ export async function runAgent(options: AgentOptions): Promise<string> {
         });
       }
       const isWeb = call.function.name === 'search_web' || call.function.name === 'open_web_page';
-      const decision = await authorize(call.function.name, args);
+      const editReview = editSignature && project && awareness.folderAttached && !repeatedEdit
+        ? reviewSpicaEdit(await new SpicaRepository(project.id).read(), args) : null;
+      const decision = repeatedEdit || editReview?.ok === false ? null : await authorize(call.function.name, args, editReview?.args);
       if (isWeb && decision === 'allow') events.phase('browsing', 'started', `Opening requested web source for ${call.function.name}.`);
       let output: string;
       let resultStatus: 'completed' | 'failed' | 'denied' = 'completed';
-      if (decision === 'deny') { resultStatus = 'denied'; }
-      if (decision === 'deny') output = 'User denied permission for this tool.';
+      let editFailureMessage: string | undefined;
+      if (repeatedEdit) {
+        resultStatus = 'failed';
+        taskBlocked = true;
+        output = 'The same invalid edit was submitted for the same graph revision. ' + repeatedEdit + ' Resume with a corrected edit.';
+        options.onWarning?.(output);
+      } else if (editReview?.ok === false) {
+        output = JSON.stringify(editReview.result);
+      } else if (decision === 'deny') {
+        resultStatus = 'denied';
+        output = 'User denied permission for this tool.';
+      }
       else {
         if (signal.aborted) throw new DOMException('Cancelled', 'AbortError');
         if (isWrite) {
@@ -364,7 +402,10 @@ export async function runAgent(options: AgentOptions): Promise<string> {
             terminalOutput = `${terminalOutput}${stream === 'stderr' ? '[stderr] ' : ''}${chunk}`.slice(-80_000);
             options.onWorkspace?.({ operationId, kind: 'check', status: 'running', title: workTitle('check', subject),
               detail: 'Receiving real output from the project process.', output: terminalOutput });
-          },{archive,verification,requireWrite:requestedCodeChanges,onFilesApplied:(files,applied)=>{events.operation('save','completed',project?.name??'Project',`Native write confirmed ${applied.length} files.`);options.onWorkspace?.({operationId:`${operationId}:batch:${applied[0]?.path}`,kind:'save',status:'completed',title:`Created ${applied.length} files`,detail:'Native filesystem write confirmed.',files:files.map(f=>({path:f.path,content:f.content,complete:true})),output:JSON.stringify(applied)});},availableToolNames:toolDefinitions.filter(t=>t.function.name!=='run_project_command'||Boolean(environment?.commands.length)).map(t=>t.function.name),webEnabled:Boolean(options.webEnabled),signal,preferences,messageId:options.messageId,onStory:options.onStory,onResearch:candidates=>options.onWorkspace?.({operationId,kind:'search',status:'running',title:'Researching sources',sources:candidates.map(c=>({title:c.title,url:c.url,excerpt:c.page?.text??c.excerpt,status:c.status})),query:candidates[0]?.query})});
+          },{archive,verification,appBuilder,requireWrite:requestedCodeChanges,spicaNeedsEdit,spicaStyle,spicaProgram,onCommandResult:result=>{
+            verification.record(result.command_id,result);
+            options.onTerminal?.({command:result.command,exitCode:result.exit_code,stdout:result.stdout,stderr:result.stderr,timedOut:result.timed_out,runId:result.run_id,cancelled:result.cancelled,outputComplete:result.output_complete});
+          },onFilesApplied:(files,applied)=>{events.operation('save','completed',project?.name??'Project',`Native write confirmed ${applied.length} files.`);options.onWorkspace?.({operationId:`${operationId}:batch:${applied[0]?.path}`,kind:'save',status:'completed',title:`Created ${applied.length} files`,detail:'Native filesystem write confirmed.',files:files.map(f=>({path:f.path,content:f.content,complete:true})),output:JSON.stringify(applied)});},availableToolNames:toolDefinitions.filter(t=>t.function.name!=='run_project_command'||Boolean(environment?.commands.length)).map(t=>t.function.name),webEnabled:Boolean(options.webEnabled),signal,preferences,messageId:options.messageId,onStory:options.onStory,onResearch:candidates=>options.onWorkspace?.({operationId,kind:'search',status:'running',title:'Researching sources',sources:candidates.map(c=>({title:c.title,url:c.url,excerpt:c.page?.text??c.excerpt,status:c.status})),query:candidates[0]?.query})});
           if(isBootstrap){const created=JSON.parse(output) as {ok:boolean;files:{path:string}[];stack?:string};bootstrapApplied=created.files.map(f=>f.path);if(created.ok&&created.stack)workMemory.note({decisions:[{key:'stack',value:created.stack,reason:'The model selected this source starter; native writes confirmed it.'}]});if(!created.ok)resultStatus='failed';if(bootstrapApplied.length){committedWrites+=bootstrapApplied.length;verification.edited(bootstrapApplied.length);}}
           if (call.function.name === 'run_project_check'||call.function.name==='install_project_dependencies'||call.function.name==='run_project_command') {
             const record = JSON.parse(output) as import('./creator').ProjectCheckResult;
@@ -378,9 +419,36 @@ export async function runAgent(options: AgentOptions): Promise<string> {
             const sources = JSON.parse(output) as { title: string; url: string; excerpt: string }[];
             for (const source of sources.slice(0, 8)) options.onSource?.(source);
           }
-        } catch (error) { resultStatus = 'failed'; output = `Tool error: ${String(error)}`; }
+        } catch (error) {
+          resultStatus = 'failed'; output = `Tool error: ${String(error)}`;
+          if (call.function.name === 'apply_project_changes' && /changed since inspection/.test(output)) {
+            output += ' Read the current file and use its exact bytes as expected, or replace an exact unique fragment. To execute a check, call run_project_command with a catalogue command_id.';
+          }
+        }
       }
-      if (isWrite && !isBootstrap && resultStatus === 'completed'){committedWrites++;verification.edited();}
+      if (resultStatus === 'completed' && editSignature) {
+        const result = JSON.parse(output) as SpicaEditResult;
+        if (result.saved) {
+          spicaNeedsEdit = false;
+          spicaEditDiagnostic = '';
+          rejectedSpicaEdits.clear();
+        } else {
+          resultStatus = 'failed';
+          editFailureMessage = result.message;
+          spicaEditDiagnostic = result.message;
+          if (result.code === 'STALE_GRAPH') lastExecutedTool = null;
+          else rejectedSpicaEdits.set(editSignature, result.message);
+        }
+      }
+      if (resultStatus === 'completed' && call.function.name === 'export_spica_app') {
+        bootstrapApplied = (JSON.parse(output).files as { path: string }[]).map(file => file.path);
+      }
+      if (resultStatus === 'completed' && call.function.name === 'verify_spica_app') {
+        taskVerified = Boolean(JSON.parse(output).ok);
+        if (!taskVerified) resultStatus = 'failed';
+      }
+      if (isWrite && !isBootstrap && resultStatus === 'completed' &&
+          (call.function.name !== 'export_spica_app' || bootstrapApplied.length > 0)){committedWrites++;verification.edited();}
       if(call.function.name==='complete_project_task'&&resultStatus==='completed'){const completion=JSON.parse(output) as {ok:boolean};taskVerified=completion.ok;if(!completion.ok)resultStatus='failed';}
       if(call.function.name==='report_project_blocker'&&resultStatus==='completed')taskBlocked=true;
       if(call.function.name==='choose_project_tools'&&resultStatus==='completed'){const choice=JSON.parse(output) as {ok:boolean;selected:string[]};selectedTools=choice.selected;if(!choice.ok)resultStatus='failed';}else if(!['recall_context','read_command_output'].includes(call.function.name))selectedTools=[];
@@ -397,7 +465,7 @@ export async function runAgent(options: AgentOptions): Promise<string> {
       workMemory.captureEnvironment(environment?{...environment,commands:environment.commands.filter(c=>options.webEnabled||c.id!=='install:network'&&!c.network)}:null);
       workMemory.observe(call.function.name,args,resultStatus,output,isWrite&&resultStatus==='completed'||bootstrapApplied.length>0);
       if(noteConflicts.length)output+='\n'+noteConflicts.join('\n');
-      if(task)task.checkpoint(verification.state,workMemory.data);
+      if(task)task.checkpoint(verification.state,workMemory.data,appBuilder.data);
       if(task)await recordTask(()=>task.operation({archiveId,id:operationId,tool:call.function.name,status:resultStatus,...(bootstrapApplied.length?{files:bootstrapApplied}:isWrite&&resultStatus==='completed'?{files:proposedFiles.map(f=>f.path)}:{})}));
       if (isWeb && decision === 'allow') events.phase('browsing', 'completed', `Web operation finished.`);
       // Keep the low-level audit record separate from the compact operation UI.
@@ -406,8 +474,11 @@ export async function runAgent(options: AgentOptions): Promise<string> {
         if (isWrite) events.operation('save', resultStatus === 'denied' ? 'denied' : resultStatus, subject, output.slice(0, 550));
         else events.operation(kind, resultStatus === 'denied' ? 'denied' : resultStatus, subject, output.slice(0, 550));
         const files = proposedFiles;
+        const detail = resultStatus === 'completed'
+          ? (editSignature ? 'Graph revision saved.' : isWrite ? 'Native project write confirmed.' : 'Real tool result received.')
+          : (editFailureMessage ?? output).slice(0, 800);
         options.onWorkspace?.({ operationId, kind: isWrite ? 'save' : kind, status: resultStatus === 'denied' ? 'denied' : resultStatus,
-          title: workTitle(isWrite ? 'save' : kind, subject), detail: resultStatus === 'completed' ? (isWrite ? 'Native project write confirmed.' : 'Real tool result received.') : output.slice(0, 800),output,
+          title: workTitle(isWrite ? 'save' : kind, subject), detail,output,
           ...(files.length ? { files, activeFile: files.at(-1)?.path } : {}),
           ...(call.function.name === 'run_project_check' ? { output: (() => { try { const rec = JSON.parse(output) as {stdout?: string;stderr?: string}; return `${rec.stdout ?? ''}\n${rec.stderr ?? ''}`; } catch { return output; } })() } : {}),
           ...(typeof args.url === 'string' ? { url: args.url } : {}),
@@ -415,7 +486,8 @@ export async function runAgent(options: AgentOptions): Promise<string> {
           ...(call.function.name === 'open_web_page' && resultStatus === 'completed' && typeof args.url === 'string' ? { sources: [{ url: args.url, title: args.url, status: 'read' as const }] } : {}),
         });
       }
-      lastExecutedTool = call.function.name;
+      if (!spica || resultStatus === 'completed' || call.function.name === 'verify_spica_app') lastExecutedTool = call.function.name;
+      if (spica && resultStatus === 'denied') taskBlocked = true;
       if(resultStatus==='completed'&&call.function.name==='read_generated_code')generatedReadMore=Boolean(JSON.parse(output).hasMore);
       if(resultStatus==='completed'&&call.function.name==='list_generated_code')generatedEmpty=JSON.parse(output).length===0;
       if(storySetupPending&&call.function.name==='read_task_brief'&&resultStatus==='completed'){
@@ -446,5 +518,5 @@ export async function runAgent(options: AgentOptions): Promise<string> {
       messages.push({ role: 'tool', tool_call_id: call.id, content:contextOutput.length>(model.contextSize<=8192?2400:9000)?JSON.stringify({excerpt:contextOutput.slice(0,model.contextSize<=8192?1100:5000),tail:contextOutput.slice(model.contextSize<=8192?-350:-1400),archiveId,notice:'Full result is archived; use recall_context to read exact pages.'}):contextOutput });
     }
     events.phase('observing', 'completed', 'Tool responses delivered to the model.');
-  }}catch(error){if(task){task.checkpoint(verification.state,workMemory.data);await recordTask(()=>task.finish(signal.aborted?'cancelled':'failed'));}throw error;}
+  }}catch(error){if(task){task.checkpoint(verification.state,workMemory.data,appBuilder.data);await recordTask(()=>task.finish(signal.aborted?'cancelled':'failed'));}throw error;}
 }

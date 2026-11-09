@@ -41,7 +41,9 @@ pub fn catalogue(base:&Path)->Result<Vec<ProjectCommand>,String>{
         }
     }}
     if base.join("pyproject.toml").is_file()||base.join("pytest.ini").is_file()||base.join("requirements.txt").is_file(){
-        out.push(entry("python:test","python",words(&["-m","pytest"]),"Run the project's pytest suite",true));
+        let pyproject=fs::read_to_string(base.join("pyproject.toml")).unwrap_or_default();let requirements=fs::read_to_string(base.join("requirements.txt")).unwrap_or_default();let pytest=base.join("pytest.ini").exists()||pyproject.contains("pytest")||requirements.contains("pytest");
+        out.push(entry("python:test","python",if pytest{words(&["-m","pytest"])}else{words(&["-m","unittest","discover","-s","tests","-v"])},"Run actual Python tests",true));
+        out.push(entry("python:check","python",words(&["-m","compileall","-q","src"]),"Check Python source syntax",true));
     }
     if base.join(".git").exists(){out.push(entry("git:status","git",words(&["status","--short"]),"Inspect working tree",false));out.push(entry("git:diff","git",words(&["diff","--stat"]),"Inspect changes",false));}
     Ok(out)
@@ -60,6 +62,21 @@ fn running()->&'static Running{RUNNING.get_or_init(||Mutex::new(HashMap::new()))
 fn valid_id(id:&str)->bool{!id.is_empty()&&id.len()<100&&id.chars().all(|c|c.is_ascii_alphanumeric()||c=='-')}
 pub(crate) fn logs(app:&tauri::AppHandle)->Result<PathBuf,String>{let dir=app.path().app_local_data_dir().map_err(|e|e.to_string())?.join("command-logs");fs::create_dir_all(&dir).map_err(|e|e.to_string())?;Ok(dir)}
 fn key(root:&Path,id:&str)->String{format!("{}|{id}",root.display())}
+pub(crate) struct CommandCancellation { key: String, pub flag: Arc<AtomicBool> }
+impl Drop for CommandCancellation {
+    fn drop(&mut self) {
+        if let Ok(mut runs) = running().lock() { runs.remove(&self.key); }
+    }
+}
+pub(crate) fn register_cancellation(root: &Path, id: &str) -> Result<CommandCancellation, String> {
+    if !valid_id(id) { return Err("Invalid run ID.".into()); }
+    let key = key(root, id);
+    let mut runs = running().lock().map_err(|error| error.to_string())?;
+    if runs.contains_key(&key) { return Err("This project run is already active.".into()); }
+    let flag = Arc::new(AtomicBool::new(false));
+    runs.insert(key.clone(), flag.clone());
+    Ok(CommandCancellation { key, flag })
+}
 #[tauri::command]
 pub fn cancel_project_command(root:String,run_id:String)->Result<bool,String>{
     let root=crate::creator::safe_root(&root)?;let guard=running().lock().map_err(|e|e.to_string())?;
@@ -68,13 +85,22 @@ pub fn cancel_project_command(root:String,run_id:String)->Result<bool,String>{
 
 /// A Tauri dev instance passes these to its own build, not to projects it edits.
 pub fn clean_environment(command:&mut Command){
+    crate::coding_tools::configure(command);
     for (name,_) in std::env::vars(){if name=="TAURI_CONFIG"||name.starts_with("TAURI_ENV_")||name.starts_with("CARGO_PKG_")||name=="CARGO_MANIFEST_DIR"{command.env_remove(name);}}
     #[cfg(windows)]{use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}
 }
 pub(crate) fn process(spec:&ProjectCommand)->Command{
-    #[cfg(windows)] let mut cmd=if ["npm","pnpm","yarn"].contains(&spec.program.as_str()){let mut c=Command::new("cmd.exe");c.args(["/d","/s","/c",&format!("{}.cmd",spec.program)]);c}else{Command::new(&spec.program)};
-    #[cfg(not(windows))] let mut cmd=Command::new(&spec.program);
+    #[cfg(windows)] let mut cmd=if ["npm","pnpm","yarn"].contains(&spec.program.as_str()){let mut c=Command::new("cmd.exe");c.args(["/d","/s","/c",&format!("{}.cmd",spec.program)]);c}else{Command::new(crate::coding_tools::executable(&spec.program).unwrap_or_else(||spec.program.clone().into()))};
+    #[cfg(not(windows))] let mut cmd=Command::new(crate::coding_tools::executable(&spec.program).unwrap_or_else(||spec.program.clone().into()));
     cmd.args(&spec.args);clean_environment(&mut cmd);cmd
+}
+pub(crate) fn project_process(spec:&ProjectCommand,cwd:&Path)->Command{
+    if ["python","python3"].contains(&spec.program.as_str()){
+        for relative in [".venv/Scripts/python.exe","venv/Scripts/python.exe",".venv/bin/python","venv/bin/python"]{
+            let candidate=cwd.join(relative);if candidate.is_file(){if let Ok(path)=candidate.canonicalize(){if path.starts_with(cwd){let mut command=Command::new(path);command.args(&spec.args);clean_environment(&mut command);return command}}}
+        }
+    }
+    process(spec)
 }
 fn pump(mut pipe:impl Read+Send+'static,path:PathBuf,stream:&'static str,channel:tauri::ipc::Channel<crate::creator::ProjectCheckStreamEvent>)->std::thread::JoinHandle<Result<(),String>>{
     std::thread::spawn(move||{let mut file=fs::File::create(path).map_err(|e|e.to_string())?;let mut buffer=[0u8;4096];loop{let n=pipe.read(&mut buffer).map_err(|e|e.to_string())?;if n==0{break;}file.write_all(&buffer[..n]).map_err(|e|e.to_string())?;let _=channel.send(crate::creator::ProjectCheckStreamEvent{stream:stream.into(),chunk:String::from_utf8_lossy(&buffer[..n]).into_owned()});}file.sync_all().map_err(|e|e.to_string())})
@@ -96,7 +122,7 @@ pub async fn run_project_command(app:tauri::AppHandle,root:String,command_id:Str
     let cancel=Arc::new(AtomicBool::new(false));let run_key=key(&base,&run_id);running().lock().map_err(|e|e.to_string())?.insert(run_key.clone(),cancel.clone());
     let result=tauri::async_runtime::spawn_blocking(move||{
         let started=Instant::now();let timeout=Duration::from_secs(timeout_seconds.unwrap_or(600).clamp(1,3600));
-        let cwd=base.join(&spec.cwd).canonicalize().map_err(|e|e.to_string())?;if !cwd.starts_with(&base){return Err("Command working directory escaped the project".into())}let mut command=process(&spec);if spec.program=="cargo"&&!web_enabled&&!spec.args.iter().any(|a|a=="--offline"){command.arg("--offline");}command.current_dir(&cwd).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        let cwd=base.join(&spec.cwd).canonicalize().map_err(|e|e.to_string())?;if !cwd.starts_with(&base){return Err("Command working directory escaped the project".into())}let mut command=project_process(&spec,&cwd);if spec.program=="cargo"&&!web_enabled&&!spec.args.iter().any(|a|a=="--offline"){command.arg("--offline");}command.current_dir(&cwd).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
         let mut child=command.spawn().map_err(|e|format!("Could not execute {}: {e}. Check the installed toolchain/PATH.",spec.command))?;
         #[cfg(windows)] let job={let job=crate::windows_job::JobObject::create()?;if let Err(e)=job.attach(&child){let _=child.kill();let _=child.wait();return Err(e);}job};
         let stdout_path=directory.join(format!("{run_id}.stdout"));let stderr_path=directory.join(format!("{run_id}.stderr"));

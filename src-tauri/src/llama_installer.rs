@@ -101,7 +101,7 @@ fn download_verified(client: &Client, asset: &ReleaseAsset, dest: &Path, progres
     Ok(())
 }
 
-fn extract_zip(archive_path: &Path, destination: &Path, cancelled: &impl Fn() -> bool) -> Result<(), String> {
+pub(crate) fn extract_zip(archive_path: &Path, destination: &Path, cancelled: &impl Fn() -> bool) -> Result<(), String> {
     let mut archive = zip::ZipArchive::new(File::open(archive_path).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())?;
     for i in 0..archive.len() {

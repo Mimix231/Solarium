@@ -23,5 +23,5 @@ export function mergeCatalog(existing: LocalModel[], found: LocalModel[], folder
   void folder; // Folder switch removes stale discovered GGUF entries, but not manual registrations.
   const preserved = existing.filter((m) => !m.id.startsWith('gguf:'));
   const byId = new Map(existing.map((m) => [m.id, m]));
-  return [...preserved, ...found.map((m) => ({ ...m, ...((byId.get(m.id) && { temperature: byId.get(m.id)!.temperature, contextSize: byId.get(m.id)!.contextSize, maxTokens: byId.get(m.id)!.maxTokens, toolCalling: byId.get(m.id)!.toolCalling })) }))];
+  return [...preserved, ...found.map((m) => ({ ...m, ...((byId.get(m.id) && { temperature: byId.get(m.id)!.temperature, contextSize: byId.get(m.id)!.contextSize, maxTokens: byId.get(m.id)!.maxTokens, toolCalling: byId.get(m.id)!.toolCalling, runtime: byId.get(m.id)!.runtime })) }))];
 }

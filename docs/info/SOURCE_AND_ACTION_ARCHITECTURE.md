@@ -80,3 +80,33 @@ Apply to project loads the actual scoped destination, displays a diff and writes
 The active imported editor modules live under `src/coding`. Unreachable Glitch frontends and the unused inference/training backend were removed from production source only after a verified source/database checkpoint. The exact archive paths and hash are recorded in [CODING_CONSOLIDATION_MANIFEST.json](CODING_CONSOLIDATION_MANIFEST.json). They are not activated as a second inference path.
 
 Quality results include a SHA-256 of actual frontend/backend/native/test source and the SHA-256 of the currently running native executable. A Git revision alone or the stringification of selected functions cannot identify a build with local helper changes. Generated identity output is excluded from its own digest. Source hashes identify a tested snapshot; they do not by themselves establish behaviour.
+
+
+## Local coding commands, services and current-source evidence
+
+A project may register a named coding executable, bounded argument vector, canonical project-relative cwd, purpose and setup/check/test/service kind. Registration persists a root-bound proposal in app-local storage and never executes it. Ask/Auto/YOLO and explicit denial apply to agent tools. Network setup is unavailable with Web Search OFF. Execution resolves the current manifest/registered catalogue. Project-local Python environments take priority over app-private Python.
+
+Native commands fingerprint actual authored source bytes before and after execution. A source-changing verification command cannot pass; setup mutations invalidate earlier evidence. Completion re-reads the native fingerprint, so external edits invalidate passes without inventing agent writes. Build/dependency/cache output is excluded. Originals and full logs remain scoped and readable.
+
+Development services retain native process/job ownership, scoped output logs, exit status and optional loopback HTTP readiness. Occupied ports are rejected. The app never adopts or kills unrelated PIDs. Preview displays the actual project URL. Process/readiness success is separate from browser behaviour and functional test proof. App exit stops owned services and descendants.
+
+inspect_code_position obtains actual compiler definitions/references/hover/diagnostics while preserving live editor ownership. read_dependency_api reads installed project package declarations/version/source with exact paths and lines without online requests. Neither replaces behavioural checks.
+
+Optional private Node, Python and language services live under runtime/coding-tools. Activation requires published archive SHA-256 verification and executable version checks; global PATH/system installations stay untouched. Public GGUF downloads use immutable repository commits, exact range-resume responses, complete size/SHA-256 verification and atomic promotion. Partial files are not activated; split models require all shards. These operations do not certify a model's coding quality.
+
+
+Application feature plans are part of task_execution, under the same chat/project owner and revision history. plan_project_app creates or extends model planning metadata; it never reports filesystem success. read_app_plan retrieves that saved scope. complete_app_step requires actual nonempty source and passing current native check IDs; complete_project_task also reconciles changed source and audits substantial exact repetition. Feature descriptions alone cannot mark an app complete. Source and tool result originals remain retained through cancellation and Resume. Full source length is a measurement, not a substitute for functionality.
+
+## SPICA source ownership
+
+SPICA stores a versioned project graph with undo and redo in Foundation. Its typed control connections lower to an ordered runtime plan for the preview and Windows Tauri export. The exported app owns its SQLite preferences and uses revision-checked updates. Invalid imports are rejected before the store changes.
+
+The first export needs an empty linked folder. A receipt binds the graph revision and target version to hashes of the generated files. Regeneration checks the previous managed files before writing a reviewed native batch. Edited managed files surface a current and proposed comparison. The custom source module belongs to the user and survives regeneration. Code Studio opens the same exported project for inspection and custom work.
+
+Verification retains native command run IDs, diagnostics and source fingerprints for the frontend build, native preference test and standalone executable build. An edited graph or project makes this evidence stale. Tauri-generated schema output is excluded from the authored-source fingerprint. Standalone launch and interactive acceptance are recorded separately from build success.
+
+The Notes and Tasks recipes share a collection editor, record storage, list queries and archive actions. The exported graph describes stable field keys, types, defaults and optional Boolean filters. The standalone app uses its own SQLite store. On launch it compares the compiled storage schema to the stored schema, backfills additive fields and advances the schema in one transaction. Existing fields keep their storage contracts. Native row writes use revision checks, including after an upgrade. A rejected migration surfaces an error and rolls back its schema and record changes. Graph undo operates on the design and cannot erase a deployed data field.
+
+Appearance is optional in graph schema 1. App theme tokens, block overrides and interactive states use the same validated compiler in SPICA and the standalone renderer. The export writes compiled appearance to its bundled stylesheet under the target's self-only style policy. Stable IDs follow page, control and field keys. Both inspector saves and Spark edits use the same graph revision history. The live preview uses isolated sample data and keeps in-progress sample edits through appearance changes and dock switches. Compact and wide previews use the same responsive styles as the standalone app.
+
+Test & Preview exports the reviewed managed sources, then runs the normal native checks with the log beside the sample app. A passing record retains the executable SHA-256 in addition to its graph and source hashes. Launch checks all three identities and starts the fixed project build output. Starting its process and exercising the app remain separate evidence.

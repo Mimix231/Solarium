@@ -3,6 +3,7 @@ import { accessibleScopes,assertScope,validateBody,type AccessContext,type Recor
 import { uid } from '../../domain/types';
 import type { ContentBlock } from '../../blocks/protocol';
 import { codeArtifactEvents } from './events';
+import {duplicatedCode} from '../../engine/intelligence/code-duplication';
 
 export interface CodeAccessContext extends AccessContext {personal?:boolean}
 export interface CodeOrigin {sessionId:string;messageId:string;blockId:string;sparkId?:string}
@@ -10,9 +11,11 @@ export interface CodeArtifactData {
   origin:CodeOrigin;language:string;pathHint:string|null;state:'streaming'|'ready'|'incomplete';
   naturalEnd:boolean;currentRevisionId:string|null;characters:number;userEdited:boolean;
   applied?:{root:string;path:string;revisionId:string;at:string};
+  diagnostics?:string[];
 }
 export type CodeArtifact=StoredRecord<CodeArtifactData>;
 export interface CodeRevisionData {artifactId:string;origin:'model'|'user';previousId:string|null}
+const sourceName=(path:string|null,language:string)=>path??'source.'+({javascript:'js',typescript:'ts',python:'py',rust:'rs'}[language]??language);
 export const generatedPath=(artifactId:string)=>'generated:'+artifactId;
 export function sourcePathHint(block:ContentBlock):string|null {
   const candidate=(block.fileName??block.title).replace(/\\/g,'/').trim();
@@ -29,6 +32,13 @@ export class CodeRepository {
   private scopes(){return accessibleScopes(this.access,Boolean(this.access.personal));}
   private scope():LibraryScope {if(this.access.personal)return{kind:'library',id:'personal'};if(this.access.projectId)return{kind:'project',id:this.access.projectId};if(this.access.sessionId)return{kind:'chat',id:this.access.sessionId};throw Error('Generated code needs a conversation or project owner.');}
   async list():Promise<CodeArtifact[]>{return(await this.store.list<CodeArtifactData>({collection:'code_artifact',scopes:this.scopes()})).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));}
+  private async diagnostics(id:string,origin:CodeOrigin,path:string,content:string):Promise<string[]>{
+    try{
+      const peers=(await this.list()).filter(a=>a.id!==id&&a.data.origin.messageId===origin.messageId&&a.data.state==='ready');
+      const sources=await Promise.all(peers.map(async a=>({path:sourceName(a.data.pathHint,a.data.language),content:(await this.get(a.id)).content})));
+      return duplicatedCode([...sources,{path,content}]).map(d=>`Repeated code: ${d.first.path}:${d.first.line} and ${d.second.path}:${d.second.line} share ${d.tokens} source tokens. Consolidate shared behaviour; original source is retained.`);
+    }catch(error){return ['Source repetition audit unavailable: '+String(error)];}
+  }
   async get(id:string):Promise<{artifact:CodeArtifact;content:string}>{
     const artifact=(await this.list()).find(r=>r.id===id);if(!artifact)throw Error('Generated code is unavailable in this conversation or project.');
     validateCodeArtifact(artifact.data);
@@ -47,7 +57,8 @@ export class CodeRepository {
     const state=final?(ended&&!cancelled&&block.status==='complete'?'ready':'incomplete'):'streaming';
     if(existing&&existing.data.state===state&&await this.store.body(id,this.scopes())===block.content)return existing;
     const revisionId=final?uid():null;
-    const artifact:CodeArtifact={...newRecord('code_artifact',id,existing?.scope??this.scope(),block.title,{origin,language:block.kind==='preview'?'html':block.language,pathHint:sourcePathHint(block),state,naturalEnd:ended&&!cancelled,currentRevisionId:revisionId,characters:block.content.length,userEdited:false} satisfies CodeArtifactData),version:(existing?.version??0)+1};
+    const diagnostics=final?await this.diagnostics(id,origin,sourceName(sourcePathHint(block),block.language),block.content):undefined;
+    const artifact:CodeArtifact={...newRecord('code_artifact',id,existing?.scope??this.scope(),block.title,{origin,language:block.kind==='preview'?'html':block.language,pathHint:sourcePathHint(block),state,naturalEnd:ended&&!cancelled,currentRevisionId:revisionId,characters:block.content.length,userEdited:false,...(diagnostics?{diagnostics}:{})} satisfies CodeArtifactData),version:(existing?.version??0)+1};
     assertScope(artifact.scope,this.access,Boolean(this.access.personal));
     await this.store.batch([{record:artifact,expected:existing?.version??null,body:block.content},...(revisionId?[{record:newRecord<CodeRevisionData>('code_revision',revisionId,artifact.scope,artifact.title,{artifactId:id,origin:'model',previousId:null}),expected:null,body:block.content}]:[])]);
     codeArtifactEvents.changed();return artifact;
@@ -57,7 +68,7 @@ export class CodeRepository {
     if(current.artifact.version!==expectedVersion)throw Error('Generated-code revision conflict; your edited buffer is retained.');
     if(current.artifact.data.state==='streaming')throw Error('Wait for generation to finish or Stop before editing this draft.');
     if(current.content===content)return current.artifact;
-    const revisionId=uid();const artifact={...current.artifact,version:expectedVersion+1,updatedAt:new Date().toISOString(),data:{...current.artifact.data,currentRevisionId:revisionId,characters:content.length,userEdited:true,applied:undefined}};
+    const revisionId=uid();const artifact={...current.artifact,version:expectedVersion+1,updatedAt:new Date().toISOString(),data:{...current.artifact.data,diagnostics:await this.diagnostics(id,current.artifact.data.origin,sourceName(current.artifact.data.pathHint,current.artifact.data.language),content),currentRevisionId:revisionId,characters:content.length,userEdited:true,applied:undefined}};
     await this.store.batch([{record:newRecord<CodeRevisionData>('code_revision',revisionId,artifact.scope,artifact.title,{artifactId:id,origin:'user',previousId:current.artifact.data.currentRevisionId}),expected:null,body:content},{record:artifact,expected:expectedVersion}]);
     codeArtifactEvents.changed();return artifact;
   }

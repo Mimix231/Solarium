@@ -2,6 +2,7 @@ import FolderOpenRounded from '@mui/icons-material/FolderOpenRounded';
 import HomeRounded from '@mui/icons-material/HomeRounded';
 import { CreateProjectDialog } from './CreateProjectDialog';
 import CodeRounded from '@mui/icons-material/CodeRounded';
+import AccountTreeOutlined from '@mui/icons-material/AccountTreeOutlined';
 import DownloadForOfflineRounded from '@mui/icons-material/DownloadForOfflineRounded';
 import MenuBookRounded from '@mui/icons-material/MenuBookRounded';
 import ScienceRounded from '@mui/icons-material/ScienceRounded';
@@ -31,6 +32,7 @@ const rail = [
   { id: 'chat', title: 'Conversations', icon: <ChatBubbleOutlineRounded /> },
   { id: 'projects', title: 'Creator Projects', icon: <FolderOpenRounded /> },
   { id: 'code', title: 'Code Workspace', icon: <CodeRounded /> },
+  { id: 'spica', title: 'SPICA App Builder', icon: <AccountTreeOutlined /> },
   { id: 'sparks', title: 'Spark Studio', icon: <AutoAwesomeRounded /> },
   { id: 'models', title: 'Local Models', icon: <SmartToyOutlined /> },
   { id: 'runtime', title: 'Runtime Center', icon: <DownloadForOfflineRounded /> },

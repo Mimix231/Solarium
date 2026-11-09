@@ -65,6 +65,28 @@ class ServiceTests(unittest.TestCase):
         self.assertFalse(disk["available"]);self.assertIn("unsaved",disk["reason"])
         session=next(iter(self.service.projects.values()));self.assertEqual(session.lsp.document_text[source.as_uri()],dirty)
         with self.assertRaises(PermissionError):self.call("lsp.request",path=str(source),lspMethod="textDocument/definition",lspParams={"textDocument":{"uri":(self.other/"secret.ts").as_uri()}})
+    def test_inspect_uses_compiler_and_preserves_editor_ownership(self):
+        source=self.root/"nav.ts";text="export function chirp() { return 42; }\nconst count = chirp();\n"
+        source.write_text(text,encoding="utf-8")
+        result=self.call("lsp.inspect",path="nav.ts",line=2,column=16,kind="definition")
+        self.assertEqual(result["provider"],"language-server");self.assertTrue(result["result"])
+        refs=self.call("lsp.inspect",path="nav.ts",line=1,column=18,kind="references")
+        self.assertGreaterEqual(len(refs["result"]),2)
+        dirty=text+"// editor owns this buffer\n";self.call("lsp.open",path=str(source),text=dirty,editorId="live")
+        result=self.call("lsp.inspect",path="nav.ts",line=2,column=16,kind="hover")
+        self.assertEqual(result["source"],"editor-buffer")
+        session=next(iter(self.service.projects.values()));self.assertEqual(session.lsp.document_text[source.as_uri()],dirty)
+        with self.assertRaises(PermissionError):self.call("lsp.inspect",path="../other/secret.ts",line=1,column=1,kind="definition")
+    @unittest.skipUnless(os.name == "nt", "Windows extended path regression")
+    def test_windows_extended_roots_share_the_same_scoped_document(self):
+        source=self.root/"extended.ts";text="export const value = 42;\n";source.write_text(text,encoding="utf-8")
+        extended="\\\\?\\"+str(self.root)
+        opened=self.service.request(extended,"lsp.open",{"path":str(source),"text":text,"editorId":"live"})
+        self.assertTrue(opened["available"])
+        result=self.service.request(str(self.root),"lsp.diagnostics",{"path":"\\\\?\\"+str(source),"editorId":"live"})
+        self.assertTrue(result["available"])
+        self.assertEqual(len(self.service.projects),1)
+        with self.assertRaises(PermissionError):self.service.request(extended,"lsp.open",{"path":str(self.other/"foreign.ts"),"text":""})
     def test_stdio_health_and_forbidden_rpc_roundtrip(self):
         requests=[{"id":"one","method":"health","root":"","params":{}},{"id":"two","method":"model.load","root":str(self.root),"params":{}}]
         run=subprocess.run([sys.executable,"-I","-X","utf8",str(Path(__file__).with_name("solarium.py"))],input="".join(json.dumps(r)+"\n" for r in requests),text=True,encoding="utf-8",capture_output=True,timeout=20)

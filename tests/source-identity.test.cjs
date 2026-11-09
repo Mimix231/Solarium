@@ -15,6 +15,10 @@ test('quality identity follows actual helper, native and test source bytes witho
   put('src/helper.ts','export const one = 2;');const helper=sourceIdentity(root).sha256;assert.notEqual(helper,first.sha256);
   put('src-tauri/src/action.rs','fn repaired_action() {}');const native=sourceIdentity(root).sha256;assert.notEqual(native,helper);
   put('tests/action.test.cjs','changed reference tests');assert.notEqual(sourceIdentity(root).sha256,native);
+  const beforeTemplate=sourceIdentity(root).sha256;
+  put('src/spica/target/records.rs','fn real_record_template() {}');
+  const template=sourceIdentity(root).sha256;assert.notEqual(template,beforeTemplate);
+  put('src-tauri/target/debug/compiled.rs','build output');assert.equal(sourceIdentity(root).sha256,template);
   assert.equal(isSourceInput(path.join(root,'src/helper.ts'),root),true);assert.equal(isSourceInput(path.join(root,'src/quality/source-identity.generated.ts'),root),false);
  }finally{assert.equal(path.dirname(root),fs.realpathSync(os.tmpdir()));fs.rmSync(root,{recursive:true});}
 });

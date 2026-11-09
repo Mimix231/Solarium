@@ -5,7 +5,7 @@ const {execFileSync}=require('node:child_process');
 const generated='src/quality/source-identity.generated.ts';
 function files(root,directory){
  const result=[];const full=path.join(root,directory);if(!fs.existsSync(full))return result;
- for(const item of fs.readdirSync(full,{withFileTypes:true})){if(item.isSymbolicLink()||['__pycache__','target','node_modules'].includes(item.name))continue;const relative=path.posix.join(directory,item.name);if(item.isDirectory())result.push(...files(root,relative));else if(relative!==generated&&(!relative.startsWith('backend/')||relative.endsWith('.py')))result.push(relative);}
+ for(const item of fs.readdirSync(full,{withFileTypes:true})){if(item.isSymbolicLink()||['__pycache__','node_modules'].includes(item.name))continue;const relative=path.posix.join(directory,item.name);if(item.isDirectory())result.push(...files(root,relative));else if(relative!==generated&&(!relative.startsWith('backend/')||relative.endsWith('.py')))result.push(relative);}
  return result;
 }
 function sourceIdentity(root=path.resolve(__dirname,'..')){

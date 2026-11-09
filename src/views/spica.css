@@ -1,0 +1,12 @@
+.spica-studio { height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 16px; padding: clamp(14px, 2.4vw, 32px); }
+.spica-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; }
+.spica-layout { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(280px, 2fr); gap: 12px; }
+.spica-panel { padding: 16px; border: 1px solid color-mix(in srgb, currentColor 20%, transparent); border-radius: 13px; min-width: 0; }
+.spica-panel { display: flex; flex-direction: column; gap: 12px; }
+.spica-outline, .spica-outline ul { list-style: none; padding-inline-start: 14px; margin: 0; }
+.spica-outline { padding: 0; }
+.spica-outline button { background: transparent; color: inherit; cursor: pointer; border: 1px solid transparent; padding: 6px 10px; border-radius: 7px; text-align: start; font: inherit; }
+.spica-outline button:hover, .spica-outline button[aria-current] { background: color-mix(in srgb, currentColor 10%, transparent); }
+.spica-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; margin: 0; padding: 10px; border-radius: 8px; background: color-mix(in srgb, currentColor 7%, transparent); }
+.spica-panel summary { cursor: pointer; }
+@media (max-width: 750px) { .spica-layout { grid-template-columns: minmax(0, 1fr); } }

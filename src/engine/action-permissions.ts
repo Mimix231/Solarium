@@ -20,6 +20,8 @@ const KNOWN_TOOLS = new Set([
 ]);
 
 export function taskGrantForTool(name: string, args: Record<string, unknown>): TaskGrant | null {
+  if (name === 'edit_spica_graph' || name === 'export_spica_app') return 'write';
+  if (name === 'verify_spica_app') return 'check';
   if (name === 'create_video_editor_project') return 'write';
   if (name === 'replace_project_text' || name === 'apply_project_changes' || ['save_story_context','create_writing_document','finalize_writing_document','move_writing_document','create_writing_category','create_story_world','create_story_character','update_character_claims','remember_story_event','remember_character_fact'].includes(name)) return 'write';
   if(['register_project_command','start_project_service','stop_project_service'].includes(name))return 'check';

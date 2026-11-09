@@ -41,6 +41,8 @@ test('precise replacements stream actual replacement text and escaped Unicode', 
   assert.deepEqual(items,[{path:'src/App.tsx',content:'return "你好 🌌";',complete:true}]);
   assert.equal(workKindForTool('run_project_check'), 'check');
   assert.equal(workKindForTool('search_web'), 'search');
+  assert.equal(workKindForTool('search_spica_warehouse'), 'search');
+  assert.equal(workKindForTool('inspect_spica_component'), 'inspect');
   assert.equal(workKindForTool('unknown'), null);
 });
 

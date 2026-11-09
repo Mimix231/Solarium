@@ -17,6 +17,10 @@ export interface LiveWorkspaceUpdate {
 }
 
 export const workKindForTool = (name: string): WorkKind | null => ({
+    search_spica_warehouse:'search',inspect_spica_component:'inspect',
+    read_spica_graph:'inspect',edit_spica_graph:'save',export_spica_app:'generate',verify_spica_app:'check',
+  plan_project_app:'inspect',read_app_plan:'inspect',complete_app_step:'check',
+  inspect_code_position:'inspect',read_dependency_api:'inspect',register_project_command:'inspect',start_project_service:'execute',inspect_project_service:'inspect',stop_project_service:'execute',
   search_web: 'search', open_web_page: 'search', inspect_project: 'inspect',
   list_project_files: 'inspect', read_project_file: 'inspect', search_project_code: 'inspect',
   create_video_editor_project:'generate',apply_project_changes: 'generate', replace_project_text: 'edit',

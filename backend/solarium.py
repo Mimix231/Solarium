@@ -15,9 +15,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from project import ProjectIndex, ContextAssembler, LspManager, git_status
 
 
+def canonical_path(value: str | Path, strict: bool = False) -> Path:
+    resolved = Path(value).resolve(strict=strict)
+    text = str(resolved)
+    if os.name == "nt":
+        if text.startswith("\\\\?\\UNC\\"):
+            text = "\\\\" + text[8:]
+        elif text.startswith("\\\\?\\"):
+            text = text[4:]
+    return Path(text)
+
+
 def scoped_path(root: Path, value: str) -> Path:
     path = Path(value)
-    path = (path if path.is_absolute() else root / path).resolve()
+    root = canonical_path(root)
+    path = canonical_path(path if path.is_absolute() else root / path)
     if not path.is_relative_to(root):
         raise PermissionError("Path is outside the selected Solarium project")
     return path
@@ -52,7 +64,7 @@ class ProjectService:
             return {"closed": True}
         if method not in {"index.refresh","index.summary","project.symbols","project.references","project.context","git.status","lsp.status","lsp.inspect","lsp.open","lsp.change","lsp.save","lsp.close","lsp.diagnostics","lsp.request"}:
             raise ValueError("Unknown project-service method: " + method)
-        base = Path(root).resolve(strict=True)
+        base = canonical_path(root, strict=True)
         if not base.is_dir():
             raise NotADirectoryError(str(base))
         key = os.path.normcase(str(base))
@@ -89,6 +101,8 @@ class ProjectService:
                 if line<0 or column<0 or line>=len(text.splitlines() or [""]):
                     raise ValueError("Use a real one-based source position")
                 uri=path.as_uri();owned=uri in project.editor_buffers
+                if owned:
+                    text=project.lsp.document_text.get(uri,text)
                 if not owned:
                     project.lsp.open_document(str(path),text)
                 kind=str(params.get("kind","definition"))

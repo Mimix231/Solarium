@@ -18,6 +18,10 @@ import { ThinkingPanel, type ThinkingSnapshot } from '../components/ThinkingPane
 import { ChangesetReview } from '../components/ChangesetReview';
 import { LiveWorkspace } from '../components/LiveWorkspace';
 import { WorkLog } from '../components/WorkLog';
+import { SpicaPreview, type PreviewMode } from '../components/SpicaPreview';
+import { SpicaEditReview } from '../components/SpicaEditReview';
+import { onSpicaChange, SpicaRepository, type SpicaRecord } from '../spica/repository';
+import { currentSpicaBuild, latestSpicaBuild, launchSpicaApp, type BuildEvidence } from '../spica/export';
 import { StoryCast } from '../components/StoryCast';
 import { evolveVisualAction, type VisualAction, type ActionUpdate } from '../engine/visual-actions';
 import { type LiveWorkspaceUpdate } from '../engine/live-workspace';
@@ -56,6 +60,7 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
   const modelId = session?.modelId ?? spark.preferredModelId ?? workspace.models[0]?.id ?? '';
   const model = workspace.models.find((m) => m.id === modelId);
   const projectFolder=(workspace.projects??[]).find(p=>p.id===session?.projectId)?.folder;
+  const projectId = session?.projectId;
   const actionMode = workspace.preferences.actionMode ?? 'ask';
   const [input, setInput] = useState('');
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -72,6 +77,9 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
   const [busyStartedAt, setBusyStartedAt] = useState<number | null>(null);
   const [liveWorkspace, setLiveWorkspace] = useState<LiveWorkspaceUpdate | null>(null);
   const [showLiveWorkspace, setShowLiveWorkspace] = useState(false);
+  const [spicaMode, setSpicaMode] = useState<PreviewMode>('closed');
+  const [spicaError, setSpicaError] = useState('');
+  const [spicaPreview, setSpicaPreview] = useState<{ record: SpicaRecord; build: BuildEvidence | null; verified: boolean } | null>(null);
   const [activeActions, setActiveActions] = useState<VisualAction[]>([]);
   const pendingActions = useRef<Map<string,VisualAction>>(new Map());
   const actionOwner = useRef<{sessionId:string;messageId:string}>({sessionId:'pending',messageId:'pending'});
@@ -128,8 +136,28 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
   useEffect(() => {
     // Do not show another conversation's source when the user switches chats.
     setWritingId(null);setRecoveredWriting(null);setUsedSavedSources([]);setLiveWorkspace(null); setShowLiveWorkspace(false); setActiveActions([]);
+    setSpicaMode('closed'); setSpicaError('');
     if (workspaceCloseTimer.current !== null) clearTimeout(workspaceCloseTimer.current);
   }, [workspace.activeSessionId]);
+  useEffect(() => {
+    if (!projectId) return;
+    const repo = new SpicaRepository(projectId);
+    let active = true;
+    let sequence = 0;
+    async function refresh() {
+      const request = ++sequence;
+      try {
+        const record = await repo.read();
+        const last = record && projectFolder ? await latestSpicaBuild(projectId!) : null;
+        const build = last?.root === projectFolder && last?.revision === record?.data.revision ? last : null;
+        const verified = Boolean(record && projectFolder && build?.state === 'passed' && await currentSpicaBuild(projectFolder, record).catch(() => null));
+        if (active && request === sequence) setSpicaPreview(record ? { record, build, verified } : null);
+      } catch { if (active && request === sequence) setSpicaPreview(null); }
+    }
+    const unsubscribe = onSpicaChange(projectId, () => void refresh());
+    void refresh();
+    return () => { active = false; unsubscribe(); };
+  }, [projectId, projectFolder]);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [draft, session?.messages.length]);
   useEffect(() => () => {
     controller.current?.abort(); approvalRef.current?.('deny'); approvalRef.current = null;
@@ -171,6 +199,7 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
   }
   function requestApproval(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<Decision> {
     if (signal.aborted) return Promise.resolve('deny');
+    setSpicaMode(mode => mode === 'overlay' ? 'dock' : mode);
     return new Promise((resolve) => {
       const done = (value: Decision) => { signal.removeEventListener('abort', abort); resolve(value); };
       const abort = () => { approvalRef.current = null; setApproval(null); done('deny'); };
@@ -369,6 +398,7 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
     if(!session)return;try{const saved=await new WritingRepository({sessionId:session.id,projectId:session.projectId??null}).get(id);setRecoveredWriting({document:saved.document,content:saved.content.markdownProjection});}catch(error){setError(String(error));}
   }
   function keydown(e: KeyboardEvent<HTMLDivElement>) { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }
+  const previewApp = spicaPreview?.record.scope.id === projectId ? spicaPreview : null;
   return <div className="chat-layout" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
     <section className="chat-primary">
       <div className="chat-header">
@@ -378,6 +408,7 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
           {metrics && <Tooltip title={`First token ${metrics.firstTokenMs?.toFixed(0) ?? '—'} ms · ${metrics.completionTokens === null ? 'estimated' : 'reported'} output tokens`}><Chip size="small" variant="outlined" label={`${metrics.tokensPerSecond ?? '—'} tok/s${metrics.completionTokens === null ? ' ≈' : ''}`} /></Tooltip>}
           <Tooltip title="Toggle lightweight avatar reaction from completed text"><Button size="small" variant="text" onClick={() => { setAutoReact((v) => !v); setReaction(null); }} sx={{ fontSize: 10 }}>{autoReact ? 'Expressions on' : 'Expressions off'}</Button></Tooltip>
           <Button size="small" onClick={() => setLibraryOpen(true)}>Assets ({(workspace.assets ?? []).length})</Button>
+          {previewApp && <Button size="small" onClick={() => setSpicaMode('dock')}>Preview app</Button>}
           <Tooltip title="New conversation"><IconButton aria-label="New conversation" disabled={busy} onClick={() => createSession()}><AddRounded fontSize="small" /></IconButton></Tooltip>
         </Stack>
       </div>
@@ -486,6 +517,12 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
 
       </div>
     </section>
+    {previewApp && <SpicaPreview key={session?.id} record={previewApp.record} mode={spicaMode} onMode={setSpicaMode}
+      verification={previewApp.build?.state === 'running' && busy ? 'Testing standalone app…' : previewApp.verified ? 'Standalone build passed' : 'Sample app · Build needed'}
+      error={spicaError} onLaunch={previewApp.verified && projectFolder && !busy ? () => {
+        setSpicaError('');
+        void launchSpicaApp(projectFolder, previewApp.record).catch(error => setSpicaError(String(error)));
+      } : undefined} />}
     {writingId&&session&&<WritingWorkspace documentId={writingId} access={{sessionId:session.id,projectId:session.projectId??null}} onClose={()=>setWritingId(null)}/>}
     {editorBlock && selectedBlock?.sessionId === session?.id && <BlockWorkbench block={editorBlock} onClose={() => setSelectedBlock(null)} onSave={(block) => { if (selectedBlock) saveBlock(selectedBlock.messageId, block); }} onRewrite={(excerpt, document) => { setInput(`Rewrite only the selected passage from "${document.title}" while preserving its style and continuity. Return the revised passage, not the entire chapter.\n\n${excerpt}`); setSelectedBlock(null); }} projectFolder={(workspace.projects ?? []).find((p) => p.id === session?.projectId)?.folder || undefined} history={storedAsset?.history}/>}
 
@@ -500,7 +537,8 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
     </Stack></DialogContent><DialogActions><Button onClick={() => setLibraryOpen(false)}>Close</Button></DialogActions></Dialog>
     <Dialog open={Boolean(approval)} onClose={() => answerApproval('deny')} fullWidth maxWidth={['apply_project_changes','replace_project_text'].includes(approval?.name ?? '') ? 'md' : 'xs'}><DialogTitle fontSize={15}>Allow local tool?</DialogTitle><DialogContent><Typography mb={1} fontWeight={700}>{approval?.name}</Typography>{['apply_project_changes','replace_project_text'].includes(approval?.name ?? '')
         ? <><Typography fontSize={11} color="text.secondary">Review the proposed source changes. Nothing is written until you approve.</Typography><ChangesetReview args={approval?.args ?? {}}/></>
-        : <Typography color="text.secondary" fontSize={12} sx={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{JSON.stringify(approval?.args ?? {}, null, 2)}</Typography>}<Typography color="text.secondary" fontSize={11} mt={2}>{actionMode === 'auto' && approval && taskGrantForTool(approval.name, approval.args)
+        : approval?.name === 'edit_spica_graph' ? <SpicaEditReview args={approval.args} />
+          : <Typography color="text.secondary" fontSize={12} sx={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{JSON.stringify(approval?.args ?? {}, null, 2)}</Typography>}<Typography color="text.secondary" fontSize={11} mt={2}>{actionMode === 'auto' && approval && taskGrantForTool(approval.name, approval.args)
         ? `Approving grants ${taskGrantForTool(approval.name, approval.args) === 'write' ? 'project-file edits' : 'project checks'} for this reply only. Other tasks still require permission.`
         : 'This tool runs only after your approval.'}</Typography></DialogContent><DialogActions><Button onClick={() => answerApproval('deny')}>Deny</Button><Button variant="contained" onClick={() => answerApproval('allow')}>{actionMode === 'auto' && approval && taskGrantForTool(approval.name, approval.args) ? 'Allow for this task' : 'Allow once'}</Button></DialogActions></Dialog>
   </div>;

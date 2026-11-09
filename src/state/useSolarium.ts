@@ -8,7 +8,7 @@ import { forkChatSession, rewindChatSession } from '../domain/conversations';
 import type { VisualAction } from '../engine/visual-actions';
 import { cleanupDeletedOwners } from '../foundation/backup';
 
-export type View = 'home' | 'chat' | 'projects' | 'code' | 'sparks' | 'models' | 'runtime' | 'worlds' | 'laboratory' | 'teams' | 'memories' | 'settings' | 'sources' | 'writing' | 'stories';
+export type View = 'home' | 'chat' | 'projects' | 'code' | 'spica' | 'sparks' | 'models' | 'runtime' | 'worlds' | 'laboratory' | 'teams' | 'memories' | 'settings' | 'sources' | 'writing' | 'stories';
 interface SolariumState {
   webEnabled:boolean;setWebEnabled:(enabled:boolean)=>void;
   pendingComposer:string|null;

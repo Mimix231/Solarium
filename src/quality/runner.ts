@@ -20,6 +20,7 @@ import { deriveBrief, resolveBrief } from '../engine/intelligence/brief';
 import type { TaskData } from '../engine/intelligence/task';
 import type { QualityCase } from './cases';
 import { CodeRepository } from '../coding/artifacts/repository';
+import {taskBoardAcceptance} from './app-acceptance';
 
 export interface QualityCheck { name: string; passed: boolean; detail: string }
 export interface QualityRun {
@@ -29,7 +30,7 @@ export interface QualityRun {
   fingerprints?:{engine:string;scenario:string;conditions:string;source?:string;nativeBinary?:string;commit?:string|null}; startedAt: string; finishedAt?: string;
   state: 'running' | 'passed' | 'failed' | 'needs_review' | 'cancelled' | 'blocked';
   checks: QualityCheck[]; warnings: string[]; metrics: GenerationMetrics[]; reasoningCharacters: number;
-  capabilities?:import('../domain/types').Capabilities;outcomes?:import('../engine/continuous-generation').GenerationOutcome[];operations: { tool?: string; status?: string }[]; review: string[]; ratings?: Record<string, number>; notes?: string;
+  capabilities?:import('../domain/types').Capabilities;outcomes?:import('../engine/continuous-generation').GenerationOutcome[];operations: { tool?: string; status?: string }[]; review: string[]; ratings?: Record<string, number>; notes?: string;interventions?:{kind:'manual_code_correction';detail:string;at:string}[];
 }
 export interface QualityOptions {
   model: LocalModel; spark: Spark; signal: AbortSignal; webEnabled: boolean;
@@ -80,7 +81,7 @@ export async function runQualityCase(test: QualityCase, options: QualityOptions)
       onStory:id=>{session.storyId=id;},
       onSavedSources:references=>suppliedSources.push(...references.map(r=>r.sourceId)),onWarning: warning => warnings.push(warning), 
       onCapabilities:capabilities=>{record.data.capabilities=capabilities;},onGenerationOutcome:outcome=>{(record.data.outcomes??=[]).push(outcome);},onMetrics: metrics => { record.data.metrics.push(metrics); options.onProgress?.(record.data); },
-      onThinking: thought => { record.data.reasoningCharacters = thought.text.length; },
+      onThinking: thought => { record.data.reasoningCharacters = thought.text.length;options.onProgress?.(record.data); },
     },state);
   } catch (error) { if (!controller.signal.aborted) warnings.push(String(error)); }
   finally {
@@ -96,8 +97,14 @@ export async function runQualityCase(test: QualityCase, options: QualityOptions)
       if (test.files) {
         const project = useSolarium.getState().workspace.projects!.find(p => p.id === projectId)!;
         const task = (await foundationStore.list<TaskData>({ collection: 'task_execution', scopes: [scope] })).find(t => t.data.sessionId === sessionId);
-        check('All current project checks passed', task?.data.state === 'completed' && Boolean(task.data.verification?.writes) && (task.data.verification?.required.length ?? 0) >= 3 && task.data.verification!.required.every(id => task.data.verification!.checks[id]?.status === 'passed' && task.data.verification!.checks[id]?.revision === task.data.verification!.revision), 'Actual native command results and file revisions are required.');
+        check('All current project checks passed', task?.data.state === 'completed' && Boolean(task.data.verification?.writes) && (task.data.verification?.required.length ?? 0) >= (test.minimumChecks??3) && task.data.verification!.required.every(id => task.data.verification!.checks[id]?.status === 'passed' && task.data.verification!.checks[id]?.revision === task.data.verification!.revision), 'Actual native command results and file revisions are required.');
+        if(test.minimumEditedFiles){const edited=new Set(task?.data.operations.flatMap(o=>o.status==='completed'?o.files??[]:[])??[]);check('Requested source modules were actually edited',edited.size>=test.minimumEditedFiles,`${edited.size}/${test.minimumEditedFiles} confirmed file paths`);}
         for (const file of test.files.filter(f => f.path.startsWith('tests/'))) check('Reference tests preserved', (await readProjectFile(project.folder, file.path)) === file.content, file.path);
+        if(test.appAcceptance&&task?.data.state==='completed'){
+          try{const result=await taskBoardAcceptance(project.folder,controller.signal);check('Independent application acceptance',result.exit_code===0&&!result.timed_out&&!result.cancelled,`${result.stdout}\n${result.stderr}`);}
+          catch(error){check('Independent application acceptance',false,String(error));}
+          check('Complete application plan and duplication audit',Boolean(task.data.appPlan?.audit&&task.data.appPlan.steps.every(s=>s.state==='verified')&&!task.data.appPlan.audit.duplicates.length),'Read the durable feature plan and actual source audit. Functional/UI review remains separate.');
+        }
       } else if(test.generatedCode){
         const repo=new CodeRepository(access),artifacts=(await repo.list()).filter(a=>a.data.origin.messageId===messageId);
         const blocks=parseMessageParts(answer).flatMap(p=>p.type==='block'&&['code','preview'].includes(p.block.kind)?[p.block]:[]);
@@ -139,4 +146,10 @@ export async function saveQualityReview(record: StoredRecord<QualityRun>, rating
   const reviewed = record.data.review.length > 0 && record.data.review.every(item => ratings[item] !== undefined);
   const allGood = reviewed && record.data.review.every(item => ratings[item]! >= 4);
   await foundationStore.batch([{ record: { ...record, version: record.version + 1, updatedAt: now(), data: { ...record.data, ratings, notes, state: record.data.checks.some(c => !c.passed) ? 'failed' : allGood ? 'passed' : reviewed ? 'failed' : 'needs_review' } }, expected: record.version }]);
+}
+
+/** Record later human changes without rewriting the original autonomous result. */
+export async function recordQualityIntervention(record:StoredRecord<QualityRun>,detail:string):Promise<void>{
+  if(!detail.trim())throw Error('Describe the actual manual correction.');
+  await foundationStore.batch([{record:{...record,version:record.version+1,updatedAt:now(),data:{...record.data,interventions:[...(record.data.interventions??[]),{kind:'manual_code_correction',detail:detail.trim(),at:now()}]}},expected:record.version}]);
 }

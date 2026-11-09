@@ -63,6 +63,6 @@ test('chat mode is present in composer and agents use the same authorization for
   for (const mode of ['ask','auto','yolo']) assert.match(chat, new RegExp(`<MenuItem value="${mode}">`, 'i'));
   assert.match(chat, /<ChangesetReview args=\{approval\?\.args \?\? \{\}\}/);
   assert.match(agent, /await authorize\('inspect_project'/);
-  assert.match(agent, /await authorize\(call\.function\.name, args\)/);
+  assert.match(agent, /await authorize\(call\.function\.name, args, editReview\?\.args\)/);
   assert.match(agent, /const taskGrants = new Set<TaskGrant>\(\)/);
 });

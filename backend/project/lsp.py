@@ -26,6 +26,7 @@ class ServerDefinition:
     family: str
     command: list[str]
     languages: tuple[str, ...]
+    tsserver: str | None = None
 
 
 class LspProtocolError(RuntimeError):
@@ -57,7 +58,13 @@ def discover_servers(root: Path) -> list[ServerDefinition]:
     if ts:
         script=Path(ts).parent.parent/"typescript-language-server"/"lib"/"cli.mjs"
         command=[shutil.which("node") or "node",str(script),"--stdio"] if script.is_file() else [ts,"--stdio"]
-        found.append(ServerDefinition("typescript", command, ("typescript", "typescriptreact", "javascript", "javascriptreact")))
+        managed = os.environ.get("SOLARIUM_TYPESCRIPT_LANGUAGE_SERVER")
+        modules = [root / "node_modules", Path(ts).parent.parent]
+        if managed:
+            modules.append(Path(managed).parent.parent)
+        servers = (folder / "typescript/lib/tsserver.js" for folder in modules)
+        compiler = next((str(path) for path in servers if path.is_file()), None)
+        found.append(ServerDefinition("typescript", command, ("typescript", "typescriptreact", "javascript", "javascriptreact"), compiler))
     if pyright:
         found.append(ServerDefinition("python", [pyright, "--stdio"], ("python",)))
     if rust:
@@ -237,6 +244,8 @@ class LspProcess:
             "workspaceFolders": [{"uri": _uri(self.root), "name": self.root.name}],
             "capabilities": capabilities,
             "clientInfo": {"name": "Solarium Glitch workspace", "version": "0.1"},
+            **({"initializationOptions": {"tsserver": {"path": self.definition.tsserver}}}
+               if self.definition.tsserver else {}),
         }, timeout=30.0)
         self.notify("initialized", {})
 

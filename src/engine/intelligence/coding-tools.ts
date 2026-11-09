@@ -1,3 +1,4 @@
+import type {AppBuilder,AppStepInput} from './app-builder';
 import type { AgentToolDefinition } from '../tools';
 import type { ChatSession, CreatorProject } from '../../domain/types';
 import { listProjectFiles, readProjectFile, readPublicWebpage, searchPublicWeb } from '../creator';
@@ -7,10 +8,16 @@ import { createVideoEditorProject } from './bootstrap';
 import { DuplicateSourceError, SourceRepository } from '../../sources/repository';
 import { CodeRepository } from '../../coding/artifacts/repository';
 import { projectService } from './project-service';
-export interface CodingExecution {verification?:VerificationLedger;requireWrite?:boolean;signal?:AbortSignal;webEnabled:boolean;archive?:ContextArchive|null;availableToolNames?:string[];onFilesApplied?:(files:import('../creator').ProjectFileChange[],applied:import('../creator').AppliedChange[])=>void}
+import { executeSpicaTool, spicaToolNames, spicaTools } from '../../spica/tools';
+import type { CommandResult } from './commands';
+export interface CodingExecution {verification?:VerificationLedger;appBuilder?:AppBuilder;requireWrite?:boolean;signal?:AbortSignal;webEnabled:boolean;archive?:ContextArchive|null;availableToolNames?:string[];spicaNeedsEdit?:boolean;spicaStyle?:boolean;spicaProgram?:boolean;onCommandResult?:(result:CommandResult)=>void;onFilesApplied?:(files:import('../creator').ProjectFileChange[],applied:import('../creator').AppliedChange[])=>void}
 const text={type:'string',minLength:1,maxLength:1000};
 const define=(name:string,description:string,properties:Record<string,unknown>,required:string[]=[]):AgentToolDefinition=>({type:'function',function:{name,description,parameters:{type:'object',properties,required,additionalProperties:false}}});
 export const codingToolDefinitions:AgentToolDefinition[]=[
+  ...spicaTools,
+  define('plan_project_app','Save the full requested application as feature/file work packages. Include real behaviour, persistence, errors and tests; a starter is only one package. No source-size ceiling, repeated modules or filler. Extend existing scope rather than replacing completed work.',{architecture:text,extend:{type:'boolean'},steps:{type:'array',minItems:1,maxItems:64,items:{type:'object',additionalProperties:false,properties:{id:text,title:text,files:{type:'array',minItems:1,maxItems:32,items:text},depends_on:{type:'array',maxItems:32,items:text},acceptance:{type:'array',minItems:1,maxItems:12,items:text}},required:['id','title','files','depends_on','acceptance']}}},['architecture','steps']),
+  define('read_app_plan','Read the saved application plan or one feature work package. Model plans stay subordinate to the original human request. Completed work is retained across actual tool turns and Resume.',{step_id:text,offset:{type:'integer',minimum:0}}),
+  define('complete_app_step','Verify one implemented app feature against its actual source files and current passing native check IDs. Later changed files require reconciliation. This does not finish the whole application.',{step_id:text,checks:{type:'array',minItems:1,maxItems:32,items:text}},['step_id','checks']),
   define('inspect_code_position','Inspect actual language-server definitions, references, hover or diagnostics at a source position. Reports pending/unavailable explicitly; never a compiler guarantee from lexical search.',{path:text,line:{type:'integer',minimum:1},column:{type:'integer',minimum:1},kind:{type:'string',enum:['definition','references','hover','diagnostics']}},['path','line','column','kind']),
   define('read_dependency_api','Read exact locally installed package declarations/source and version before guessing an API. Works offline; results include real paths and lines.',{package:text,query:text},['package','query']),
   define('register_project_command','Register an explicit coding-tool argument vector in this project. Registration does not execute it. Use for bootstrap, focused checks or services that are missing from manifests. No shell strings; invoke the returned ID separately.',{program:text,args:{type:'array',maxItems:64,items:text},cwd:text,purpose:text,kind:{type:'string',enum:['setup','check','test','service']},network:{type:'boolean'}},['program','args','cwd','purpose','kind','network']),
@@ -29,7 +36,7 @@ export const codingToolDefinitions:AgentToolDefinition[]=[
   define('research_coding_docs','Read official documentation for the actual installed package version. Supply a package and focused API/error query. Saves complete readable source evidence; version applicability is reported, never assumed.',{package:text,query:text},['package','query']),
   define('complete_project_task','Validate completion against actual writes and ALL required checks on the current files. Rejected completion returns pending commands; keep repairing. Supply a concise final summary.',{summary:text},['summary']),
   define('report_project_blocker','Record a concrete external blocker, with diagnostic evidence. Failed tests that can be repaired are work to do, not a blocker.',{reason:text,evidence:text},['reason','evidence']),
-  define('choose_project_tools','Select up to four tools for the next actual tool turn. Available: inspect_code_position, read_dependency_api, register_project_command, start_project_service, inspect_project_service, stop_project_service, list_generated_code, read_generated_code, query_project_intelligence, read_project_symbol, read_project_file, search_project_code, apply_project_changes, replace_project_text, list_project_commands, run_project_command, read_command_output, get_project_map, research_coding_docs, search_web, open_web_page, read_saved_source, recall_context, complete_project_task, report_project_blocker.',{names:{type:'array',minItems:1,maxItems:4,items:text}},['names']),
+  define('choose_project_tools','Select up to four tools for the next actual tool turn. Available: plan_project_app, read_app_plan, complete_app_step, inspect_code_position, read_dependency_api, register_project_command, start_project_service, inspect_project_service, stop_project_service, list_generated_code, read_generated_code, query_project_intelligence, read_project_symbol, read_project_file, search_project_code, apply_project_changes, replace_project_text, list_project_commands, run_project_command, read_command_output, get_project_map, research_coding_docs, search_web, open_web_page, read_saved_source, recall_context, complete_project_task, report_project_blocker.',{names:{type:'array',minItems:1,maxItems:4,items:text}},['names']),
   define('recall_context','Find exact archived conversation, file and command context in this chat/project. To page a match supply archive_id and offset.',{query:text,archive_id:text,offset:{type:'integer',minimum:0}}),
 ];
 export const codingNames=codingToolDefinitions.map(t=>t.function.name);
@@ -42,7 +49,24 @@ export async function executeCodingTool(name:string,args:Record<string,unknown>,
     return JSON.stringify(args.archive_id?await archive.read(String(args.archive_id),Number(args.offset??0)):await archive.search(String(args.query??'')));
   }
   if(!root)throw Error('Link a project source folder first.');
+  if(spicaToolNames.has(name))return executeSpicaTool(name,args,project!,{...execution,spicaProgram:execution.spicaProgram},onOutput);
   switch(name){
+    case 'plan_project_app':{
+      if(!execution.appBuilder)throw Error('No active application task.');
+      execution.appBuilder.plan(String(args.architecture),args.steps as AppStepInput[],Boolean(args.extend));
+      return JSON.stringify({saved:true,context:execution.appBuilder.context(),steps:execution.appBuilder.data?.steps.slice(-((args.steps as AppStepInput[]).length)).map(s=>({id:s.id,title:s.title,state:s.state})),notice:'No source files were created by planning. Implement real files in complete feature operations.'});
+    }
+    case 'read_app_plan':{
+      const plan=execution.appBuilder?.data;if(!plan)throw Error('No application plan has been saved.');
+      const step=args.step_id?plan.steps.find(s=>s.id===args.step_id):undefined;if(args.step_id&&!step)throw Error('Unknown feature step ID.');
+      const offset=Number(args.offset??0);return JSON.stringify(step??{goal:plan.goal,architecture:plan.architecture,steps:plan.steps.slice(offset,offset+12).map(s=>({id:s.id,title:s.title,state:s.state,files:s.files,depends_on:s.depends_on})),offset,nextOffset:Math.min(plan.steps.length,offset+12),total:plan.steps.length,hasMore:offset+12<plan.steps.length,notice:'Read an exact step_id for its full acceptance details and evidence; use nextOffset for further plan pages.'});
+    }
+    case 'complete_app_step':{
+      if(!execution.appBuilder||!execution.verification)throw Error('No active application verification context.');
+      execution.verification.observeSource((await projectSourceSnapshot(root)).sha256);
+      const result=await execution.appBuilder.verifyStep(String(args.step_id),args.checks as string[],path=>readProjectFile(root,path),execution.verification);
+      return JSON.stringify(result);
+    }
     case 'inspect_code_position':return JSON.stringify(await projectService(root,'lsp.inspect',{path:String(args.path),line:Number(args.line),column:Number(args.column),kind:String(args.kind)}));
     case 'read_dependency_api':return JSON.stringify(await (await import('@tauri-apps/api/core')).invoke('inspect_dependency_api',{root,packageName:String(args.package),query:String(args.query)}));
     case 'register_project_command':return JSON.stringify(await registerProjectCommand(root,args as unknown as import('./commands').CommandProposal));
@@ -96,7 +120,9 @@ export async function executeCodingTool(name:string,args:Record<string,unknown>,
     }
     case 'complete_project_task':{
       if(!execution.verification)throw Error('There is no active verification ledger.');execution.verification.observeSource((await projectSourceSnapshot(root)).sha256);const result=execution.verification.completion(Boolean(execution.requireWrite));
-      return JSON.stringify({...result,status:result.ok?'verified':'incomplete',summary:result.ok?args.summary:undefined});
+      const app=result.ok?await execution.appBuilder?.audit(path=>readProjectFile(root,path),execution.verification):undefined;
+      const ok=result.ok&&app?.ok!==false;
+      return JSON.stringify({...result,...(app?.ok===false?{reason:app.reason}:{}),ok,app,status:ok?'verified':'incomplete',summary:ok?args.summary:undefined});
     }
     case 'report_project_blocker':return JSON.stringify({status:'blocked',reason:args.reason,evidence:args.evidence,pending:execution.verification?.pending()??[],verified:false});
     case 'choose_project_tools':{

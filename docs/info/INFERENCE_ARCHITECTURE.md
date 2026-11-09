@@ -100,7 +100,7 @@ During a planned authoring operation, the active brief elides only long human qu
 
 ## Glitch workspace integration
 
-The Glitch code workspace is an editor inside Solarium. Its optional conversation pane renders the ordinary Chat component and calls the same conversation controller, Spark, model and permission layer. `query_project_intelligence` is a staged read tool that queries the same scoped index/language services as the editor. Real language-server availability and pending diagnostics remain explicit. These results do not replace manifest checks or satisfy a verification ledger by themselves.
+The Glitch code workspace is an editor inside Solarium. Conversations live in the Conversation tab; the editor does not mount an additional Chat instance. Both routes retain the same workspace, Spark, model and permission layer. `query_project_intelligence` is a staged read tool that queries the same scoped index/language services as the editor. Real language-server availability and pending diagnostics remain explicit. These results do not replace manifest checks or satisfy a verification ledger by themselves.
 
 `backend/solarium.py` is a private stdio project service, supervised by the normal native application. It imports the dependency-free Glitch project modules, not the former Dona or CodeDiffusion inference services. It does not load a model, manufacture assistant turns, add inference loops or change generation limits. The original experimental runtime sources are preserved but are not active inference routes. See [GLITCH_INTEGRATION.md](GLITCH_INTEGRATION.md).
 
@@ -113,3 +113,31 @@ After an actual passing verification command, the next advertised page retains t
 ## Chat-generated code
 
 The normal conversation controller also checkpoints actual source fences into scoped generated-code artifacts. This observes the existing answer stream; it never starts a second model, synthetic continuation, reasoning allocation or token-budget loop. Natural model EOS and a complete fence establish only a finished source artifact. Native file application and behavioural verification need their own actual results. Explicit source-in-chat requests can finish without a project folder. Follow-up source readers use paged saved originals in the same permission layer, with no reduction to the model's output capacity or alteration of Spark identity. See `tests/generated-code.test.cjs` and the Generated source section of the Source and Action contract.
+
+
+## Local coding profiles and lifecycle
+
+Automatic GGUF loading reads actual layer/head metadata and measured free GPU memory with runtime/KV headroom. This is an estimate; actual server loading remains required. Manual per-model allocation is retained. An unchanged resident model/context reuses its allocation. Both managed llama paths enable Jinja templates and one parallel slot. HTTP output remains uncapped (max_tokens: -1, n_keep: -1). Input context and GPU memory are separate from output length.
+
+Compatibility checks ask the selected model to request a native read-only probe, execute it in this process, then supply the genuine result to its next inference turn. Transcripts, template/native identity and timings persist. Compatibility is distinct from coding quality: coding trials use the same Spark/conversation/task path and independent reference tests. Failed, cancelled and later manually corrected trials remain separate.
+
+withLocalWork owns cancellation and waits for real storage finalizers; it never schedules inference turns or rewrites thoughts. Model changes during active work are rejected. Closing stops work, saves source/recovery/workspace as selected, and destroys the native window after success; failures stay visible and retryable. Regression: tests/local-coding-core.test.cjs.
+
+
+## Substantial application authoring
+
+Application requests use a durable feature/file dependency plan inside the normal agent task. Planning, complete file writes and feature verification are genuine model-selected tool operations. The Spark is explicitly allowed to author all source needed by the requested app, with no 4,096-character or 50k-character output ceiling and no length-padding target. A scaffold does not satisfy later feature work packages. Small input contexts still page source tools; they never clip generated files to a short response budget.
+
+Each feature completion reads actual files and requires current native verification evidence. The overall task requires every planned feature, unchanged source hashes, all current project checks, and a substantial exact duplicate-source audit. These conditions are engineering evidence, not a guarantee that every semantic/UI requirement is correct. Acceptance criteria stay inspectable and subordinate to the original user request. Saved plans survive explicit Resume; confirmed implementation cannot be discarded by replacing its plan. Shared-file changes reopen affected feature verification. No extra inference loop, synthetic continuation or reasoning quota was introduced.
+
+Ordinary generated code fences retain their complete originals and immutable revisions. Substantial repetition creates visible source-quality diagnostics; it never silently deletes code or rewrites the genuine answer/reasoning stream. Tests: tests/app-builder.test.cjs and tests/generated-code.test.cjs. The complete-task-board native quality case starts in an empty folder and has independent HTTP/persistence assertions plus a separate actual-UI review requirement.
+
+## SPICA app tasks
+
+A linked SPICA project routes its application changes through a small graph tool set. The Spark reads the saved graph, applies typed edits against the read revision, exports through native compare-and-swap writes, and verifies the exported revision with real native commands. Ordinary code-owned projects retain their existing tool stages. Graph saves and exports require write permission; verification requires check permission. The task stops with the real result when permission is denied or a concrete blocker is reported. The four operations use normal model-requested tool turns and the existing reasoning and answer stream. SPICA tests cover typed connections, stale and concurrent revisions, permission grants and stage selection.
+
+SPICA derives a setting's type from its JSON initial value and choice list when the proposal leaves the explicit type out. A Boolean value such as `false` creates a Boolean preference and a toggle. Explicit types still require a compatible value. Invalid edits preserve the graph and return the actual field problem, while stale revisions request a fresh graph read. If the same invalid proposal returns at the same revision, the controller records the duplicate and leaves the task resumable without authorizing or executing that edit again. Corrected proposals can proceed immediately. The regression replays Dona's archived request with its original omitted type and Boolean value.
+
+For an existing code-owned folder, an available explicit tool selection takes precedence over stalled-work and app-stage defaults. The offered command schema uses runnable current catalogue IDs, including Web OFF filtering. An empty root still offers the writer. Compare-and-swap conflicts identify the exact-read or unique-fragment repair path. SPICA record fields are typed graph edits, and Ask review shows the proposed field and SQLite backfill before approval.
+
+SPICA appearance requests use the same graph, export and verification stages. The graph reader supplies stable visual targets and can return the supported properties and states for a specific target. A `set_style` operation belongs to a revision-checked graph batch. Invalid proposals return field diagnostics before Ask opens. Ask review shows changed values and color swatches for valid proposals. The preview reads confirmed revisions while the normal reply continues, and current build evidence requires the native executable hash. `tests/spica.test.cjs` covers appearance routing, validation and lowering.

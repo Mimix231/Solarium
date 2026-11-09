@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { useSolarium } from '../state/useSolarium';
 export type InstallStatus = 'running' | 'cancelling' | 'cancelled' | 'interrupted' | 'completed' | 'failed';
 export interface InstallJob {
-  id: string; engine: 'llama.cpp' | 'vllm'; status: InstallStatus; phase: string;
+  id: string; engine: 'llama.cpp' | 'vllm' | 'coding-tools' | 'gguf'; status: InstallStatus; phase: string;
   downloaded: number; total: number; updatedAt: number; result: string | null; error: string | null;
 }
 const native = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;

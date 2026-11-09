@@ -108,6 +108,20 @@ test('no-op edits cannot count as progress and Web OFF never advertises network 
  const memory=new WorkMemory();memory.note({next_action:'Create the remaining source files.'});memory.observe('apply_project_changes',{},'completed','Created manifests.',true);assert.equal(memory.data.nextAction,'Create the remaining source files.');
 });
 
+test('an explicit runnable catalogue selection survives the stalled-write and app-plan defaults', () => {
+  const environment = { ...empty, rootEntryCount: 1, fileCount: 1, files: ['package.json'], commands: [
+    { id: 'script:test', command: 'npm test' },
+    { id: 'install:network', command: 'npm install', network: true },
+  ] };
+  const tools = selectActionTools(allowedToolDefinitions(false), {
+    projectHasFiles: true, environment, pending: ['script:test'], stalled: true,
+    appStage: 'plan', selected: ['run_project_command'], webEnabled: false,
+  });
+  assert.deepEqual(tools.map(tool => tool.function.name), ['run_project_command']);
+  assert.deepEqual(tools[0].function.parameters.properties.command_id.enum, ['script:test']);
+  assert.match(tools[0].function.description, /script:test/);
+});
+
 test('the real empty-project starter is reachable in 4K and keeps a verified Rust bridge',async()=>{
  const {videoEditorTemplate}=require('../.test-dist/engine/intelligence/recipes.js');const files=videoEditorTemplate('Video Editor');
  assert.match(files.find(f=>f.path==='src/App.tsx').content,/invoke<string>\('greet'/);assert.match(files.find(f=>f.path==='src-tauri/src/main.rs').content,/generate_handler!\[greet\]/);assert.match(files.find(f=>f.path==='src-tauri/src/main.rs').content,/rust_bridge_reply/);

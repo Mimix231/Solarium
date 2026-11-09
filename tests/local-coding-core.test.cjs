@@ -45,3 +45,12 @@ test('new coding tools preserve permission gates, root ownership and offline dep
 test('manual local model allocation survives workspace validation without changing output policy',()=>{
  const w=defaultWorkspace();w.models=[{id:'m',name:'local',endpoint:'http://127.0.0.1:8080',modelId:'local',contextSize:8192,temperature:.7,maxTokens:8192,runtime:{mode:'manual',gpuLayers:12},createdAt:new Date().toISOString()}];const model=validateWorkspace(w).models[0];assert.deepEqual(model.runtime,{mode:'manual',gpuLayers:12});assert.equal(model.contextSize,8192);assert.equal(model.maxTokens,8192);
 });
+
+test('coding scorecards retain failures, stops and later manual corrections separately',()=>{
+ const {qualityScorecards}=require('../.test-dist/quality/scorecard.js');
+ const base={category:'coding',caseId:'repo',model:{id:'m',name:'Local'},fingerprints:{engine:'now',conditions:'config'},startedAt:'2026-11-02T12:00:00Z',finishedAt:'2026-11-02T12:00:02Z',metrics:[{firstTokenMs:500}]};
+ const cards=qualityScorecards([{...base,state:'passed'},{...base,state:'failed'},{...base,state:'cancelled'},{...base,state:'passed',interventions:[{kind:'manual_code_correction'}]},{...base,state:'passed',fingerprints:{engine:'old',conditions:'config'}}],'now');
+ assert.equal(cards.length,1);assert.equal(cards[0].attempts,4);assert.equal(cards[0].passed,1);assert.equal(cards[0].failed,1);assert.equal(cards[0].cancelled,1);assert.equal(cards[0].corrected,1);assert.equal(cards[0].medianElapsedMs,2000);
+});
+
+test('quality recovery never leaves a closed renderer trial looking active or changes a finished result',()=>{const {interruptedQualityRun}=require('../.test-dist/quality/scorecard.js');const startedAt='2026-11-02T12:00:00Z',renderer=Date.parse('2026-11-02T12:01:00Z');assert.equal(interruptedQualityRun({state:'running',startedAt},renderer),true);assert.equal(interruptedQualityRun({state:'failed',startedAt},renderer),false);assert.equal(interruptedQualityRun({state:'running',startedAt:'2026-11-02T12:02:00Z'},renderer),false);});
