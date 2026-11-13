@@ -52,6 +52,8 @@
     "src/writing/**/*.ts",
     "src/stories/**/*.ts",
     "src/research/**/*.ts",
+    "src/spica/catalog/manifests.ts",
+    "src/spica/research-run.ts",
     "src/quality/cases.ts",
     "src/quality/scorecard.ts",
     "src/coding/integration/session.ts",

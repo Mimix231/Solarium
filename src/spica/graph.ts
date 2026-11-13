@@ -1,5 +1,5 @@
 import { applyStyleEdit, styleTargets, validateAppearance, type Appearance, type StyleEdit } from './appearance';
-import { allCollections, editProgram, usedBlockLocks, validateProgram, type Program, type ProgramEdit } from './program';
+import { allCollections, editProgram, runtimeScenarios, usedBlockLocks, validateProgram, type Program, type ProgramEdit } from './program';
 
 export type Value = string | boolean;
 export type RecordValue = Value | number | null;
@@ -18,6 +18,8 @@ export interface Control {
 export type CollectionField =
   | { key: string; label: string; type: 'text'; initial: string; required?: boolean; multiline?: boolean }
   | { key: string; label: string; type: 'boolean'; initial: boolean; filter?: boolean }
+  | { key: string; label: string; type: 'number'; initial: number; min?: number; max?: number }
+  | { key: string; label: string; type: 'choice'; initial: string; choices: string[] }
   | { key: string; label: string; type: 'reference'; initial: null; collection: string };
 export interface Collection {
   id: string;
@@ -26,6 +28,11 @@ export interface Collection {
   recipeVersion: 1;
   fields: CollectionField[];
 }
+export type NewCollectionField = { key: string; label: string; type: CollectionField['type']; initial?: RecordValue;
+  required?: boolean; multiline?: boolean; filter?: boolean; collection?: string; choices?: string[]; min?: number; max?: number };
+type CollectionInput = Omit<Collection, 'recipeVersion' | 'fields'> & {
+  fields: NewCollectionField[];
+};
 export type Recipe = 'blank' | 'settings' | 'notes' | 'tasks' | 'models';
 export interface Graph {
   schema: 1;
@@ -44,6 +51,8 @@ export type GraphEdit =
   | { op: 'add_setting'; page: string; key: string; label: string; type?: Preference['type']; initial: Value; choices?: string[]; multiline?: boolean }
   | { op: 'label_setting'; key: string; label: string }
   | { op: 'add_record_toggle'; key: string; label: string; initial: boolean; filter?: boolean }
+  | { op: 'add_collection'; collection: CollectionInput }
+  | { op: 'add_record_field'; collection: string; field: NewCollectionField }
   | { op: 'remove_setting'; key: string }
   | StyleEdit
   | ProgramEdit;
@@ -63,21 +72,47 @@ function validateCollection(value: unknown): asserts value is Collection {
   }
   const keys = new Set<string>();
   for (const field of value.fields) {
-    if (!object(field) || !validId(field.key) || keys.has(field.key) || !validLabel(field.label)) throw Error('Invalid or duplicate record field.');
+    if (!object(field)) throw Error('Record fields must be objects containing key, label and type.');
+    if (!validId(field.key)) throw Error(`Invalid record field key ${JSON.stringify(field.key)}. Use 1–40 lowercase letters, digits or underscores, starting with a letter.`);
+    if (keys.has(field.key)) throw Error(`Duplicate record field key "${field.key}" in collection "${value.id}". Update the existing field instead of adding it again.`);
+    if (!validLabel(field.label)) throw Error(`Record field "${field.key}" requires a nonempty label up to 80 characters.`);
     if (field.type === 'boolean') {
-      if (typeof field.initial !== 'boolean' || (field.filter !== undefined && typeof field.filter !== 'boolean')) throw Error('A toggle needs a Boolean default and filter flag.');
+      if (typeof field.initial !== 'boolean' || (field.filter !== undefined && typeof field.filter !== 'boolean')) throw Error(`Field "${field.key}" needs a Boolean default and filter flag.`);
     } else if (field.type === 'reference') {
-      if (field.initial !== null || !validId(field.collection)) throw Error('A record reference needs a collection and a null default.');
+      if (field.initial !== null || !validId(field.collection)) throw Error(`Reference "${field.key}" needs a collection ID and a null default.`);
+    } else if (field.type === 'number') {
+      const { initial, min, max } = field;
+      if (typeof initial !== 'number' || !Number.isFinite(initial) ||
+          (min !== undefined && (typeof min !== 'number' || !Number.isFinite(min) || initial < min)) ||
+          (max !== undefined && (typeof max !== 'number' || !Number.isFinite(max) || initial > max))) {
+        throw Error(`Field "${field.key}" needs a finite default within its numeric bounds.`);
+      }
+    } else if (field.type === 'choice') {
+      if (!Array.isArray(field.choices) || field.choices.length < 2 || field.choices.length > 24 ||
+          field.choices.some(value => !validLabel(value)) || new Set(field.choices).size !== field.choices.length ||
+          !field.choices.includes(field.initial)) throw Error(`Field "${field.key}" needs distinct choices and a default from those choices.`);
     } else if (field.type !== 'text' || typeof field.initial !== 'string' || field.initial.length > 16000 ||
         (field.required !== undefined && typeof field.required !== 'boolean') ||
         (field.multiline !== undefined && typeof field.multiline !== 'boolean')) {
-      throw Error('Invalid text field.');
+      throw Error(`Field "${field.key}" needs a text default of at most 16,000 characters and Boolean required or multiline flags.`);
     }
     keys.add(field.key);
   }
   if (!value.fields.some(field => field.key === 'title' && field.type === 'text' && field.required === true)) {
     throw Error('A collection needs a required text title.');
   }
+}
+
+function withRecordDefault(field: NewCollectionField): CollectionField {
+  if (!object(field)) throw new GraphEditError('Each collection field needs a key, label and type.');
+  const initial = field.initial ?? (
+    field.type === 'text' ? '' : field.type === 'boolean' ? false :
+    field.type === 'choice' && Array.isArray(field.choices) ? field.choices[0] :
+    field.type === 'number' ? Math.min(typeof field.max === 'number' ? field.max : Infinity,
+      Math.max(typeof field.min === 'number' ? field.min : -Infinity, 0)) : null
+  );
+  const requiredTitle = field.key === 'title' && field.type === 'text' && field.required === undefined;
+  return { ...field, initial, ...(requiredTitle ? { required: true } : {}) } as CollectionField;
 }
 
 function settingPreference(edit: Extract<GraphEdit, { op: 'add_setting' }>): Preference {
@@ -167,7 +202,8 @@ export function changeGraph(graph: Graph, edits: readonly GraphEdit[]): Graph {
   for (const edit of edits) {
     switch (edit.op) {
       case 'rename': next.name = edit.name; break;
-      case 'install_recipe': case 'put_screen': case 'put_flow': case 'put_scenario': case 'set_capability': case 'set_csv_transform':
+      case 'install_recipe': case 'put_screen': case 'put_flow': case 'put_scenario': case 'set_capability':
+      case 'grant_capability': case 'revoke_capability': case 'set_csv_transform': case 'set_start_screen':
         try { editProgram(next, edit); }
         catch (error) { throw new GraphEditError(error instanceof Error ? error.message : String(error)); }
         break;
@@ -202,6 +238,32 @@ export function changeGraph(graph: Graph, edits: readonly GraphEdit[]): Graph {
         if (next.collection.fields.some(field => field.key === edit.key)) throw new GraphEditError('Record field "' + edit.key + '" already exists.');
         if (typeof edit.initial !== 'boolean') throw new GraphEditError('A record toggle needs a Boolean initial value.');
         next.collection.fields.push({ key: edit.key, label: edit.label, type: 'boolean', initial: edit.initial, ...(edit.filter ? { filter: true } : {}) });
+        break;
+      }
+      case 'add_collection': {
+        if (!object(edit.collection) || !Array.isArray(edit.collection.fields) || edit.collection.fields.length > 32) {
+          throw new GraphEditError('A collection needs an array of at most 32 typed fields.');
+        }
+        const fields = edit.collection.fields.map(withRecordDefault);
+        const collection = { ...edit.collection, fields, recipeVersion: 1 as const };
+        try { validateCollection(collection); }
+        catch (error) { throw new GraphEditError(error instanceof Error ? error.message : String(error)); }
+        if (allCollections(next).some(item => item.id === collection.id)) throw new GraphEditError('Collection "' + collection.id + '" already exists.');
+        if (next.collection) next.collections = [...(next.collections ?? []), structuredClone(collection)];
+        else next.collection = structuredClone(collection);
+        break;
+      }
+      case 'add_record_field': {
+        if (!object(edit.field)) throw new GraphEditError('add_record_field requires field:{key,label,type}.');
+        const collection = allCollections(next).find(item => item.id === edit.collection);
+        if (!collection) throw new GraphEditError(`Collection "${edit.collection}" does not exist. Use add_collection first.`);
+        if (collection.fields.some(field => field.key === edit.field.key)) {
+          throw new GraphEditError(`Record field "${edit.field.key}" already exists in "${collection.id}". Do not add duplicate fields.`);
+        }
+        const proposed = { ...collection, fields:[...collection.fields,withRecordDefault(edit.field)] };
+        try { validateCollection(proposed); }
+        catch (error) { throw new GraphEditError(error instanceof Error ? error.message : String(error)); }
+        collection.fields.push(proposed.fields.at(-1)!);
         break;
       }
       case 'remove_setting': {
@@ -260,7 +322,10 @@ export function compileGraph(graph: Graph) {
     name: graph.name,
     ...(graph.collection ? { collection: structuredClone(graph.collection) } : {}),
     ...(graph.collections ? { collections: structuredClone(graph.collections) } : {}),
-    ...(graph.program ? { program: structuredClone(graph.program), blocks: usedBlockLocks(graph.program) } : {}),
+    ...(graph.program ? { program: structuredClone({ ...graph.program, scenarios: runtimeScenarios(graph.program, allCollections(graph)) }),
+      blocks: { ...usedBlockLocks(graph.program, allCollections(graph)),
+        ...(Object.values(graph.appearance?.blocks ?? {}).some(states => Object.values(states).some(values =>
+          Object.values(values).some(value => typeof value === 'string' && value.startsWith('$')))) ? { style_token: 1 } : {}) } } : {}),
     ...(graph.appearance ? { appearance: structuredClone(graph.appearance) } : {}),
     pages: graph.pages.map(page => ({
       ...page,

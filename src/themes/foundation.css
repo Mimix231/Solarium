@@ -4,3 +4,10 @@
 .inline-writing-prose{overflow-wrap:anywhere;word-break:normal;white-space:normal;scrollbar-gutter:stable}.inline-writing-prose p{margin:0 0 1em}.inline-writing-prose pre{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%}.inline-writing-prose .rich-code-shell{max-width:100%;overflow:hidden}.inline-writing-block .MuiAlert-root{font-size:12px}.inline-writing-heading{position:relative;z-index:1}
 
 .quality-checks{margin:16px 0}.quality-checks>summary,.quality-result>summary{cursor:pointer;font-weight:650}.quality-case-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));max-height:320px;overflow:auto;margin:12px 0}.quality-result{border-top:1px solid var(--border);padding:10px 0}.quality-result>summary{font-size:12px}
+.inline-writing-block hr { width: min(7rem, 40%); margin: 2rem auto; border: 0; border-top: 1px solid var(--border); }
+.inline-writing-block .inline-writing-editor hr::after { content: none; }
+.inline-writing-block[data-scene-spacer="dots"] hr {
+  width: 2.55rem; height: .5rem; border: 0;
+  background: radial-gradient(circle, var(--accent) 0 1.5px, transparent 2px) left center / .85rem 100% repeat-x;
+}
+.inline-writing-block[data-scene-spacer="space"] hr { height: 2.4rem; margin: .6rem auto; border: 0; }

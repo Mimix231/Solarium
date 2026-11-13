@@ -1,13 +1,39 @@
-import type { AgentToolDefinition } from '../tools';
-interface Schema {type?:string|readonly string[];properties?:Record<string,Schema>;required?:readonly string[];additionalProperties?:boolean;items?:Schema;enum?:readonly unknown[];minItems?:number;maxItems?:number;minLength?:number;maxLength?:number;minimum?:number;maximum?:number}
+/** Structural tool declaration: validation must not import the agent runtime. */
+export interface ToolValidationDefinition {type:'function';function:{name:string;description:string;parameters:{type:'object';properties:Record<string,unknown>;required?:readonly string[];additionalProperties?:boolean}}} 
+interface Schema {oneOf?:readonly Schema[];type?:string|readonly string[];properties?:Record<string,Schema>;required?:readonly string[];additionalProperties?:boolean;items?:Schema;enum?:readonly unknown[];minItems?:number;maxItems?:number;minLength?:number;maxLength?:number;minimum?:number;maximum?:number}
 export interface ToolIssue {field:string;message:string}
 export type ToolValidation={ok:true;value:Record<string,unknown>}|{ok:false;error:{code:'INVALID_ARGUMENTS';tool:string;issues:ToolIssue[];message:string}};
-export function validateToolArguments(name:string,raw:string|unknown,definitions:readonly AgentToolDefinition[]):ToolValidation{
+export function validateToolArguments(name:string,raw:string|unknown,definitions:readonly ToolValidationDefinition[]):ToolValidation{
   const issues:ToolIssue[]=[];const definition=definitions.find(t=>t.function.name===name);let data:unknown=raw;
   if(!definition)issues.push({field:name,message:'Tool is not registered or available in this stage.'});
   if(typeof raw==='string'){try{data=JSON.parse(raw);}catch{issues.push({field:name,message:'Malformed JSON; provide a JSON object matching the tool schema.'});}}
   function validate(value:unknown,schema:Schema,path:string,depth=0):void{
     if(depth>12){issues.push({field:path,message:'Arguments are too deeply nested.'});return;}
+    if(schema.oneOf){
+      // Discriminated operation variants are the model-facing contract, too.
+      // Preserve errors from the selected variant rather than reporting dozens
+      // of unrelated alternatives when a single field is missing.
+      const preferred=schema.oneOf.filter(candidate=>{
+        const option=candidate.properties?.op?.enum;
+        return !option || !!value && typeof value==='object' && option.includes((value as {op?:unknown}).op);
+      });
+      const candidates=preferred.length?preferred:schema.oneOf;
+      let valid=0;let relevant:ToolIssue[]=[];
+      for(const candidate of candidates){
+        const start=issues.length;
+        validate(value,candidate,path,depth+1);
+        const errors=issues.splice(start);
+        if(!errors.length)valid++;
+        else if(!relevant.length||errors.length<relevant.length)relevant=errors;
+      }
+      if(valid!==1){
+        if(valid>1)issues.push({field:path,message:'Ambiguous edit operation schema.'});
+        else if(preferred.length)issues.push(...relevant);
+        else issues.push({field:`${path}.op`,message:`Unknown edit operation. Choose ${[...new Set(schema.oneOf.flatMap(candidate=>candidate.properties?.op?.enum??[]))].join(' | ')}.`});
+      }
+      return;
+    }
+
     const types=Array.isArray(schema.type)?schema.type:[schema.type];const type=value===null?'null':Array.isArray(value)?'array':typeof value;
     if(schema.type&&!types.includes(type)&&!(types.includes('integer')&&typeof value==='number'&&Number.isInteger(value))){issues.push({field:path,message:`Expected ${types.join(' | ')}.`});return;}
     if(schema.enum&&!schema.enum.includes(value))issues.push({field:path,message:`Choose ${schema.enum.join(' | ')}.`});

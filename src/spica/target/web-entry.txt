@@ -1,0 +1,35 @@
+import { createRoot } from 'react-dom/client';
+import plan from './plan.json';
+import * as custom from './custom';
+import './settings.css';
+
+/** Independent web target. IndexedDB is the authoritative local store; no Solarium/Tauri bridge. */
+async function mountWebApp() {
+  const root = document.getElementById('root');
+  if (!root) throw Error('SPICA web mount element not found.');
+  const design = plan as AppPlan;
+  const store = webAdapters(design, APP_ID);
+  const userFunctions = custom as Record<string, unknown>;
+  const name = design.program?.csvTransform;
+  const transform = name && design.program?.grants.includes('custom.transform') && typeof userFunctions[name] === 'function'
+    ? userFunctions[name] as CsvTransform : undefined;
+  const saveExport: SaveExport = async (filename, body, format) => {
+    const blob = new Blob([body], { type: format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const element = document.createElement('a');
+    element.href = url;
+    element.download = filename;
+    element.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return filename;
+  };
+  createRoot(root).render(<SpicaApp standalone plan={design} {...store}
+    footer={custom.footerLabel?.(design)} transform={transform} saveExport={saveExport} />);
+}
+
+void mountWebApp().catch(error => {
+  const alert = document.createElement('p');
+  alert.setAttribute('role', 'alert');
+  alert.textContent = String(error);
+  document.getElementById('root')?.append(alert);
+});

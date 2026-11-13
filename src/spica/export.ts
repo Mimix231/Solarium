@@ -3,11 +3,14 @@ import { invokeProject, projectSourceSnapshot, runProjectCommand, type CommandRe
 import { foundationStore, newRecord } from '../foundation/store';
 import { uid } from '../domain/types';
 import { notifySpicaChange, SpicaRepository, type SpicaRecord } from './repository';
-import { collectionUpgrade, stableGraphJson, type AppPlan, type CollectionField } from './graph';
+import { collectionUpgrade, compileGraph, stableGraphJson, type AppPlan, type CollectionField } from './graph';
 import type { FlowTrace, Scenario } from './program';
 import type { ScenarioReport } from './target/scenario';
+import { isAbort, stageForCommand, type SpicaBuildEventSink, type SpicaBuildStage, type SpicaBuildStatus } from './build-events';
+import { lowerSpicaTarget, spicaTargetVersion, type SpicaExportTarget } from './target-lowering';
 
-const checks = ['script:check:toolchain', 'script:build', 'script:test:native', 'script:build:desktop'] as const;
+const desktopChecks = ['script:check:toolchain', 'script:build', 'script:test:native', 'script:build:desktop'] as const;
+const webChecks = ['script:build:web', 'script:test:web'] as const;
 const hash = async (content: string) => Array.from(new Uint8Array(await crypto.subtle.digest(
   'SHA-256', new TextEncoder().encode(content),
 )), byte => byte.toString(16).padStart(2, '0')).join('');
@@ -20,10 +23,13 @@ export interface BuildEvidence {
   revision: number;
   graph: string;
   target: number;
+  platform?: SpicaExportTarget;
   source: string;
   executableSha?: string;
   state: 'running' | 'passed' | 'failed' | 'cancelled';
   checks: CommandResult[];
+  activeCheck?: string;
+  activeScenario?: string;
   runtime?: RuntimeEvidence[];
   locks?: Record<string, string>;
   diagnostic?: string;
@@ -44,14 +50,17 @@ async function runStandaloneScenario(root: string, source: string, executableSha
   } finally { clearInterval(timer); signal.removeEventListener('abort', cancel); }
 }
 
-export async function inspectExport(root: string, record: SpicaRecord): Promise<ExportReview> {
-  const { emitTauri, TARGET_VERSION, OWNERSHIP_PATH, CUSTOM_PATH, customSource } = await import('./emit');
-  const source = emitTauri(record.data);
+export async function inspectExport(root: string, record: SpicaRecord, target: SpicaExportTarget = 'desktop'): Promise<ExportReview> {
+  // Reject unsupported V2 compositions before inspecting or writing any files.
+  lowerSpicaTarget(record.data, target);
+  const { emitTauri, emitWeb, OWNERSHIP_PATH, CUSTOM_PATH, customSource } = await import('./emit');
+  const targetVersion = spicaTargetVersion[target];
+  const source = target === 'web' ? emitWeb(record.data) : emitTauri(record.data);
   const ownership = await inspectGeneratedFile(root, OWNERSHIP_PATH);
   let prior: Receipt | null = null;
   if (ownership.exists) {
     try { prior = JSON.parse(ownership.current) as Receipt; } catch { throw Error('SPICA export ownership file is unreadable.'); }
-    if (prior?.appId !== record.data.appId || prior.target !== TARGET_VERSION ||
+    if (prior?.appId !== record.data.appId || prior.target !== targetVersion ||
         !Number.isSafeInteger(prior.revision) || !prior.files || typeof prior.files !== 'object' ||
         Object.keys(prior.files).length !== Object.keys(source).length ||
         Object.keys(source).some(path => !/^[a-f0-9]{64}$/.test(prior!.files[path] ?? ''))) {
@@ -61,7 +70,7 @@ export async function inspectExport(root: string, record: SpicaRecord): Promise<
   if (!prior && (await inspectProjectEnvironment(root)).rootEntryCount > 0) {
     throw Error('The first export needs an empty linked folder. Choose a dedicated destination in Project Settings.');
   }
-  const receipt: Receipt = { target: TARGET_VERSION, appId: record.data.appId, revision: record.data.revision, graph: await hash(stableGraphJson(record.data.graph)), files: {} };
+  const receipt: Receipt = { target: targetVersion, appId: record.data.appId, revision: record.data.revision, graph: await hash(stableGraphJson(record.data.graph)), files: {} };
   const changes: ProjectFileChange[] = [];
   const conflicts: ExportConflict[] = [];
   let previousCollection: AppPlan['collection'];
@@ -91,31 +100,88 @@ async function assertCurrent(record: SpicaRecord): Promise<void> {
   if (latest?.version !== record.version || latest.data.appId !== record.data.appId) throw Error('SPICA graph changed during the operation. Reload its latest revision.');
 }
 
-export async function exportSpica(root: string, record: SpicaRecord) {
-  const review = await inspectExport(root, record);
-  if (review.conflicts.length) throw Error('Managed source differs from the previous export: ' + review.conflicts.map(c => c.path).join(', ') + '. Review the differences in SPICA.');
-  await assertCurrent(record);
-  const applied = review.changes.length ? await applyProjectChanges(root, review.changes) : [];
-  await assertCurrent(record);
-  if (!(await inspectExport(root, record)).current) throw Error('Export files changed during writeback. Review the current source.');
-  return applied;
+export async function exportSpica(root: string, record: SpicaRecord, onEvent?: SpicaBuildEventSink, target: SpicaExportTarget = 'desktop') {
+  onEvent?.({ stage: 'generate', status: 'running', message: 'Inspecting and exporting generated sources.' });
+  try {
+    const review = await inspectExport(root, record, target);
+    if (review.conflicts.length) throw Error('Managed source differs from the previous export: ' + review.conflicts.map(c => c.path).join(', ') + '. Review the differences in SPICA.');
+    await assertCurrent(record);
+    const applied = review.changes.length ? await applyProjectChanges(root, review.changes) : [];
+    await assertCurrent(record);
+    if (!(await inspectExport(root, record, target)).current) throw Error('Export files changed during writeback. Review the current source.');
+    notifySpicaChange(record.scope.id);
+    onEvent?.({ stage: 'generate', status: 'passed', message: applied.length
+      ? `Exported ${applied.length} managed source files for revision ${record.data.revision}.`
+      : `Managed source already matches revision ${record.data.revision}.` });
+    return applied;
+  } catch (error) {
+    onEvent?.({ stage: 'generate', status: 'failed', message: `Export stopped: ${String(error)}` });
+    throw error;
+  }
 }
 
 export const commandPassed = (result: CommandResult) => result.exit_code === 0 &&
   !result.timed_out && !result.cancelled && result.source_before === result.source_after;
 
-export async function latestSpicaBuild(projectId: string) {
+export async function spicaDependenciesReady(root: string, target: SpicaExportTarget = 'desktop') {
+  const [project, locks] = await Promise.all([
+    inspectProjectEnvironment(root),
+    invokeProject<Record<string, string>>(target === 'web' ? 'spica_web_lock_fingerprints' : 'spica_lock_fingerprints', { root }).catch(() => null),
+  ]);
+  return project.dependenciesInstalled && locks !== null;
+}
+
+export async function prepareSpica(root: string, record: SpicaRecord, network: boolean, signal: AbortSignal,
+  onOutput?: Parameters<typeof runProjectCommand>[4], onResult?: (result: CommandResult) => void,
+  onEvent?: SpicaBuildEventSink, target: SpicaExportTarget = 'desktop') {
+  onEvent?.({ stage: 'prepare', status: 'running', message: 'Checking exported source and preparing dependencies.' });
+  try {
+    if (!(await inspectExport(root, record, target)).current) throw Error('Export the current graph before preparing its dependencies.');
+    const results: CommandResult[] = [];
+    for (const id of target === 'web' ? [network ? 'install:network' : 'install:cached'] : [network ? 'install:network' : 'install:cached', 'script:setup:native']) {
+      if (signal.aborted) throw new DOMException('Stopped', 'AbortError');
+      await assertCurrent(record);
+      onEvent?.({ stage: 'prepare', status: 'running', message: `Running ${id}.` });
+      const result = await runProjectCommand(root, id, network, signal, onOutput);
+      onResult?.(result);
+      results.push(result);
+      if (result.exit_code !== 0 || result.timed_out || result.cancelled) {
+        onEvent?.({ stage: 'prepare', status: result.cancelled || signal.aborted ? 'cancelled' : 'failed',
+          message: `${id} ${result.cancelled ? 'cancelled' : 'failed'} (exit ${result.exit_code}).`, commandRunId: result.run_id });
+        return { ok: false, results };
+      }
+      onEvent?.({ stage: 'prepare', status: 'running', message: `${id} completed successfully.`, commandRunId: result.run_id });
+    }
+    await assertCurrent(record);
+    const ok = await spicaDependenciesReady(root, target);
+    onEvent?.({ stage: 'prepare', status: ok ? 'passed' : 'failed',
+      message: ok ? 'Dependencies and native lockfile are ready.' : 'Dependencies could not be verified after preparation.' });
+    return { ok, results };
+  } catch (error) {
+    onEvent?.({ stage: 'prepare', status: isAbort(error, signal) ? 'cancelled' : 'failed', message: `Preparation stopped: ${String(error)}` });
+    throw error;
+  }
+}
+
+export async function latestSpicaBuild(projectId: string, target?: SpicaExportTarget) {
   return (await foundationStore.list<BuildEvidence>({ collection: 'spica_build', scopes: [{ kind: 'project', id: projectId }] }))
+    .filter(row => !target || row.data.target === spicaTargetVersion[target])
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.data ?? null;
 }
 
-export async function currentSpicaBuild(root: string, record: SpicaRecord) {
-  const evidence = await latestSpicaBuild(record.scope.id);
-  if (!evidence || evidence.state !== 'passed' || !evidence.executableSha || evidence.root !== root || evidence.revision !== record.data.revision ||
-      evidence.appId !== record.data.appId || evidence.graph !== await hash(stableGraphJson(record.data.graph)) ||
-      !(await inspectExport(root, record)).current || evidence.source !== (await projectSourceSnapshot(root)).sha256) return null;
-  if (evidence.executableSha !== await invokeProject<string>('spica_executable_hash', { root }).catch(() => null)) return null;
+export async function currentSpicaTargetBuild(root: string, record: SpicaRecord, target: SpicaExportTarget) {
+  const evidence = await latestSpicaBuild(record.scope.id, target);
+  if (!evidence || evidence.target !== spicaTargetVersion[target] || evidence.state !== 'passed' || !evidence.executableSha ||
+      evidence.root !== root || evidence.revision !== record.data.revision || evidence.appId !== record.data.appId ||
+      evidence.graph !== await hash(stableGraphJson(record.data.graph)) ||
+      !(await inspectExport(root, record, target)).current || evidence.source !== (await projectSourceSnapshot(root)).sha256) return null;
+  const nativeHash = target === 'web' ? 'spica_web_artifact_hash' : 'spica_executable_hash';
+  if (evidence.executableSha !== await invokeProject<string>(nativeHash, { root }).catch(() => null)) return null;
   return evidence;
+}
+
+export async function currentSpicaBuild(root: string, record: SpicaRecord) {
+  return currentSpicaTargetBuild(root, record, 'desktop');
 }
 
 export async function launchSpicaApp(root: string, record: SpicaRecord) {
@@ -127,17 +193,16 @@ export async function launchSpicaApp(root: string, record: SpicaRecord) {
 }
 
 export async function verifySpica(root: string, record: SpicaRecord, webEnabled: boolean, signal: AbortSignal,
-  onOutput?: Parameters<typeof runProjectCommand>[4], onResult?: (result: CommandResult) => void): Promise<BuildEvidence> {
-  if (!(await inspectExport(root, record)).current) throw Error('Export the current graph before verifying its standalone app.');
-  const { TARGET_VERSION } = await import('./emit');
-  const locks = Object.fromEntries(await Promise.all(['package-lock.json', 'src-tauri/Cargo.lock'].map(async path => {
-    const file = await inspectGeneratedFile(root, path);
-    if (!file.exists) throw Error(`Missing ${path}. Prepare the exported dependencies from cache first.`);
-    return [path, await hash(file.current)];
-  })));
+  onOutput?: Parameters<typeof runProjectCommand>[4], onResult?: (result: CommandResult) => void,
+  onEvent?: SpicaBuildEventSink, target: SpicaExportTarget = 'desktop'): Promise<BuildEvidence> {
+  onEvent?.({ stage: 'validate', status: 'running', message: 'Inspecting current managed source before verification.' });
+  if (!(await inspectExport(root, record, target)).current) {
+    onEvent?.({ stage: 'validate', status: 'failed', message: 'Managed source is not current. Export this revision before verifying.' });
+    throw Error('Export the current graph before verifying its standalone app.');
+  }
   const data: BuildEvidence = {
     appId: record.data.appId, root, revision: record.data.revision, graph: await hash(stableGraphJson(record.data.graph)),
-    target: TARGET_VERSION, source: (await projectSourceSnapshot(root)).sha256, state: 'running', checks: [], locks,
+    target: spicaTargetVersion[target], platform: target, source: (await projectSourceSnapshot(root)).sha256, state: 'running', checks: [],
   };
   const evidence = newRecord('spica_build', uid(), record.scope, record.title, data);
   await foundationStore.batch([{ record: evidence, expected: null }]);
@@ -146,45 +211,83 @@ export async function verifySpica(root: string, record: SpicaRecord, webEnabled:
     const expected = evidence.version;
     await foundationStore.batch([{ record: { ...evidence, version: expected + 1, updatedAt: new Date().toISOString() }, expected }]);
     evidence.version++;
+    notifySpicaChange(record.scope.id);
+  };
+  let stage: SpicaBuildStage = 'validate';
+  let stageCompleted = true;
+  const begin = (next: SpicaBuildStage, message: string) => {
+    stage = next;
+    stageCompleted = false;
+    onEvent?.({ stage, status: 'running', message });
+  };
+  const finish = (status: SpicaBuildStatus, message: string, commandRunId?: string) => {
+    stageCompleted = true;
+    onEvent?.({ stage, status, message, ...(commandRunId ? { commandRunId } : {}) });
   };
   try {
-    for (const id of checks) {
+    if (signal.aborted) throw new DOMException('Stopped', 'AbortError');
+    begin('validate', `Reading ${target} dependency lock fingerprints.`);
+    data.locks = await invokeProject<Record<string, string>>(target === 'web' ? 'spica_web_lock_fingerprints' : 'spica_lock_fingerprints', { root });
+    finish('passed', `${target} dependency lock fingerprints recorded.`);
+    for (const id of target === 'web' ? webChecks : desktopChecks) {
+      if (signal.aborted) throw new DOMException('Stopped', 'AbortError');
       await assertCurrent(record);
+      data.activeCheck = id;
+      begin(stageForCommand(id), `Running ${id}.`);
+      await persist();
       const result = await runProjectCommand(root, id, webEnabled, signal, onOutput);
       data.checks.push(result);
+      delete data.activeCheck;
       onResult?.(result);
       await persist();
-      if (result.cancelled || result.timed_out || result.exit_code !== 0)
-        throw Error(id + ' ended with ' + (result.cancelled ? 'cancellation' : result.timed_out ? 'a timeout' : 'exit ' + result.exit_code) + '. Command log ' + result.run_id);
-      if (!commandPassed(result) || result.source_after !== data.source)
+      if (!commandPassed(result) || result.source_after !== data.source) {
+        const cancelled = signal.aborted || result.cancelled;
+        finish(cancelled ? 'cancelled' : 'failed', `${id} ${cancelled ? 'cancelled' : 'failed'} (exit ${result.exit_code}).`, result.run_id);
+        if (result.cancelled || result.timed_out || result.exit_code !== 0)
+          throw Error(id + ' ended with ' + (result.cancelled ? 'cancellation' : result.timed_out ? 'a timeout' : 'exit ' + result.exit_code) + '. Command log ' + result.run_id);
         throw Error('Source changed during ' + id + '. Command log ' + result.run_id);
+      }
+      finish('passed', `${id} passed in ${Math.round(result.duration_ms)} ms.`, result.run_id);
     }
+    begin('validate', 'Checking final source fingerprint and export ownership.');
     await assertCurrent(record);
-    if (!(await inspectExport(root, record)).current || (await projectSourceSnapshot(root)).sha256 !== data.source) {
+    if (!(await inspectExport(root, record, target)).current || (await projectSourceSnapshot(root)).sha256 !== data.source) {
       throw Error('Project source changed during verification. Run it again against the current export.');
     }
-    data.executableSha = await invokeProject<string>('spica_executable_hash', { root });
+    data.executableSha = await invokeProject<string>(target === 'web' ? 'spica_web_artifact_hash' : 'spica_executable_hash', { root });
+    finish('passed', `${target} artifact and source fingerprints verified.`);
     data.runtime = [];
-    for (const scenario of record.data.graph.program?.scenarios ?? []) {
+    const scenarios = target === 'desktop' ? compileGraph(record.data.graph).program?.scenarios ?? [] : [];
+    if (!scenarios.length) onEvent?.({ stage: 'scenario-test', status: 'skipped', message: target === 'web' ? 'Browser behavioral scenarios require a separately configured real browser runner.' : 'No saved native scenarios are defined for this graph.' });
+    for (const scenario of scenarios) {
+      if (signal.aborted) throw new DOMException('Stopped', 'AbortError');
       await assertCurrent(record);
+      data.activeScenario = scenario.id;
+      begin('scenario-test', `Running native scenario: ${scenario.label}.`);
+      await persist();
       onOutput?.({ stream: 'stdout', chunk: `\nRunning ${scenario.label} in the built app with isolated SQLite data.\n` });
       const result = await runStandaloneScenario(root, data.source, data.executableSha, scenario, signal);
       data.runtime.push(result);
+      delete data.activeScenario;
       await persist();
       const failed = result.reports.find(report => report.state === 'failed');
       if (failed) throw Error(`${scenario.label} · ${failed.diagnostic ?? 'Scenario failed.'}`);
       if (result.reports[0]?.completed !== scenario.steps.length ||
           (scenario.reopened?.length && result.reports[1]?.completed !== scenario.reopened.length)) throw Error(`Incomplete scenario evidence for ${scenario.id}.`);
       onOutput?.({ stream: 'stdout', chunk: `${scenario.label} passed ${result.reports.map(report => `${report.phase} (${report.completed} steps)`).join(' and ')}.\n` });
+      finish('passed', `${scenario.label} passed ${result.reports.reduce((sum, report) => sum + report.completed, 0)} steps.`, result.runId);
     }
     if (signal.aborted) throw new DOMException('Stopped', 'AbortError');
     await assertCurrent(record);
     data.state = 'passed';
   } catch (error) {
-    data.state = signal.aborted ? 'cancelled' : 'failed';
+    data.state = isAbort(error, signal) ? 'cancelled' : 'failed';
     data.diagnostic = String(error);
+    if (!stageCompleted) finish(data.state, `Verification stopped: ${String(error)}`);
+    else onEvent?.({ stage: 'validate', status: data.state, message: `Verification stopped: ${String(error)}` });
   }
+  delete data.activeCheck;
+  delete data.activeScenario;
   await persist();
-  notifySpicaChange(record.scope.id);
   return data;
 }

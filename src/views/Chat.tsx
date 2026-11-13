@@ -18,21 +18,22 @@ import { ThinkingPanel, type ThinkingSnapshot } from '../components/ThinkingPane
 import { ChangesetReview } from '../components/ChangesetReview';
 import { LiveWorkspace } from '../components/LiveWorkspace';
 import { WorkLog } from '../components/WorkLog';
-import { SpicaPreview, type PreviewMode } from '../components/SpicaPreview';
+import { SpicaWorkbench } from '../components/SpicaWorkbench';
 import { SpicaEditReview } from '../components/SpicaEditReview';
-import { onSpicaChange, SpicaRepository, type SpicaRecord } from '../spica/repository';
-import { currentSpicaBuild, latestSpicaBuild, launchSpicaApp, type BuildEvidence } from '../spica/export';
 import { StoryCast } from '../components/StoryCast';
-import { evolveVisualAction, type VisualAction, type ActionUpdate } from '../engine/visual-actions';
+import { evolveVisualAction, type VisualAction } from '../engine/visual-actions';
 import { type LiveWorkspaceUpdate } from '../engine/live-workspace';
-import { researchTopic, nativeSearchProvider } from '../research/research';
 
 import { WritingRepository } from '../writing/repository';
 import { InlineWritingBlock } from '../components/InlineWritingBlock';
 import { WritingWorkspace } from '../components/WritingWorkspace';
 import { TaskStatus } from '../components/TaskStatus';
+import { SpicaTaskPlanView } from '../components/SpicaTaskPlanView';
+import { TaskExecution } from '../engine/intelligence/task';
+import { isImplementationRequest } from '../engine/task-intent';
+import type { SpicaTaskPlan } from '../engine/intelligence/spica-task-orchestrator';
+import type { AgentCycleBudget } from '../engine/intelligence/agent-budget';
 import { SaveToSources } from '../components/sources/SaveToSources';
-import { shouldAutoResearch } from '../engine/task-intent';
 import { ACTION_MODE_HELP, taskGrantForTool } from '../engine/action-permissions';
 import { readAttachments } from '../engine/creator';
 import SendRounded from '@mui/icons-material/SendRounded';
@@ -43,7 +44,7 @@ import SmartToyOutlined from '@mui/icons-material/SmartToyOutlined';
 import { AvatarView } from '../components/AvatarView';
 import { useSolarium } from '../state/useSolarium';
 import { suggestExpression } from '../domain/expressions';
-import { now, uid, type ActionMode, type GenerationMetrics, type SparkMode, type Expression, type ChatAttachment, type ChatSource, type TerminalRun } from '../domain/types';
+import { now, uid, type ActionMode, type GenerationMetrics, type SparkMode, type Expression, type ChatAttachment, type TerminalRun } from '../domain/types';
 import { runConversation } from '../engine/conversation-run';
 import { AgentEventEmitter } from '../engine/activity';
 import { scanGGUFDirectory } from '../engine/desktop';
@@ -59,8 +60,9 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
   const session = workspace.sessions.find((s) => s.id === workspace.activeSessionId);
   const modelId = session?.modelId ?? spark.preferredModelId ?? workspace.models[0]?.id ?? '';
   const model = workspace.models.find((m) => m.id === modelId);
-  const projectFolder=(workspace.projects??[]).find(p=>p.id===session?.projectId)?.folder;
-  const projectId = session?.projectId;
+  const project = (workspace.projects ?? []).find(item => item.id === (session ? session.projectId : workspace.activeProjectId));
+  const projectFolder = project?.folder;
+  const cycleBudget:AgentCycleBudget = workspace.preferences.spicaCycleBudget??4096;
   const actionMode = workspace.preferences.actionMode ?? 'ask';
   const [input, setInput] = useState('');
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -69,6 +71,8 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
   const [autoReact, setAutoReact] = useState(true);
   const [metrics, setMetrics] = useState<GenerationMetrics | null>(null);
   const [draft, setDraft] = useState('');
+  const [spicaPlan, setSpicaPlan] = useState<SpicaTaskPlan|null>(null);
+  const [planExpanded, setPlanExpanded] = useState(false);
   const [pendingTerminalRuns, setPendingTerminalRuns] = useState<TerminalRun[]>([]);
   const [liveMessageId, setLiveMessageId] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -77,9 +81,7 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
   const [busyStartedAt, setBusyStartedAt] = useState<number | null>(null);
   const [liveWorkspace, setLiveWorkspace] = useState<LiveWorkspaceUpdate | null>(null);
   const [showLiveWorkspace, setShowLiveWorkspace] = useState(false);
-  const [spicaMode, setSpicaMode] = useState<PreviewMode>('closed');
-  const [spicaError, setSpicaError] = useState('');
-  const [spicaPreview, setSpicaPreview] = useState<{ record: SpicaRecord; build: BuildEvidence | null; verified: boolean } | null>(null);
+  const [spicaOpen, setSpicaOpen] = useState(false);
   const [activeActions, setActiveActions] = useState<VisualAction[]>([]);
   const pendingActions = useRef<Map<string,VisualAction>>(new Map());
   const actionOwner = useRef<{sessionId:string;messageId:string}>({sessionId:'pending',messageId:'pending'});
@@ -124,7 +126,6 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
   const [recoveredWriting,setRecoveredWriting]=useState<{document:import('../writing/types').WritingDocument;content:string}|null>(null);
   const [usedSavedSources,setUsedSavedSources]=useState<import('../sources/repository').RetrievedSource[]>([]);
   useEffect(()=>{const prompt=useSolarium.getState().pendingComposer;if(prompt){setInput(prompt);useSolarium.setState({pendingComposer:null});}},[]);
-  const [researchStatus, setResearchStatus] = useState('');
   const attachRef = useRef<HTMLInputElement>(null);
   const [attaching, setAttaching] = useState(false);
   const [approval, setApproval] = useState<{ name: string; args: Record<string, unknown> } | null>(null);
@@ -133,31 +134,28 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
   const displayFrame = useRef<number | null>(null);
   const thinkingFrame = useRef<number | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    let alive=true;
+    setSpicaPlan(null);setPlanExpanded(false);
+    if(session?.id) void TaskExecution.latestSpicaPlan(session.id,session.projectId??null)
+      .then(plan=>{if(alive){setSpicaPlan(plan);setPlanExpanded(Boolean(plan&&plan.status!=='completed'));}})
+      .catch(e=>{if(alive)setError(`Saved build plan could not be loaded: ${String(e)}`);});
+    return ()=>{alive=false;};
+  },[session?.id,session?.projectId]);
+  const planProposed=Boolean(project?.folder && !spicaPlan && input.trim() &&
+    isImplementationRequest(input,true) && !/\b(?:fanfic|chapter|novel|fiction|story|poem)\b/i.test(input));
+  function pauseBuild(){controller.current?.abort('paused');answerApproval('deny');}
+  function cancelBuild(){
+    if(controller.current){controller.current.abort('cancelled');answerApproval('deny');return;}
+    if(session)void TaskExecution.updateSpicaStatus(session.id,session.projectId??null,'cancelled')
+      .then(plan=>{if(plan)setSpicaPlan(plan);}).catch(e=>setError(String(e)));
+  }
   useEffect(() => {
     // Do not show another conversation's source when the user switches chats.
     setWritingId(null);setRecoveredWriting(null);setUsedSavedSources([]);setLiveWorkspace(null); setShowLiveWorkspace(false); setActiveActions([]);
-    setSpicaMode('closed'); setSpicaError('');
+    setSpicaOpen(false);
     if (workspaceCloseTimer.current !== null) clearTimeout(workspaceCloseTimer.current);
   }, [workspace.activeSessionId]);
-  useEffect(() => {
-    if (!projectId) return;
-    const repo = new SpicaRepository(projectId);
-    let active = true;
-    let sequence = 0;
-    async function refresh() {
-      const request = ++sequence;
-      try {
-        const record = await repo.read();
-        const last = record && projectFolder ? await latestSpicaBuild(projectId!) : null;
-        const build = last?.root === projectFolder && last?.revision === record?.data.revision ? last : null;
-        const verified = Boolean(record && projectFolder && build?.state === 'passed' && await currentSpicaBuild(projectFolder, record).catch(() => null));
-        if (active && request === sequence) setSpicaPreview(record ? { record, build, verified } : null);
-      } catch { if (active && request === sequence) setSpicaPreview(null); }
-    }
-    const unsubscribe = onSpicaChange(projectId, () => void refresh());
-    void refresh();
-    return () => { active = false; unsubscribe(); };
-  }, [projectId, projectFolder]);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [draft, session?.messages.length]);
   useEffect(() => () => {
     controller.current?.abort(); approvalRef.current?.('deny'); approvalRef.current = null;
@@ -199,7 +197,6 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
   }
   function requestApproval(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<Decision> {
     if (signal.aborted) return Promise.resolve('deny');
-    setSpicaMode(mode => mode === 'overlay' ? 'dock' : mode);
     return new Promise((resolve) => {
       const done = (value: Decision) => { signal.removeEventListener('abort', abort); resolve(value); };
       const abort = () => { approvalRef.current = null; setApproval(null); done('deny'); };
@@ -218,22 +215,6 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
   }
   function onDrop(event: DragEvent<HTMLElement>) { event.preventDefault(); if (event.dataTransfer.files.length) void attachFiles(event.dataTransfer.files); }
   function onAttachmentChange(event: ChangeEvent<HTMLInputElement>) { if (event.target.files) void attachFiles(event.target.files); event.target.value = ''; }
-  async function researchPrompt(text: string, progress: (update: ActionUpdate) => void, emitter: AgentEventEmitter): Promise<{ context: string; sources: ChatSource[] }> {
-    if (!research || !shouldAutoResearch(text)) return { context: '', sources: [] };
-    const w=useSolarium.getState().workspace;const chat=w.sessions.find(c=>c.id===w.activeSessionId);const project=(w.projects??[]).find(p=>p.id===chat?.projectId);
-    const operationId=`research:${emitter.runId}`;
-    const signal=controller.current?.signal??new AbortController().signal;
-    for(const name of ['search_web','open_web_page']){
-      if(w.preferences.toolPermissions[name]==='deny')throw Error(`${name} is blocked in Tool permissions.`);
-      if((w.preferences.actionMode??'ask')==='ask'&&await requestApproval(name,{query:text},signal)!=='allow')throw Error('Web research was denied.');
-    }
-    const provider=await nativeSearchProvider(w.preferences.searchProvider??{kind:'bing'},research);
-    const result=await researchTopic(text,`${project?.description??''} ${chat?.messages.filter(m=>m.role==='user').slice(-2).map(m=>m.content.slice(0,300)).join(' ')??''}`,provider,research,signal,candidates=>{
-      progress({operationId,kind:'search',status:'running',title:'Researching relevant sources',query:candidates[0]?.query,sources:candidates.map(c=>({title:c.title,url:c.url,excerpt:c.page?.text??c.excerpt,status:c.status})),detail:`${candidates.filter(c=>c.status==='read').length} pages read · ${candidates.length} results`});
-    });
-    progress({operationId,kind:'search',status:'completed',title:'Research results',query:result.intent.query,sources:result.candidates.map(c=>({title:c.title,url:c.url,excerpt:c.page?.text??c.excerpt,status:c.status})),detail:`${result.candidates.filter(c=>c.status==='read').length} actual pages read`});
-    return {context:result.context,sources:result.candidates.map(c=>({title:c.title,url:c.url,excerpt:c.page?.text??c.excerpt,readState:c.status==='read'?'read':'found'}))};
-  }
   async function send(request: ReplyRequest = { kind: 'new' }) {
     // Resolve the original turn first: retries must regenerate in the same
     // conversation, with the original attachments and selected model.
@@ -254,20 +235,9 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
     actionOwner.current = { sessionId: replySession?.id ?? before.activeSessionId ?? 'pending', messageId: assistantId };
     pendingActions.current = new Map(); setActiveActions([]); currentActionId.current = null;
     const abort = new AbortController(); controller.current = abort;
-    const willSearch = research && shouldAutoResearch(text);
     setLiveWorkspace(null); setShowLiveWorkspace(false); clearEvents();
-    const researchEmitter = new AgentEventEmitter(pushEvent, replySession?.id ?? before.activeSessionId ?? undefined);
-    setBusy(true); setBusyStartedAt(performance.now()); setChatStatus(willSearch ? 'searching' : 'loading'); setReaction(null);
+    setBusy(true); setBusyStartedAt(performance.now()); setChatStatus('loading'); setReaction(null);
     thinkingPhaseStart.current = null;
-    if (willSearch) setResearchStatus('Searching and reading public websites…');
-    let web: { context: string; sources: ChatSource[] } = { context: '', sources: [] };
-    try { web = await researchPrompt(text, updateAction, researchEmitter); }
-    catch (error) {
-      if (!abort.signal.aborted) setError(`Web research failed: ${String(error)}`);
-      controller.current = null; setBusy(false); setBusyStartedAt(null); setResearchStatus(''); return;
-    } finally { setResearchStatus(''); }
-    if (abort.signal.aborted) { controller.current = null; setBusy(false); setBusyStartedAt(null); return; }
-    setChatStatus('loading'); setShowLiveWorkspace(false);
     try { await ensureGGUF(selectedModel); }
     catch (error) {
       if (!abort.signal.aborted) setError(`Cannot load model: ${String(error)}`);
@@ -309,15 +279,24 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
     const terminalRuns: TerminalRun[] = [];
     setPendingTerminalRuns([]);
     let thinkingSnapshot: ThinkingSnapshot | undefined;
+    let openedSpica = false;
     try {
       completed = await runConversation({
         spark: activeSpark, model: activeModel, session: chat,
         memories: updated.memories, worlds: updated.worlds ?? [], preferences: updated.preferences, events, signal: abort.signal,
-        supplementalContext: web.context, projects: updated.projects ?? [],
+        projects: updated.projects ?? [],
         messageId:assistantId,onSavedSources:refs=>setUsedSavedSources(refs),
         onWorkspace: updateAction,
+        onTaskPlan:plan=>{if(useSolarium.getState().workspace.activeSessionId===targetId)setSpicaPlan(previous=>{if(!previous||previous.taskId!==plan.taskId)setPlanExpanded(true);return plan;});},
+        beforeTool: async name => {
+          if (!openedSpica && ['create_spica_app', 'edit_spica_graph', 'export_spica_app', 'prepare_spica_app', 'verify_spica_app',
+            'migrate_spica_v2_graph',  'compose_spica_v2_graph', 'run_spica_v2_graph'].includes(name) && useSolarium.getState().workspace.activeSessionId === targetId) {
+            openedSpica = true;
+            setSpicaOpen(true);
+          }
+        },
         onWorkUpdate:text=>{completed=completed.slice(0,-text.length);setDraft(completed);},
-        onMetrics: setMetrics, webEnabled: research,
+        onMetrics: setMetrics, webEnabled: research, isWebEnabled: () => useSolarium.getState().webEnabled,
         onWritingTask:progress=>{setLoadedModel(`${progress.characters.toLocaleString()} characters · ${progress.words.toLocaleString()} words · ${progress.state}`);},
         onTerminal: (record) => { terminalRuns.push(record); setPendingTerminalRuns([...terminalRuns]); },
         onThinking: (state) => {
@@ -335,7 +314,7 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
           });
         },
         onApproval: (name, args) => requestApproval(name, args, abort.signal),
-      },useSolarium.getState(),web.sources);
+      },useSolarium.getState());
     } catch (e) {
       if (!abort.signal.aborted) { events.emit('error', String(e)); setError(String(e)); }
     } finally {
@@ -398,7 +377,7 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
     if(!session)return;try{const saved=await new WritingRepository({sessionId:session.id,projectId:session.projectId??null}).get(id);setRecoveredWriting({document:saved.document,content:saved.content.markdownProjection});}catch(error){setError(String(error));}
   }
   function keydown(e: KeyboardEvent<HTMLDivElement>) { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }
-  const previewApp = spicaPreview?.record.scope.id === projectId ? spicaPreview : null;
+  const spicaLog = liveWorkspace?.status === 'running' && /(?:prepare|verify)_spica_app/.test(liveWorkspace.title) ? liveWorkspace.output : undefined;
   return <div className="chat-layout" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
     <section className="chat-primary">
       <div className="chat-header">
@@ -408,7 +387,7 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
           {metrics && <Tooltip title={`First token ${metrics.firstTokenMs?.toFixed(0) ?? '—'} ms · ${metrics.completionTokens === null ? 'estimated' : 'reported'} output tokens`}><Chip size="small" variant="outlined" label={`${metrics.tokensPerSecond ?? '—'} tok/s${metrics.completionTokens === null ? ' ≈' : ''}`} /></Tooltip>}
           <Tooltip title="Toggle lightweight avatar reaction from completed text"><Button size="small" variant="text" onClick={() => { setAutoReact((v) => !v); setReaction(null); }} sx={{ fontSize: 10 }}>{autoReact ? 'Expressions on' : 'Expressions off'}</Button></Tooltip>
           <Button size="small" onClick={() => setLibraryOpen(true)}>Assets ({(workspace.assets ?? []).length})</Button>
-          {previewApp && <Button size="small" onClick={() => setSpicaMode('dock')}>Preview app</Button>}
+          {project && <Button size="small" onClick={() => setSpicaOpen(true)}>Preview app</Button>}
           <Tooltip title="New conversation"><IconButton aria-label="New conversation" disabled={busy} onClick={() => createSession()}><AddRounded fontSize="small" /></IconButton></Tooltip>
         </Stack>
       </div>
@@ -463,15 +442,22 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
               <RichMessage codeContext={message.role==='assistant'?{access:{sessionId:session!.id,projectId:session!.projectId??null},messageId:message.id,sparkId:message.sparkId,naturalEnd:message.generationOutcomes?.at(-1)?.reason==='natural_eos'}:undefined} text={message.content} attachments={message.attachments} sources={message.sources} assets={blockAssets(message.id)} projectFolder={projectFolder} writingContext={{access:{sessionId:session.id,projectId:session.projectId??null},messageId:message.id,storyId:session.storyId,onContinue:title=>setInput(`Continue "${title}" from its saved ending, preserving character voices, knowledge and story memories. Write in a writing block.`)}} onOpenBlock={(block) => openBlock(message.id, block)} onSaveAsset={(block) => saveBlock(message.id, block)}/>{session&&<SaveToSources text={message.content} origin={{kind:'message',sessionId:session.id,messageId:message.id}} access={{sessionId:session.id,projectId:session.projectId??null}} projectName={(workspace.projects??[]).find(p=>p.id===session.projectId)?.name}/>}
               {Boolean(message.savedSourceRefs?.length)&&<Button size="small" onClick={()=>setView('sources')}>Saved references supplied: {message.savedSourceRefs!.map(r=>r.title).join(', ')}</Button>}
               {message.generationWarning && <Typography className="generation-warning" title={message.generationWarning} fontSize={10} color="text.secondary">◌ Response may be incomplete · {message.generationWarning}</Typography>}
+              {message === session.messages.at(-1) && message.role === 'assistant' &&
+                message.content.startsWith('**SPICA work incomplete.**') &&
+                <Button size="small" disabled={busy} onClick={() => setInput('Resume the SPICA task')}>Resume task</Button>}
               <Button sx={{ mt: .35, opacity: .7, fontSize: 10 }} size="small" disabled={busy} onClick={() => { if (session) useSolarium.getState().branchSession(session.id, message.id); }} title="Create an independent conversation from this message">↳ Branch from here</Button>
             </>}
           </div>
         </div>)}
         {usedSavedSources.length>0&&busy&&<Typography fontSize={10} color="text.secondary">Saved references supplied: {usedSavedSources.map(s=>s.title).join(', ')}</Typography>}
-        {busy && <div className="message-row assistant"><AvatarView avatar={reaction ? { ...spark.avatar, expression: reaction } : spark.avatar} size={26} active /><div className="message-content"><Typography fontSize={11} fontWeight={700} mb={.6}>{spark.name} <CircularProgress size={10} sx={{ ml: .8 }} /></Typography><ThinkingPanel snapshot={thinking} busy busyStartedAt={busyStartedAt} status={chatStatus}/><WorkLog busy actions={activeActions.filter(action => action.messageId === liveMessageId && action.sessionId === session?.id)} runs={pendingTerminalRuns} root={projectFolder} onOpen={selected => { setLiveWorkspace(selected); setShowLiveWorkspace(true); }}/><RichMessage streaming codeContext={session&&liveMessageId?{access:{sessionId:session.id,projectId:session.projectId??null},messageId:liveMessageId,sparkId:spark.id,streaming:true}:undefined} text={draft || researchStatus || ''} projectFolder={projectFolder} writingContext={session&&liveMessageId?{access:{sessionId:session.id,projectId:session.projectId??null},messageId:liveMessageId,storyId:session.storyId}:undefined} onOpenBlock={liveMessageId ? (block) => openBlock(liveMessageId, block) : undefined}/></div></div>}
+        {busy && <div className="message-row assistant"><AvatarView avatar={reaction ? { ...spark.avatar, expression: reaction } : spark.avatar} size={26} active /><div className="message-content"><Typography fontSize={11} fontWeight={700} mb={.6}>{spark.name} <CircularProgress size={10} sx={{ ml: .8 }} /></Typography><ThinkingPanel snapshot={thinking} busy busyStartedAt={busyStartedAt} status={chatStatus}/><WorkLog busy actions={activeActions.filter(action => action.messageId === liveMessageId && action.sessionId === session?.id)} runs={pendingTerminalRuns} root={projectFolder} onOpen={selected => { setLiveWorkspace(selected); setShowLiveWorkspace(true); }}/><RichMessage streaming codeContext={session&&liveMessageId?{access:{sessionId:session.id,projectId:session.projectId??null},messageId:liveMessageId,sparkId:spark.id,streaming:true}:undefined} text={draft} projectFolder={projectFolder} writingContext={session&&liveMessageId?{access:{sessionId:session.id,projectId:session.projectId??null},messageId:liveMessageId,storyId:session.storyId}:undefined} onOpenBlock={liveMessageId ? (block) => openBlock(liveMessageId, block) : undefined}/></div></div>}
         <div ref={bottom} />
       </div>}
       <div className="composer-wrap">
+        {(spicaPlan||planProposed)&&<SpicaTaskPlanView plan={spicaPlan} proposed={planProposed} expanded={planExpanded}
+          onToggle={()=>setPlanExpanded(value=>!value)} busy={busy} budget={cycleBudget}
+          onBudgetChange={value=>updatePreferences({spicaCycleBudget:value})} onPause={pauseBuild}
+          onResume={()=>{setInput('Resume the saved SPICA build task');setPlanExpanded(true);}} onCancel={cancelBuild}/>}
         {error && <Alert severity="warning" onClose={() => setError('')} sx={{ mb: 1 }}>{error}</Alert>}
         <div className="composer-model-row">
           <FormControl size="small" sx={{ minWidth: 225, maxWidth: '85%' }}>
@@ -517,12 +503,9 @@ export function Chat({embedded=false}:{embedded?:boolean}={}) {
 
       </div>
     </section>
-    {previewApp && <SpicaPreview key={session?.id} record={previewApp.record} mode={spicaMode} onMode={setSpicaMode}
-      verification={previewApp.build?.state === 'running' && busy ? 'Testing standalone app…' : previewApp.verified ? 'Standalone build passed' : 'Sample app · Build needed'}
-      error={spicaError} onLaunch={previewApp.verified && projectFolder && !busy ? () => {
-        setSpicaError('');
-        void launchSpicaApp(projectFolder, previewApp.record).catch(error => setSpicaError(String(error)));
-      } : undefined} />}
+    {project && <SpicaWorkbench key={project.id + '/' + (project.folder ?? '')} project={project} open={spicaOpen && !approval}
+      onClose={() => setSpicaOpen(false)} agentBusy={busy || modelBusy} agentLog={spicaLog}
+      onStopAgent={() => controller.current?.abort()} onPrompt={text => { setInput(text); setSpicaOpen(false); }} />}
     {writingId&&session&&<WritingWorkspace documentId={writingId} access={{sessionId:session.id,projectId:session.projectId??null}} onClose={()=>setWritingId(null)}/>}
     {editorBlock && selectedBlock?.sessionId === session?.id && <BlockWorkbench block={editorBlock} onClose={() => setSelectedBlock(null)} onSave={(block) => { if (selectedBlock) saveBlock(selectedBlock.messageId, block); }} onRewrite={(excerpt, document) => { setInput(`Rewrite only the selected passage from "${document.title}" while preserving its style and continuity. Return the revised passage, not the entire chapter.\n\n${excerpt}`); setSelectedBlock(null); }} projectFolder={(workspace.projects ?? []).find((p) => p.id === session?.projectId)?.folder || undefined} history={storedAsset?.history}/>}
 

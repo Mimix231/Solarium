@@ -17,8 +17,12 @@ export interface LiveWorkspaceUpdate {
 }
 
 export const workKindForTool = (name: string): WorkKind | null => ({
-    search_spica_warehouse:'search',inspect_spica_component:'inspect',
-    read_spica_graph:'inspect',edit_spica_graph:'save',export_spica_app:'generate',verify_spica_app:'check',
+    list_solarium_tools:'inspect',inspect_solarium_tool:'inspect',inspect_spica_identifier:'inspect',list_spica_toolchain:'inspect',inspect_spica_tool:'inspect',check_spica_tool_call:'check',inspect_spica_wiring:'inspect',search_spica_warehouse:'search',inspect_spica_component:'inspect',inspect_params:'inspect',validate_spica_edit:'check',search_spica_catalog:'search',list_spica_categories:'inspect',inspect_spica_catalog:'inspect',
+    spica_research_status:'inspect',spica_research_search:'search',spica_research_read:'inspect',spica_research_links:'inspect',spica_research_follow:'search',spica_research_compare:'check',spica_research_claim:'check',spica_research_next:'inspect',spica_research_save:'save',spica_research_stop:'inspect',
+    inspect_spica_build:'inspect',migrate_spica_v2_graph:'edit',history_spica_v2_graph:'save',
+    list_spica_runtime_blocks:'inspect',search_spica_runtime_blocks:'search',inspect_spica_runtime_block:'inspect',
+    validate_spica_composition:'check',compose_spica_v2_graph:'save',run_spica_v2_graph:'execute',
+    create_spica_app:'save',read_spica_graph:'inspect',edit_spica_graph:'save',export_spica_app:'generate',prepare_spica_app:'check',verify_spica_app:'check',
   plan_project_app:'inspect',read_app_plan:'inspect',complete_app_step:'check',
   inspect_code_position:'inspect',read_dependency_api:'inspect',register_project_command:'inspect',start_project_service:'execute',inspect_project_service:'inspect',stop_project_service:'execute',
   search_web: 'search', open_web_page: 'search', inspect_project: 'inspect',

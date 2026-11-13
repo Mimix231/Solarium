@@ -1,4 +1,11 @@
 export interface ProseIssue { kind: 'document_marker' | 'repeated_passage'; message: string; passage: string }
+export const sceneSpacerStyles = ['rule', 'dots', 'space'] as const;
+export type SceneSpacerStyle = typeof sceneSpacerStyles[number];
+export const sceneBreak = '\n\n***\n\n';
+
+export function withoutSceneHeadings(text: string) {
+  return text.replace(/^[ \t]*(?:#{1,6}[ \t]+(?:scene|part)[ \t]+\d+\b[^\r\n]*|(?:\*\*|__)?(?:scene|part)[ \t]+\d+\b(?:[ \t]*[:.\u2013\u2014-][^\r\n]*)?(?:\*\*|__)?[ \t]*)(?:\r?\n|$)/gim, '');
+}
 /** Presentation recovery never mutates the original message or a saved revision. */
 export function readableProse(original: string): { text: string; issues: ProseIssue[] } {
   const issues: ProseIssue[] = [];

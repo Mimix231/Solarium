@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Avatar, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Avatar, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import type { ChatSession } from '../domain/types';
 import { StoryRepository, type ClaimData, type ClaimSection, type StoryCharacter, type StoryWorld, type StoryEvent } from '../stories/repository';
 import { useSolarium } from '../state/useSolarium';
+import { FictionRepository, type StoryCategory, type StoryProfile } from '../stories/fiction';
 
 const profileFields: { key: string; label: string; section: ClaimSection }[] = [
   { key: 'voice', label: 'Voice and speech habits', section: 'Personality & Voice' },
@@ -13,12 +14,32 @@ const profileFields: { key: string; label: string; section: ClaimSection }[] = [
 ];
 export function StoryCast({ session, busy }: { session: ChatSession; busy: boolean }) {
   const repo = useMemo(() => new StoryRepository({ sessionId: session.id, projectId: session.projectId ?? null }), [session.id, session.projectId]);
+  const fiction = useMemo(() => new FictionRepository(repo), [repo]);
   const [worlds, setWorlds] = useState<StoryWorld[]>([]), [cast, setCast] = useState<StoryCharacter[]>([]), [error, setError] = useState('');
+  const [categories, setCategories] = useState<StoryCategory[]>([]), [profiles, setProfiles] = useState<StoryProfile[]>([]);
   const [worldForm, setWorldForm] = useState(false), [title, setTitle] = useState(''), [origin, setOrigin] = useState<'original' | 'fanfiction'>('original'), [franchise, setFranchise] = useState('');
   const [card, setCard] = useState<StoryCharacter | 'new' | null>(null), [name, setName] = useState(''), [role, setRole] = useState(''), [portrait, setPortrait] = useState(''), [fields, setFields] = useState<Record<string, string>>({}), [saving, setSaving] = useState(false);
   const [memories,setMemories]=useState<StoryEvent[]>([]);
-  const load = useCallback(async () => { const worlds = (await repo.list()).filter(w => w.scope.kind !== 'library'); setWorlds(worlds); setCast(session.storyId ? await repo.characters(session.storyId) : []); }, [repo, session.storyId]);
+  const categoryId = session.fiction?.categoryId;
+  const load = useCallback(async () => {
+    setWorlds(await repo.list());
+    if (!session.storyId) { setCast([]); setCategories([]); setProfiles([]); return; }
+    const [characters, items] = await Promise.all([repo.characters(session.storyId), fiction.categories(session.storyId)]);
+    setCast(characters); setCategories(items);
+    setProfiles(categoryId && items.some(item => item.id === categoryId) ? await fiction.profiles(session.storyId, categoryId) : []);
+  }, [repo, fiction, session.storyId, categoryId]);
   useEffect(() => { void load().catch(e => setError(String(e))); const timer = setInterval(() => void load().catch(e => setError(String(e))), 4000); return () => clearInterval(timer); }, [load]);
+  async function chooseStory(id: string) {
+    const world = worlds.find(item => item.id === id);
+    setSaving(true);
+    try {
+      const selected = world?.scope.kind === 'library' ? await fiction.copyPersonal(id, session.projectId ?
+        { kind: 'project', id: session.projectId } : { kind: 'chat', id: session.id }) : world;
+      useSolarium.getState().updateSession(session.id, { storyId: selected?.id ?? null, fiction: null });
+      setError('');
+    } catch (reason) { setError(String(reason)); }
+    finally { setSaving(false); }
+  }
   async function open(character: StoryCharacter | 'new') {
     try { const claims = character === 'new' ? [] : await repo.claims(character.id, character.storyId!); setFields(Object.fromEntries(profileFields.map(f => [f.key, claims.find(c => c.data.field === f.key && c.data.section === f.section)?.data.value ?? '']))); setName(character === 'new' ? '' : character.title); setRole(character === 'new' ? '' : character.data.role); setPortrait(character === 'new' ? '' : character.data.portrait ?? ''); setMemories(character==='new'?[]:(await repo.activeEvents(character.storyId!)).filter(e=>e.data.characters.includes(character.id)).slice(-4));setError('');setCard(character); } catch (e) { setError(String(e)); }
   }
@@ -37,7 +58,36 @@ export function StoryCast({ session, busy }: { session: ChatSession; busy: boole
   }
   return <details className="chat-story-cast"><summary>{session.storyId ? `Story cast · ${worlds.find(w => w.id === session.storyId)?.title ?? 'Loading'} · ${cast.length} characters` : 'Story characters & memories'}</summary>
     {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
-    <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap" py={1}><TextField select size="small" label="Story" value={session.storyId ?? ''} disabled={busy} sx={{ minWidth: 200 }} onChange={e => useSolarium.getState().updateSession(session.id, { storyId: e.target.value || null })}><MenuItem value="">No story selected</MenuItem>{worlds.map(w => <MenuItem key={w.id} value={w.id}>{w.title}</MenuItem>)}</TextField><Button size="small" disabled={busy} onClick={() => { setTitle(''); setWorldForm(true); }}>New story</Button>{session.storyId && <Button size="small" disabled={busy} onClick={() => void open('new')}>Add character</Button>}</Stack>
+    <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap" py={1}>
+      <TextField select size="small" label="Story" value={worlds.some(world => world.id === session.storyId) ? session.storyId : ''} disabled={busy || saving}
+        sx={{ minWidth: 200 }} onChange={event => void chooseStory(event.target.value)}>
+        <MenuItem value="">No story selected</MenuItem>
+        {worlds.map(world => <MenuItem key={world.id} value={world.id}>{world.title}{world.scope.kind === 'library' ? ' · Copy from personal library' : ''}</MenuItem>)}
+      </TextField>
+      {categories.some(item => item.storyId === session.storyId) && <TextField select size="small" label="Fiction category"
+        value={categories.some(item => item.id === categoryId) ? categoryId : ''} sx={{ minWidth: 170 }} disabled={busy || saving}
+        onChange={event => useSolarium.getState().updateSession(session.id, {
+          fiction: event.target.value ? { categoryId: event.target.value, characterIds: [] } : null,
+        })}>
+        <MenuItem value="">General cast</MenuItem>
+        {categories.filter(item => item.storyId === session.storyId).map(item => <MenuItem value={item.id} key={item.id}>{item.title}</MenuItem>)}
+      </TextField>}
+      <Button size="small" disabled={busy || saving} onClick={() => { setTitle(''); setWorldForm(true); }}>New story</Button>
+      {session.storyId && <Button size="small" disabled={busy || saving} onClick={() => void open('new')}>Add character</Button>}
+    </Stack>
+    {session.fiction && <Stack direction="row" gap={1} flexWrap="wrap" aria-label="Chapter cast">
+      {profiles.filter(profile => profile.data.categoryId === categoryId).map(profile => {
+        const id = profile.data.characterId;
+        const ids = session.fiction!.characterIds;
+        const selected = ids.includes(id);
+        return <FormControlLabel key={profile.id} label={cast.find(character => character.id === id)?.title ?? profile.title}
+          control={<Checkbox size="small" checked={selected} disabled={busy || (!selected && ids.length >= 12)}
+            onChange={(_, checked) => useSolarium.getState().updateSession(session.id, {
+              fiction: { categoryId: categoryId!, characterIds: checked ? [...ids, id] : ids.filter(item => item !== id) },
+            })} />} />;
+      })}
+      {!profiles.some(profile => profile.data.categoryId === categoryId) && <Typography variant="body2" color="text.secondary">Add profiles to this category in Settings → Fiction.</Typography>}
+    </Stack>}
     <div className="chat-cast-cards">{cast.map(c => <button type="button" className="chat-cast-card" key={c.id} onClick={() => void open(c)}><Avatar src={c.data.portrait} alt={c.title}>{c.title.slice(0, 2)}</Avatar><span>{c.title}<small>{c.data.role}</small></span></button>)}</div>
     <Typography fontSize={10} color="text.secondary" py={1}>Selected cast and established memories accompany writing automatically. Your Spark stays your assistant.</Typography>
     <Dialog open={worldForm} onClose={() => setWorldForm(false)} fullWidth maxWidth="sm"><DialogTitle>New story</DialogTitle><DialogContent>{error&&<Alert severity="error">{error}</Alert>}<Stack gap={2} pt={1}><TextField autoFocus label="Story title" value={title} onChange={e => setTitle(e.target.value)}/><TextField select label="Type" value={origin} onChange={e => setOrigin(e.target.value as typeof origin)}><MenuItem value="original">Original story</MenuItem><MenuItem value="fanfiction">Fanfiction</MenuItem></TextField>{origin === 'fanfiction' && <TextField label="Franchise" value={franchise} onChange={e => setFranchise(e.target.value)}/>}</Stack></DialogContent><DialogActions><Button onClick={() => setWorldForm(false)}>Cancel</Button><Button disabled={!title.trim()} onClick={() => void repo.create(title, session.projectId ? { kind: 'project', id: session.projectId } : { kind: 'chat', id: session.id }, { originKind: origin, franchiseName: franchise }).then(world => { useSolarium.getState().updateSession(session.id, { storyId: world.id }); setWorldForm(false); return load(); }).catch(e => setError(String(e)))}>Create story</Button></DialogActions></Dialog>

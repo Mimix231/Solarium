@@ -62,10 +62,13 @@ export async function prepareGeneration(
   signal: AbortSignal,
   request: GenerationRequestOptions = {},
   extraHeadroom = 0,
+  workingContextLimit?: number,
 ): Promise<PreparedGeneration> {
   if (signal.aborted) throw new DOMException('Stopped', 'AbortError');
   if (!original.some((m) => m.role === 'user')) throw new Error('A user message is required for inference.');
-  const contextSize = effectiveContextSize(model, capabilities);
+  const actualCapacity = effectiveContextSize(model, capabilities);
+  const contextSize = workingContextLimit && Number.isFinite(workingContextLimit)
+    ? Math.min(actualCapacity, Math.max(512, Math.floor(workingContextLimit))) : actualCapacity;
   const headroom = CONTEXT_HEADROOM + Math.max(0, Math.floor(extraHeadroom));
   const messages = [...original];
   let discardedHistory = 0;
@@ -150,6 +153,13 @@ export async function prepareGeneration(
   }
   const outputTokens = Math.min(CHUNK_SIZE, contextSize - promptTokens - headroom);
   if (outputTokens < MIN_OUTPUT) {
+    // A rolling working budget is a SOFT input target, never a tool-schema
+    // blocker. Borrow the remaining capacity of the already-loaded model only
+    // when the required persona/user instruction and one usable tool cannot fit.
+    // This retries prompt ASSEMBLY, not model inference or an unfinished stream.
+    if (workingContextLimit && contextSize < actualCapacity) {
+      return prepareGeneration(adapter,model,capabilities,original,signal,request,extraHeadroom);
+    }
     throw new Error(
       `The loaded inference context (${contextSize} tokens) cannot fit the current prompt (~${promptTokens} tokens)` +
       (tools.length ? ` and ${tools.length} currently offered tool schema(s)` : '') +

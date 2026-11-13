@@ -1,5 +1,6 @@
 import { changeGraph, type Graph } from './graph';
-import { blockRegistry, recipeCatalog, type Capability, type RecipeId, type Target } from './program';
+import { allCollections, programFor, recipeCatalog, type Capability, type RecipeId, type Target } from './program';
+import { getBlock, listBlocks } from './runtime/blocks/registry';
 
 export type WarehouseKind = 'primitive' | 'composition' | 'profile' | 'recipe';
 export type WarehouseMaturity = 'draft' | 'prototype' | 'beta' | 'stable' | 'deprecated' | 'blocked';
@@ -38,33 +39,6 @@ export interface WarehouseCandidate {
   relevanceReason: string;
 }
 
-const blockCategories: Record<string, number> = {
-  list: 34,
-  form: 34,
-  models: 13,
-  validate: 4,
-  set: 5,
-  save: 6,
-  navigate: 3,
-  status: 3,
-  open_file: 7,
-  export_file: 7,
-  csv_transform: 6,
-};
-
-const blockTags: Record<string, string[]> = {
-  list: ['records', 'browse', 'filter', 'search', 'collection'],
-  form: ['records', 'create', 'edit', 'fields', 'collection'],
-  models: ['stl', '3d', 'mesh', 'model', 'preview', 'library'],
-  validate: ['required', 'fields', 'form', 'input', 'errors'],
-  set: ['field', 'value', 'state', 'update'],
-  save: ['records', 'database', 'sqlite', 'persist', 'storage'],
-  navigate: ['screen', 'route', 'navigation'],
-  status: ['message', 'feedback', 'accessibility'],
-  open_file: ['filesystem', 'file', 'import', 'picker'],
-  export_file: ['filesystem', 'file', 'download', 'export'],
-  csv_transform: ['csv', 'transform', 'data', 'table'],
-};
 
 const recipeTags: Record<RecipeId, string[]> = {
   quick_capture: ['notes', 'capture', 'pinned', 'form', 'records', 'validation'],
@@ -84,23 +58,23 @@ const recipePermissions: Record<RecipeId, Capability[]> = {
   model_organizer: ['records.write', 'files.open'],
 };
 
-const blockEntries: WarehouseEntry[] = blockRegistry.map(block => ({
+const blockEntries: WarehouseEntry[] = listBlocks().map(block => ({
   id: `spica.block.${block.id}`,
   version: String(block.version),
-  primaryCategoryId: blockCategories[block.id] ?? 34,
+  primaryCategoryId: block.categoryId,
   facets: [block.kind, 'runtime'],
   kind: 'primitive',
-  maturity: 'prototype',
+  maturity: block.maturity,
   title: block.label,
   summary: `${block.label}: accepts ${block.inputs} and produces ${block.outputs}.`,
-  tags: [block.id, ...(blockTags[block.id] ?? [])],
+  tags: [block.id, ...block.tags],
   targets: block.targets,
-  permissions: block.capability ? [block.capability] : [],
-  dependencies: [],
+  permissions: [...block.permissions],
+  dependencies: [...block.dependencies],
   inputs: [block.inputs],
   outputs: [block.outputs],
   implementationRef: `registered-block:${block.id}`,
-  docsRef: 'src/spica/program.ts',
+  docsRef: block.sourcePath,
 }));
 
 const recipeEntries: WarehouseEntry[] = recipeCatalog.map(recipe => ({
@@ -126,6 +100,8 @@ const entries = [...blockEntries, ...recipeEntries];
 const entryById = new Map(entries.map(entry => [entry.id, entry]));
 const tokenize = (value: string) => value.toLowerCase().match(/[a-z0-9_]+/g) ?? [];
 
+export const registeredWarehouseCounts = { adapters: blockEntries.length, recipes: recipeEntries.length };
+
 interface Eligibility {
   executableNow: boolean;
   installableNow: boolean;
@@ -135,15 +111,17 @@ interface Eligibility {
 function eligibility(entry: WarehouseEntry, graph: Graph, target?: Target): Eligibility {
   const blockedReasons: string[] = [];
   if (target && !entry.targets.includes(target)) blockedReasons.push(`Unsupported target: ${target}.`);
-  const grants = new Set(graph.program?.grants ?? []);
+  const grants = new Set((graph.program ?? programFor(graph)).grants);
   const missing = entry.permissions.filter(permission => !grants.has(permission));
   if (missing.length) blockedReasons.push(`Missing graph capability grant: ${missing.join(', ')}.`);
 
   if (entry.kind !== 'recipe') {
+    if (['list', 'form', 'review', 'form_grid', 'validate', 'set', 'save', 'export_file', 'csv_transform',
+      'csv_mapping', 'table', 'record_query', 'record_number', 'record_choice', 'record_badge', 'when', 'format'].some(id => entry.id === `spica.block.${id}`) &&
+        !allCollections(graph).length) blockedReasons.push('Add a record collection to use this block.');
     return {
-      executableNow: !blockedReasons.length && blockRegistry.some(block =>
-        entry.implementationRef === `registered-block:${block.id}`),
-      installableNow: !blockedReasons.length,
+      executableNow: !blockedReasons.length && !!getBlock(entry.id.replace(/^spica\.block\./, ''), entry.version),
+      installableNow: false,
       blockedReasons,
     };
   }
@@ -184,7 +162,7 @@ function candidate(entry: WarehouseEntry, graph: Graph, target: Target | undefin
     maturity: entry.maturity,
     primaryCategoryId: entry.primaryCategoryId,
     ...status,
-    relevanceReason: phrase && `${entry.title} ${entry.summary}`.toLowerCase().includes(phrase)
+    relevanceReason: !phrase ? 'Registered in the local warehouse.' : `${entry.title} ${entry.summary}`.toLowerCase().includes(phrase)
       ? 'Direct title or summary match.'
       : `Matched ${score} query term${score === 1 ? '' : 's'} in the registered component metadata.`,
   };
@@ -208,23 +186,33 @@ export function searchSpicaWarehouse(
   const limit = Math.max(1, Math.min(12, request.limit ?? 8));
   const terms = [...new Set(tokenize(request.query))];
   if (!terms.length) throw Error('Warehouse search needs at least one searchable letter or number.');
+  return browseSpicaWarehouse(graph, { ...request, limit });
+}
 
+export function browseSpicaWarehouse(graph: Graph, request: {
+  query: string; target?: Target; executableOnly?: boolean; category?: number; kind?: WarehouseKind; offset?: number; limit?: number;
+}) {
+  const terms = [...new Set(tokenize(request.query))];
   const matches = entries.flatMap(entry => {
     if (request.target && !entry.targets.includes(request.target)) return [];
+    if (request.category && request.category !== entry.primaryCategoryId) return [];
+    if (request.kind && request.kind !== entry.kind) return [];
     const text = tokenize([
       entry.id, entry.title, entry.summary, ...entry.tags, ...entry.facets,
       ...entry.inputs, ...entry.outputs,
     ].join(' '));
     const searchable = new Set(text);
     const score = terms.reduce((total, term) => total + (searchable.has(term) ? 2 : text.some(word => word.startsWith(term)) ? 1 : 0), 0);
-    if (!score) return [];
+    if (request.query.trim() && !score) return [];
     const result = candidate(entry, graph, request.target, request.query, score);
     if (request.executableOnly && !result.executableNow) return [];
     return [{ result, score }];
   }).sort((a, b) => b.score - a.score || a.result.id.localeCompare(b.result.id));
 
+  const offset = request.offset ?? 0;
+  const limit = Math.max(1, Math.min(12, request.limit ?? 8));
   return {
-    candidates: matches.slice(0, limit).map(match => match.result),
+    candidates: matches.slice(offset, offset + limit).map(match => match.result),
     totalMatches: matches.length,
     registryRevision: 'spica-runtime-1',
   };
@@ -238,6 +226,16 @@ export function inspectSpicaComponent(graph: Graph, id: string, version: string,
   return {
     ...entry,
     ...eligibility(entry, graph, target),
+    ...(entry.id === 'spica.block.review' ? { configure: {
+      op: 'put_screen', screen: { id: 'review', label: 'CSV Review', view: 'review', collection: 'existing_collection_id' },
+      importGrants: ['files.open', 'records.write'], exportGrant: 'files.export',
+      verification: 'The standard CSV review adapter compiles a correction and persistence scenario for its collection.',
+    } } : {}),
+    ...(entry.id === 'spica.block.game' ? { configure: {
+      op: 'put_screen', screen: { id: 'play', label: 'Play', view: 'game', scene: { tiles: ['#####', '#P.G#', '#####'] } },
+      verification: 'The scene uses ShadowiumUI polygon collision and compiles a keyboard play scenario.',
+    } } : {}),
+    recipeId: entry.kind === 'recipe' ? entry.id.slice('spica.recipe.'.length) as RecipeId : undefined,
     registryRevision: 'spica-runtime-1',
     notice: entry.kind === 'recipe'
       ? 'This recipe is backed by the local graph adapter. Install it through edit_spica_graph at the current graph revision; inspect its capability changes before approval.'

@@ -1,0 +1,155 @@
+{
+  "fixture": "non-executable synthetic SQLite FTS5",
+  "entries": 350000,
+  "categories": 35,
+  "recordsPerCategoryTarget": 10000,
+  "indexSeconds": 5.794,
+  "diskMiB": 418.42,
+  "samples": 20,
+  "medianSearchMs": 51.389,
+  "p95SearchMs": 446.8,
+  "maxSearchMs": 446.8,
+  "individual": [
+    {
+      "query": "\"accessible\"* AND \"panel\"*",
+      "category": null,
+      "kind": null,
+      "matches": 350000,
+      "durationMs": 446.8
+    },
+    {
+      "query": "\"styling\"*",
+      "category": 29,
+      "kind": "primitive",
+      "matches": 1026,
+      "durationMs": 53.016
+    },
+    {
+      "query": "\"ui\"*",
+      "category": 34,
+      "kind": null,
+      "matches": 1112,
+      "durationMs": 52.398
+    },
+    {
+      "query": "\"category20\"*",
+      "category": 20,
+      "kind": "profile",
+      "matches": 769,
+      "durationMs": 4.753
+    },
+    {
+      "query": "\"configuration\"*",
+      "category": null,
+      "kind": null,
+      "matches": 350000,
+      "durationMs": 356.626
+    },
+    {
+      "query": "\"accessible\"* AND \"panel\"*",
+      "category": null,
+      "kind": null,
+      "matches": 350000,
+      "durationMs": 420.914
+    },
+    {
+      "query": "\"styling\"*",
+      "category": 29,
+      "kind": "primitive",
+      "matches": 1026,
+      "durationMs": 50.379
+    },
+    {
+      "query": "\"ui\"*",
+      "category": 34,
+      "kind": null,
+      "matches": 1112,
+      "durationMs": 46.949
+    },
+    {
+      "query": "\"category20\"*",
+      "category": 20,
+      "kind": "profile",
+      "matches": 769,
+      "durationMs": 4.703
+    },
+    {
+      "query": "\"configuration\"*",
+      "category": null,
+      "kind": null,
+      "matches": 350000,
+      "durationMs": 358.139
+    },
+    {
+      "query": "\"accessible\"* AND \"panel\"*",
+      "category": null,
+      "kind": null,
+      "matches": 350000,
+      "durationMs": 424.14
+    },
+    {
+      "query": "\"styling\"*",
+      "category": 29,
+      "kind": "primitive",
+      "matches": 1026,
+      "durationMs": 49.599
+    },
+    {
+      "query": "\"ui\"*",
+      "category": 34,
+      "kind": null,
+      "matches": 1112,
+      "durationMs": 47.516
+    },
+    {
+      "query": "\"category20\"*",
+      "category": 20,
+      "kind": "profile",
+      "matches": 769,
+      "durationMs": 4.675
+    },
+    {
+      "query": "\"configuration\"*",
+      "category": null,
+      "kind": null,
+      "matches": 350000,
+      "durationMs": 348.775
+    },
+    {
+      "query": "\"accessible\"* AND \"panel\"*",
+      "category": null,
+      "kind": null,
+      "matches": 350000,
+      "durationMs": 424.544
+    },
+    {
+      "query": "\"styling\"*",
+      "category": 29,
+      "kind": "primitive",
+      "matches": 1026,
+      "durationMs": 50.159
+    },
+    {
+      "query": "\"ui\"*",
+      "category": 34,
+      "kind": null,
+      "matches": 1112,
+      "durationMs": 46.643
+    },
+    {
+      "query": "\"category20\"*",
+      "category": 20,
+      "kind": "profile",
+      "matches": 769,
+      "durationMs": 4.43
+    },
+    {
+      "query": "\"configuration\"*",
+      "category": null,
+      "kind": null,
+      "matches": 350000,
+      "durationMs": 340.939
+    }
+  ],
+  "warning": "Benchmarks native-like SQLite indexing only; not native Tauri app build or JS memory."
+}

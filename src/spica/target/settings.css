@@ -1,12 +1,12 @@
 .spica-frame { container: spica-viewport / inline-size; min-width: 0; }
 .spica-app {
-  --surface: #fcfcff;
-  --panel: #eeeffb;
-  --ink: #22233b;
-  --muted: #565978;
-  --accent: #5345b7;
+  --surface: #f6f7fc;
+  --panel: #ffffff;
+  --ink: #222b42;
+  --muted: #53627e;
+  --accent: #6556ca;
   --accent-ink: #fff;
-  --line: #d4d6ea;
+  --line: #d4dcef;
   --app-font: system-ui, sans-serif;
   --app-font-size: 14px;
   --app-radius: 8px;
@@ -15,20 +15,20 @@
   display: grid;
   grid-template-columns: minmax(132px, min(30%, var(--sidebar-width))) minmax(0, 1fr);
   min-height: 360px;
-  background: var(--surface);
+  background: radial-gradient(ellipse at 90% 0%, #6654d22c, transparent 54%), var(--surface);
   color: var(--ink);
   color-scheme: light;
   font: var(--app-font-size)/1.55 var(--app-font);
   overflow: hidden;
 }
 .spica-app[data-theme="dark"] {
-  --surface: #16182b;
-  --panel: #222541;
-  --ink: #f0effe;
-  --muted: #b7b9d7;
-  --accent: #b7acff;
-  --accent-ink: #16182b;
-  --line: #414668;
+  --surface: #0e1930;
+  --panel: #1a2949;
+  --ink: #eff3ff;
+  --muted: #aabddb;
+  --accent: #ad9cff;
+  --accent-ink: #ffffff;
+  --line: #49638c;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -44,7 +44,7 @@
   }
 }
 .spica-app, .spica-app * { box-sizing: border-box; }
-.spica-app-nav { background: var(--panel); padding: calc(2 * var(--app-space)); display: flex; flex-direction: column; gap: calc(2 * var(--app-space)); min-width: 0; }
+.spica-app-nav { background: color-mix(in srgb, var(--panel) 85%, transparent); border-right: 1px solid var(--line); padding: calc(2 * var(--app-space)); display: flex; flex-direction: column; gap: calc(2 * var(--app-space)); min-width: 0; }
 .spica-app-nav strong { padding: 0 7px; font-size: 1.15em; overflow-wrap: anywhere; }
 .spica-app-nav nav { display: grid; gap: var(--app-space); }
 .spica-app-footer { margin: auto 0 0; padding: var(--app-space); color: var(--muted); font-size: .875em; grid-column: 1 / -1; }
@@ -52,17 +52,17 @@
 .spica-app h2 { margin: 0 0 var(--app-space); font-size: 1.7em; letter-spacing: -.035em; overflow-wrap: anywhere; }
 .spica-app fieldset { display: grid; gap: var(--app-space); border: 0; padding: 0; margin: 0; min-width: 0; }
 .spica-field { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--app-space); padding: calc(1.5 * var(--app-space)); border: 1px solid var(--line); border-radius: var(--app-radius); }
-.spica-app :where(button, input, select, textarea) { font: inherit; color: inherit; }
-.spica-app :where(button, input:not([type="checkbox"], [type="file"]), select, textarea, .spica-file) { border: 1px solid var(--line); border-radius: var(--app-radius); padding: 7px 10px; background: var(--surface); min-width: 0; max-width: 100%; }
+.spica-app :where(button:not(.MuiButton-root), input:not(.MuiInputBase-input), select:not(.MuiNativeSelect-select), textarea:not(.MuiInputBase-input)) { font: inherit; color: inherit; }
+.spica-app :where(button:not(.MuiButton-root), input:not(.MuiInputBase-input, [type="checkbox"], [type="file"]), select:not(.MuiNativeSelect-select), textarea:not(.MuiInputBase-input), .spica-file) { border: 1px solid var(--line); border-radius: var(--app-radius); padding: 7px 10px; background: var(--surface); min-width: 0; max-width: 100%; }
 .spica-app textarea { resize: vertical; width: 100%; }
 .spica-app :is(button, .spica-file, summary) { cursor: pointer; }
 .spica-app :is(button, .spica-file) { transition: background-color .16s, border-color .16s, color .16s; }
-.spica-app :where(button:hover:not(:disabled), button[aria-current], .spica-file:hover) { background: var(--panel); border-color: var(--accent); }
-.spica-app :where(button[type="submit"]) { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.spica-app :where(button[type="submit"]:hover:not(:disabled)) { background: color-mix(in srgb, var(--accent) 85%, var(--surface)); }
+.spica-app :where(button:hover:not(:disabled):not(.MuiButton-root), button[aria-current]:not(.MuiButton-root), .spica-file:hover) { background: var(--panel); border-color: var(--accent); }
+.spica-app :where(button[type="submit"]:not(.MuiButton-root)) { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.spica-app :where(button[type="submit"]:not(.MuiButton-root):hover:not(:disabled)) { background: color-mix(in srgb, var(--accent) 85%, var(--surface)); }
 .spica-app :is(button:disabled, .spica-file:has(input:disabled)) { opacity: .55; cursor: default; }
 .spica-app :where(:focus-visible, .spica-file:focus-within) { outline: 2px solid var(--accent); outline-offset: 2px; }
-.spica-app input[type="checkbox"] { accent-color: var(--accent); width: 18px; height: 18px; }
+.spica-app input[type="checkbox"]:not(.MuiCheckbox-input) { accent-color: var(--accent); width: 18px; height: 18px; }
 .spica-app-actions { display: flex; gap: var(--app-space); flex-wrap: wrap; margin-top: calc(2 * var(--app-space)); }
 .spica-file { position: relative; overflow: hidden; }
 .spica-file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
@@ -75,7 +75,7 @@
 }
 
 .spica-collection { display: grid; grid-template-columns: minmax(160px, min(34%, var(--sidebar-width))) minmax(0, 1fr); grid-column: 1 / -1; min-height: 420px; }
-.spica-record-list { background: var(--panel); }
+.spica-record-list { background: color-mix(in srgb, var(--panel) 86%, transparent); border-right: 1px solid var(--line); }
 .spica-record-list, .spica-record-editor { display: flex; flex-direction: column; gap: calc(1.5 * var(--app-space)); padding: clamp(12px, calc(2.5 * var(--app-space)), 44px); min-width: 0; }
 .spica-record-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
 .spica-record-heading h2, .spica-record-editor h2 { margin: 0; }
@@ -103,4 +103,53 @@
 .spica-transfer label, .spica-import-review { display: block; margin-top: var(--app-space); }
 .spica-transfer input[type="file"] { display: block; max-width: 100%; }
 .spica-import-review ul { padding-inline-start: 20px; }
+.spica-screen-intro { padding: var(--app-space) calc(2 * var(--app-space)); }
+.spica-app fieldset[data-spica-layout="grid"] { grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); }
+.spica-import-table { overflow: auto; margin-bottom: var(--app-space); }
+.spica-import-table table { border-collapse: collapse; width: 100%; }
+.spica-import-table :is(th, td) { padding: 6px; text-align: start; border-bottom: 1px solid var(--line); }
+.spica-import-table :is(input, select, textarea) { min-width: 110px; width: 100%; box-sizing: border-box; }
+.spica-record-workspace { display: grid; min-width: 0; }
+.spica-record-workspace[data-spica-review-layout="split"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+.spica-record-workspace[data-spica-review-layout="split"] > .spica-collection { grid-template-columns: minmax(0, 1fr); }
+.spica-record-workspace > * { min-width: 0; }
+.spica-collection[data-spica-record-view="table"] { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+.spica-collection[data-spica-record-view="table"] .spica-record-list { min-width: 0; }
+.spica-column-map, .spica-table-controls { display: flex; flex-wrap: wrap; align-items: end; gap: var(--app-space); min-width: 0; }
+.spica-column-map label { flex: 1 1 120px; overflow-wrap: anywhere; }
+.spica-column-map select, .spica-table-controls select { display: block; max-width: 100%; }
+.spica-record-badge { display: inline-block; padding: 2px 8px; border: 1px solid var(--line); border-radius: var(--app-radius); }
+.spica-record-badge[data-spica-match="true"] { background: color-mix(in srgb, var(--accent) 16%, var(--panel)); }
+@container spica-viewport (max-width: 820px) {
+  .spica-record-workspace[data-spica-review-layout="split"], .spica-collection[data-spica-record-view="table"] { grid-template-columns: minmax(0, 1fr); }
+}
+.spica-game { padding: calc(2 * var(--app-space)); }
+.spica-game svg { display: block; width: min(100%, 620px); max-height: 50vh; margin-inline: auto; border: 1px solid var(--line); border-radius: var(--app-radius); }
+.spica-game :is(svg, p) { margin-block: var(--app-space); }
 .spica-mesh { display: block; width: 100%; height: clamp(190px, 45vh, 490px); border-radius: var(--app-radius); touch-action: none; }
+
+/* Phase 06: Material components and the same authored theme in preview and exports. */
+.spica-app .MuiButton-root { font: 600 12px/1.45 'Inter','Segoe UI',sans-serif; letter-spacing: .01em; }
+.spica-app .MuiButton-outlined { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.spica-app .MuiButton-root:focus-visible, .spica-app .MuiInputBase-root.Mui-focused { outline: 2px solid var(--accent); outline-offset: 2px; }
+.spica-app .MuiInputBase-root { color: var(--ink); min-width: 0; }
+.spica-app .MuiInputBase-input { color: inherit; width: 100%; border: 0; background: transparent; box-sizing: border-box; }
+.spica-app .MuiCheckbox-root { color: var(--muted); }
+.spica-app .MuiFormControl-root { min-width: 0; }
+.spica-app .MuiFormControlLabel-root { margin: 0; gap: 4px; }
+.spica-material-field, .spica-material-record-field { min-width: 0; display: grid; gap: 7px; }
+.spica-material-record-field { padding: 4px 0; }
+.spica-material-field > span { font-size: 12px; color: var(--muted); font-weight: 600; }
+.spica-material-toggle { margin-right: 0 !important; }
+.spica-app .spica-record-list li .MuiButton-root { justify-content: flex-start; padding-inline: 12px; width: 100%; text-align: left; }
+.spica-app .spica-record-list li .MuiButton-root[aria-current="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.spica-app .spica-screen-nav { padding: 12px; gap: 8px; backdrop-filter: blur(12px); }
+.spica-app .spica-record-editor { background: color-mix(in srgb, var(--surface) 90%, transparent); }
+.spica-app .spica-record-settings.MuiAccordion-root { background: color-mix(in srgb, var(--panel) 92%, transparent); color: var(--ink); border-top: 1px solid var(--line); box-shadow: none; }
+.spica-app .spica-record-settings .MuiAccordionDetails-root { padding: 4px 12px 16px; }
+.spica-app .spica-app-page { min-width: 0; }
+.spica-app .spica-field { background: color-mix(in srgb, var(--panel) 72%, transparent); border-color: color-mix(in srgb, var(--line) 72%, transparent); }
+.spica-app .spica-record-heading, .spica-app .spica-screen-nav { align-items: center; }
+@container spica-viewport (max-width: 570px) {
+  .spica-app .spica-record-list, .spica-app .spica-app-nav { border-right: 0; border-bottom: 1px solid var(--line); }
+}

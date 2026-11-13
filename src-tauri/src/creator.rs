@@ -87,8 +87,17 @@ pub async fn read_research_page(url:String,query:String,web_enabled:bool)->Resul
         let (url,title,body,links)=fetch_readable(&url)?;
         let terms:Vec<String>=query.to_lowercase().split_whitespace().filter(|t|t.len()>2).map(String::from).collect();
         let mut paragraphs:Vec<(usize,usize,&str)>=body.split("\n\n").enumerate().map(|(i,p)|{let lower=p.to_lowercase();(terms.iter().filter(|t|lower.contains(t.as_str())).count(),i,p)}).collect();
-        paragraphs.sort_by(|a,b|b.0.cmp(&a.0));let mut selected=Vec::new();let mut length=0;
-        for (score,index,text) in paragraphs{if score==0||length>=3600{break;}let excerpt:String=text.chars().take((3600-length).min(1200)).collect();length+=excerpt.len();selected.push((index,excerpt));}
+        paragraphs.sort_by(|a,b|b.0.cmp(&a.0));
+        let has_matches = paragraphs.first().is_some_and(|paragraph| paragraph.0 > 0);
+        let mut selected = Vec::new();
+        let mut length = 0;
+        for (score, index, paragraph) in paragraphs {
+            if length >= 3600 || (has_matches && score == 0) { break; }
+            if paragraph.trim().is_empty() { continue; }
+            let excerpt: String = paragraph.chars().take((3600 - length).min(1200)).collect();
+            length += excerpt.chars().count();
+            selected.push((index, excerpt));
+        }
         selected.sort_by_key(|(i,_)|*i);let text=selected.iter().map(|(i,t)|format!("[paragraph {}] {}",i+1,t)).collect::<Vec<_>>().join("\n\n");
         let content_hash=format!("{:x}",Sha256::digest(text.as_bytes()));
         let timestamp=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e|e.to_string())?.as_secs();

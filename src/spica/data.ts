@@ -1,10 +1,13 @@
-import { collectionUpgrade, stableGraphJson, type AppPlan, type Collection, type RecordValue, type Value } from './graph';
-import { allCollections, checkCapability, recordDefaults, recordProblem } from './program';
+import { collectionUpgrade, stableGraphJson, type AppPlan, type Collection, type CollectionField, type RecordValue, type Value } from './graph';
+import { allCollections, checkCapability, matchesRecord, recordDefaults, recordProblem, validRecordCondition, validRecordSort, type RecordCondition, type RecordSort } from './program';
 
 export interface CollectionRecord {
   id: number; revision: number; archived: boolean; values: Record<string, RecordValue>;
 }
-export interface CollectionQuery { collection?: string; query: string; archived: boolean; filter: string | null; offset: number }
+export interface CollectionQuery {
+  collection?: string; query: string; archived: boolean; filter: string | null; offset: number;
+  where?: RecordCondition; sort?: RecordSort;
+}
 export interface RecordWrite { collection?: string; id: number | null; expected: number | null; archived: boolean; values: Record<string, RecordValue> }
 export interface CollectionStore {
   list(query: CollectionQuery): Promise<{ rows: CollectionRecord[]; more: boolean }>;
@@ -15,6 +18,18 @@ interface DataBucket { schema: Collection; nextId: number; rows: CollectionRecor
 interface AppData { buckets: Record<string, DataBucket>; preferences: Record<string, Value>; revision: number }
 type Transaction = <T>(mutate: (data: AppData) => T) => Promise<T>;
 const newAppData = (): AppData => ({ buckets: {}, preferences: {}, revision: 0 });
+
+function sortValues(left: RecordValue | undefined, right: RecordValue | undefined) {
+  if (left === right) return 0;
+  if (left == null) return -1;
+  if (right == null) return 1;
+  if (typeof left === 'string' && typeof right === 'string') {
+    const a = Array.from(left), b = Array.from(right);
+    const unequal = a.findIndex((letter, index) => index < b.length && letter !== b[index]);
+    return unequal < 0 ? a.length - b.length : a[unequal]!.codePointAt(0)! - b[unequal]!.codePointAt(0)!;
+  }
+  return Number(left) - Number(right);
+}
 
 export function createAppAdapters(plan: AppPlan, transact: Transaction) {
   const collections = allCollections(plan);
@@ -52,10 +67,16 @@ export function createAppAdapters(plan: AppPlan, transact: Transaction) {
     list: query => transact(data => {
       const target = bucket(data, query.collection);
       if (!Number.isSafeInteger(query.offset) || query.offset < 0 || query.query.length > 256 ||
-          (query.filter && !target.schema.fields.some(field => field.type === 'boolean' && field.key === query.filter))) throw Error('Invalid record query.');
+          (query.filter && !target.schema.fields.some(field => field.type === 'boolean' && field.key === query.filter)) ||
+          (query.where !== undefined && !validRecordCondition(target.schema, query.where)) ||
+          (query.sort !== undefined && !validRecordSort(target.schema, query.sort))) throw Error('Invalid record query.');
       const needle = query.query.trim().toLowerCase();
       const matching = target.rows.filter(row => row.archived === query.archived && (!query.filter || row.values[query.filter] === true) &&
+        (!query.where || matchesRecord(row.values, query.where)) &&
         (!needle || Object.values(row.values).some(value => typeof value === 'string' && value.toLowerCase().includes(needle))));
+      const sort = query.sort;
+      if (sort) matching.sort((a, b) => (sort.direction === 'asc' ? 1 : -1) *
+        sortValues(a.values[sort.field], b.values[sort.field]) || b.id - a.id);
       return { rows: matching.slice(query.offset, query.offset + 50), more: matching.length > query.offset + 50 };
     }),
     save: record => transact(data => { checkCapability(plan.program, 'records.write'); return write(data, record); }),
@@ -85,9 +106,13 @@ export function createAppAdapters(plan: AppPlan, transact: Transaction) {
   return { records, storage };
 }
 
-export function memoryAdapters(plan: AppPlan, sample = false) {
-  let data = newAppData();
-  if (sample && plan.collection && plan.collection.id !== 'models') {
+/** An in-memory workspace survives graph revisions in the same app without ever touching user data.
+ * Changing to a different app resets the owner's handle in SpicaPreview.
+ */
+export interface SpicaPreviewMemory { snapshot?: unknown }
+export function memoryAdapters(plan: AppPlan, sample = false, memory?: SpicaPreviewMemory) {
+  let data = (memory?.snapshot as AppData | undefined) ?? newAppData();
+  if (sample && !Object.keys(data.buckets).length && plan.collection && plan.collection.id !== 'models') {
     const schema = plan.collection;
     const filter = schema.fields.find(field => field.type === 'boolean' && field.filter)?.key;
     const row = (id: number, title: string, body: string, archived = false): CollectionRecord => ({ id, revision: 1, archived, values: {
@@ -101,6 +126,7 @@ export function memoryAdapters(plan: AppPlan, sample = false) {
     const candidate = structuredClone(data);
     const result = mutate(candidate);
     data = candidate;
+    if (memory) memory.snapshot = structuredClone(candidate);
     return structuredClone(result);
   });
 }
@@ -172,33 +198,62 @@ export function parseCsv(text: string): string[][] {
 }
 
 export type CsvTransform = (rows: string[][]) => string[][] | Promise<string[][]>;
-export async function prepareImport(collection: Collection, text: string, format: 'csv' | 'json', transform?: CsvTransform) {
-  let rows: unknown;
-  if (format === 'csv') {
-    const parsed = parseCsv(text);
-    const table = transform ? await transform(parsed) : parsed;
-    if (!Array.isArray(table) || table.length > 1001 || table.some(row => !Array.isArray(row) || row.length > 32 ||
+export async function readCsvTable(text: string, transform?: CsvTransform) {
+  const parsed = parseCsv(text);
+  const table = transform ? await transform(parsed) : parsed;
+  if (!Array.isArray(table) || table.length > 1001 || table.some(row => !Array.isArray(row) || row.length > 32 ||
       row.some(value => typeof value !== 'string' || value.length > 16000))) throw Error('The CSV block must return a bounded array of text cells.');
-    const [headers, ...body] = table;
-    if (!headers?.length || new Set(headers).size !== headers.length) throw Error('CSV needs distinct column names.');
-    rows = body.map((cells, index) => {
-      if (cells.length !== headers.length) throw Error(`Row ${index + 1} has the wrong number of cells.`);
-      return Object.fromEntries(headers.map((key, column) => {
-        const field = collection.fields.find(field => field.key === key);
-        const value = cells[column]!;
-        return [key, field?.type === 'boolean' ? value === 'true' ? true : value === 'false' ? false : value :
-          field?.type === 'reference' ? value === '' ? null : /^\d+$/.test(value) ? Number(value) : value : value];
-      }));
-    });
-  } else rows = JSON.parse(text.replace(/^\uFEFF/, ''));
+  const [headers, ...rows] = table;
+  if (!headers?.length || new Set(headers).size !== headers.length) throw Error('CSV needs distinct column names.');
+  if (!rows.length) throw Error('Import 1 to 1,000 record objects.');
+  const ragged = rows.findIndex(row => row.length !== headers.length);
+  if (ragged >= 0) throw Error(`Row ${ragged + 1} has the wrong number of cells.`);
+  return { headers, rows };
+}
+
+export function csvCellValue(field: CollectionField, value: string): RecordValue {
+  if (field.type === 'boolean') return value === 'true' ? true : value === 'false' ? false : value;
+  if (field.type === 'reference') return value === '' ? null : /^\d+$/.test(value) ? Number(value) : value;
+  if (field.type === 'number' && value.trim() && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(value.trim())) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : value;
+  }
+  return value;
+}
+
+export function stageCsvRows(collection: Collection, table: Awaited<ReturnType<typeof readCsvTable>>, mapping?: readonly string[]) {
+  const columns = mapping ?? table.headers;
+  const keys = columns.filter(Boolean);
+  if (columns.length !== table.headers.length || new Set(keys).size !== keys.length || (mapping && !keys.includes('title'))) {
+    throw Error('Map the title and use each destination field at most once.');
+  }
+  const fields = new Map(collection.fields.map(field => [field.key, field]));
+  const unknown = (mapping ? keys : columns).find(key => !fields.has(key));
+  if (unknown !== undefined) throw Error(`Unknown CSV column "${unknown}". Use the collection's field keys.`);
+  const defaults = recordDefaults(collection);
+  return table.rows.map(cells => ({
+    ...defaults,
+    ...Object.fromEntries(columns.flatMap((key, index) => key ? [[key, csvCellValue(fields.get(key)!, cells[index]!)]] : [])),
+  }));
+}
+
+export async function stageImport(collection: Collection, text: string, format: 'csv' | 'json', transform?: CsvTransform) {
+  if (format === 'csv') return stageCsvRows(collection, await readCsvTable(text, transform));
+  const rows: unknown = JSON.parse(text.replace(/^\uFEFF/, ''));
   if (!Array.isArray(rows) || !rows.length || rows.length > 1000) throw Error('Import 1 to 1,000 record objects.');
   return rows.map((row: unknown, index) => {
     if (!row || typeof row !== 'object' || Array.isArray(row)) throw Error(`Row ${index + 1} must be an object.`);
-    const record = { ...recordDefaults(collection), ...row } as Record<string, RecordValue>;
+    return { ...recordDefaults(collection), ...row } as Record<string, RecordValue>;
+  });
+}
+
+export async function prepareImport(collection: Collection, text: string, format: 'csv' | 'json', transform?: CsvTransform) {
+  const rows = await stageImport(collection, text, format, transform);
+  rows.forEach((record, index) => {
     const problem = recordProblem(collection, record);
     if (problem) throw Error(`Row ${index + 1} · ${problem}`);
-    return record;
   });
+  return rows;
 }
 
 export function exportRecords(collection: Collection, rows: CollectionRecord[], format: 'csv' | 'json') {

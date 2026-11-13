@@ -6,6 +6,7 @@ export const defaultAnime = {
   outfitColor: '#3b507e', outfitAccent: '#f4d7e6', background: '#29284c',
   hairstyle: 'long', eyeShape: 'round', outfit: 'uniform', accessory: 'ribbon',
   bangs: 'curtain', face: 'oval', blush: 25, eyeScale: 100, hairVolume: 100,
+  bodyShape: 'standard', ears: 'natural', nose: 'classic', backdrop: 'glow', neckWidth: 100,
   zoom: 100, offsetX: 0, offsetY: 0, sideHair: 'wispy', brows: 'soft', pupil: 'round', mouth: 'subtle', accessorySecondary: 'none', shoulderWidth: 100, sparkle: 35, irisPattern: 'solid', makeup: 'none', artStyle: 'modern', layers: {},
 } as const;
 export const defaultAvatar: SparkAvatar = {
@@ -42,7 +43,7 @@ export function defaultWorkspace(): Workspace {
     schemaVersion: 1, sparks: [explorer, maker], projects: [], activeProjectId: null, sessions: [], models: [], memories: [], assets: [], worlds: [], labCases: [], teamRuns: [],
     selectedSparkId: explorer.id, activeSessionId: null,
     preferences: {
-      theme: 'obsidian', density: 'compact', reducedMotion: false, workspaceMode: 'companion',
+      theme: 'obsidian', density: 'compact', reducedMotion: false, workspaceMode: 'companion', spicaCycleBudget: 4096,
       sidebarOpen: true, showActivity: false, actionMode: 'ask', consoleChannels: [], startupView: 'home',
       toolPermissions: { inspect_project: 'ask', search_project_code: 'ask', apply_project_changes: 'ask', replace_project_text: 'ask', get_current_time: 'ask', calculate: 'ask', search_memories: 'ask', search_web: 'ask', open_web_page: 'ask', list_project_files: 'ask', read_project_file: 'ask', run_project_check: 'ask' },
       llamaExecutable: '', serverPort: 8080, ggufDirectory: '',

@@ -50,12 +50,18 @@ pub fn finish_spica_test(app: tauri::AppHandle, state: State<'_, TestMode>, repo
 
 #[tauri::command]
 pub async fn save_record_export(state: State<'_, TestMode>, name: String, body: String, format: String) -> Result<Option<String>, String> {
-    if state.0.is_some() || !super::plan()["program"]["grants"].as_array().is_some_and(|grants| grants.contains(&Value::from("files.export"))) {
+    if !super::plan()["program"]["grants"].as_array().is_some_and(|grants| grants.contains(&Value::from("files.export"))) {
         return Err("Capability denied · files.export".into());
     }
     if !["csv", "json"].contains(&format.as_str()) || body.len() > 16_000_000 || name.len() > 80 ||
-        !name.bytes().all(|byte| byte.is_ascii_alphanumeric() || [b'-', b'_', b'.'].contains(&byte)) {
+        !name.bytes().all(|byte| byte.is_ascii_alphanumeric() || [b'-', b'_', b'.'].contains(&byte)) ||
+        !name.ends_with(&format!(".{format}")) {
         return Err("Invalid export name or content.".into());
+    }
+    if let Some((test, directory)) = &state.0 {
+        let path = directory.join(format!("{}-{name}", test.phase));
+        write_export(&path, &body)?;
+        return Ok(Some(name));
     }
     #[cfg(windows)]
     return tauri::async_runtime::spawn_blocking(move || {
@@ -67,12 +73,17 @@ pub async fn save_record_export(state: State<'_, TestMode>, name: String, body: 
         }
         let directory = path.parent().ok_or("Choose a destination folder.")?.canonicalize().map_err(|e| e.to_string())?;
         let scoped = directory.join(path.file_name().ok_or("Choose a file name.")?);
-        let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&scoped).map_err(|e| format!("Could not create export: {e}"))?;
-        let result = file.write_all(body.as_bytes()).and_then(|()| file.sync_all());
-        drop(file);
-        if let Err(error) = result { let _ = fs::remove_file(&scoped); return Err(error.to_string()); }
+        write_export(&scoped, &body)?;
         Ok(Some(scoped.to_string_lossy().into_owned()))
     }).await.map_err(|e| e.to_string())?;
     #[cfg(not(windows))]
     { let _ = (name, body, format); Err("The native export picker requires the Windows target.".into()) }
+}
+
+fn write_export(path: &std::path::Path, body: &str) -> Result<(), String> {
+    let mut file = fs::OpenOptions::new().write(true).create_new(true).open(path).map_err(|e| format!("Could not create export: {e}"))?;
+    let result = file.write_all(body.as_bytes()).and_then(|()| file.sync_all());
+    drop(file);
+    if let Err(error) = result { let _ = fs::remove_file(path); return Err(error.to_string()); }
+    Ok(())
 }

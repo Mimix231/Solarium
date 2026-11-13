@@ -4,6 +4,17 @@ import type { TerminalRun } from '../domain/types';
 import type { VisualAction } from '../engine/visual-actions';
 import { workLogRows, type WorkLogRow } from '../engine/work-log';
 import { CommandOutput } from './CommandOutput';
+import { downloadBytes } from '../blocks/exports';
+
+function searchJson(output: string | undefined) {
+  if (!output) return null;
+  try {
+    const value = JSON.parse(output) as { kind?: string; searchId?: string; results?: unknown[] };
+    return value.kind === 'web_search' && value.searchId && Array.isArray(value.results) ? {
+      name: 'search-' + value.searchId + '.json', text: JSON.stringify(value, null, 2) + '\n',
+    } : null;
+  } catch { return null; }
+}
 
 export function WorkLog({ actions, runs = [], root, busy = false, onOpen }: { actions: VisualAction[]; runs?: TerminalRun[]; root?: string; busy?: boolean; onOpen?: (action: VisualAction) => void }) {
   const rows = useMemo(() => workLogRows(actions, runs), [actions, runs]);
@@ -17,7 +28,15 @@ export function WorkLog({ actions, runs = [], root, busy = false, onOpen }: { ac
     if(item.attempts[0]?.title==='Progress update')return <p className="work-log-progress" key={item.id}>{item.attempts[0].detail}</p>;
     return <details className={`work-log-row work-log-${item.status}`} key={item.id}>
       <summary><span aria-hidden="true">{item.status === 'running' ? '◌' : item.status === 'failed' ? '!' : item.status === 'denied' ? '⊘' : '✓'}</span><span>{item.title}</span>{item.attempts.length > 1 && <small>×{item.attempts.length}</small>}<small>{item.status === 'running' ? 'Running' : item.status === 'failed' ? 'Failed' : item.status === 'denied' ? 'Denied' : ''}</small></summary>
-      <div className="work-log-detail">{item.run && <CommandOutput run={item.run} root={root}/>} {item.attempts.map(action => <div key={action.id}><small>{new Date(action.updatedAt).toLocaleTimeString()}</small><p>{action.detail}</p>{action.files?.map(file => <div key={file.path}>{file.path}</div>)}{action.sources?.map(source => <div key={source.url}><a href={source.url} target="_blank" rel="noopener noreferrer">{source.title}</a> · {source.status}</div>)}{action.output && action.output !== action.detail && !item.run && <pre>{action.output}</pre>}<Button size="small" onClick={() => onOpen?.(action)}>Inspect details</Button></div>)}</div>
+      <div className="work-log-detail">{item.run && <CommandOutput run={item.run} root={root}/>} {item.attempts.map(action => {
+        const json = action.kind === 'search' && searchJson(action.output);
+        return <div key={action.id}><small>{new Date(action.updatedAt).toLocaleTimeString()}</small><p>{action.detail}</p>
+          {action.files?.map(file => <div key={file.path}>{file.path}</div>)}
+          {action.sources?.map(source => <div key={source.url}><a href={source.url} target="_blank" rel="noopener noreferrer">{source.title}</a> · {source.status}</div>)}
+          {action.output && action.output !== action.detail && !item.run && <pre>{action.output}</pre>}
+          {json && <Button size="small" onClick={() => downloadBytes(json.text, 'application/json', json.name)}>Download search JSON</Button>}
+          <Button size="small" onClick={() => onOpen?.(action)}>Inspect details</Button></div>;
+      })}</div>
     </details>;
   }
   return <section className="work-log" aria-label="Reply work log"><button className="work-log-heading" type="button" aria-expanded={expanded} onClick={() => setExpanded(v => !v)}><span aria-hidden="true">⌁</span> {summary}{busy ? ' · Working' : ''}{failures ? ` · ${failures} failed attempt${failures === 1 ? '' : 's'}` : ''}<span aria-hidden="true">{expanded ? '⌃' : '⌄'}</span></button>{(expanded) && <div className="work-log-rows">{visible.map(row)}{internal.length > 0 && <details className="work-log-internal"><summary>Tool selection · {internal.reduce((n, r) => n + r.attempts.length, 0)} operations</summary>{internal.map(row)}</details>}</div>}</section>;

@@ -25,6 +25,7 @@ export function QualityChecks() {
   const [selected, setSelected] = useState(['repo-callers','python-package-repair','basket-discount']);
 
   const [category,setCategory]=useState<'coding'|'all'>('coding'),[trials, setTrials] = useState(1), [web, setWeb] = useState(false),[holdout,setHoldout]=useState(false);
+  const [researchRequest,setResearchRequest]=useState('');
 
   const [runs, setRuns] = useState<StoredRecord<QualityRun>[]>([]), [current, setCurrent] = useState<QualityRun | null>(null);
 
@@ -76,7 +77,7 @@ export function QualityChecks() {
 
         if(abort.signal.aborted)break;
 
-        await runQualityCase(test,{model,spark,signal:abort.signal,webEnabled:web,onProgress:run=>setCurrent({...run}),onApproval:(name,args)=>new Promise(resolveApproval=>{setApproval({name,args});approvalResolve.current=resolveApproval;abort.signal.addEventListener('abort',()=>resolveApproval('deny'),{once:true});})});
+        await runQualityCase(test,{model,spark,signal:abort.signal,webEnabled:web,researchRequest,onProgress:run=>setCurrent({...run}),onApproval:(name,args)=>new Promise(resolveApproval=>{setApproval({name,args});approvalResolve.current=resolveApproval;abort.signal.addEventListener('abort',()=>resolveApproval('deny'),{once:true});})});
 
         await refresh();
 
@@ -105,6 +106,8 @@ export function QualityChecks() {
     <TextField select size="small" label="Quality checks" value={category} onChange={e=>setCategory(e.target.value as 'coding'|'all')} sx={{my:1,minWidth:220}}><MenuItem value="coding">Coding release checks</MenuItem><MenuItem value="all">All capabilities</MenuItem></TextField>
 
     <FormControlLabel control={<Checkbox checked={holdout} disabled={busy} onChange={e=>{setHoldout(e.target.checked);if(!e.target.checked)setSelected(ids=>ids.filter(id=>qualityCases.find(c=>c.id===id)?.caseSet!=='holdout'));}}/>} label="Include held-out release checks"/>
+    {qualityCases.some(test=>test.requiresWeb&&selected.includes(test.id))&&<TextField fullWidth multiline label="Research request for selected web checks"
+      value={researchRequest} onChange={event=>setResearchRequest(event.target.value)} disabled={busy}/>}
 
     <Box className="quality-case-list">{qualityCases.filter(test=>(category==='all'||test.category==='coding')&&(holdout||test.caseSet!=='holdout')).map(test=><FormControlLabel key={test.id} control={<Checkbox size="small" checked={selected.includes(test.id)} disabled={busy||Boolean(test.requiresWeb&&!web)} onChange={e=>setSelected(v=>e.target.checked?[...v,test.id]:v.filter(id=>id!==test.id))}/>} label={<Typography fontSize={12}>{test.category} · {test.title}{test.requiresWeb?' · web required':''}</Typography>}/>)}</Box>
 

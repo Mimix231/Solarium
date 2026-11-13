@@ -2,7 +2,8 @@ import { memo, useId, type ReactNode } from 'react';
 import type { AnimeAppearance, Expression, SparkAvatar } from '../domain/types';
 import { defaultAnime } from '../domain/defaults';
 import { migrateAvatarAppearance, resolveLayer, type AvatarLayerId } from '../avatar/layer-system';
-import { AnimeFaceFinish, AnimeHairFinish, AnimeOutfitFinish, DetailedAnimeEyes } from './AvatarDetails';
+import { AnimeBackdrop, AnimeEars, AnimeFaceFinish, AnimeHairFinish, AnimeNose, AnimeOrnament,
+  AnimeOutfitFinish, blendPortraitColor, bustPaths, DetailedAnimeEyes } from './AvatarDetails';
 
 interface Props { avatar: SparkAvatar; size?: number; active?: boolean; className?: string }
 /** Original, fully editable vector-anime bust. Rendered locally: no remote images or LLM required. */
@@ -12,6 +13,9 @@ export const AnimeAvatar = memo(function AnimeAvatar({ avatar, size = 100, activ
   const overridden = base.expressionPresets?.[expr] ?? {};
   const a: AnimeAppearance = { ...base, ...overridden };
   const artStyle = a.artStyle ?? 'modern';
+  const skinShade = blendPortraitColor(a.skin, '#583142', .37);
+  const skinLight = blendPortraitColor(a.skin, '#fff4ed', .36);
+  const accessoryAccent = a.accessoryAccent ?? a.outfitAccent;
   const chibiHead = artStyle === 'chibi' ? 'translate(100 113) scale(1.2 1.16) translate(-100 -113)' : '';
   const layer = (id: AvatarLayerId, children: ReactNode): ReactNode => {
     const config = resolveLayer(a, id);
@@ -45,7 +49,7 @@ export const AnimeAvatar = memo(function AnimeAvatar({ avatar, size = 100, activ
     <defs>
       <clipPath id={clipId}><rect width="200" height="200" rx="25" /></clipPath>
       <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1"><stop stopColor={a.background}/><stop offset="1" stopColor={avatar.secondary}/></linearGradient>
-      <linearGradient id={skinId} x1="0" y1="0" x2="1" y2="1"><stop stopColor="#fff3e7"/><stop offset=".32" stopColor={a.skin}/><stop offset=".85" stopColor={a.skin}/><stop offset="1" stopColor="#c18b83"/></linearGradient>
+      <linearGradient id={skinId} x1="0" y1="0" x2="1" y2="1"><stop stopColor={skinLight}/><stop offset=".32" stopColor={a.skin}/><stop offset=".85" stopColor={a.skin}/><stop offset="1" stopColor={skinShade}/></linearGradient>
       <linearGradient id={fabricId} x1="0" y1="0" x2="1" y2="1"><stop stopColor={a.outfitAccent}/><stop offset=".18" stopColor={a.outfitColor}/><stop offset=".8" stopColor={a.outfitColor}/><stop offset="1" stopColor={a.outfitAccent}/></linearGradient>
       <linearGradient id={hairId} x1="0" x2=".85" y1="0" y2="1"><stop stopColor={a.hairAccent}/><stop offset=".45" stopColor={a.hairColor}/><stop offset="1" stopColor={a.hairColor}/></linearGradient>
     </defs>
@@ -53,6 +57,7 @@ export const AnimeAvatar = memo(function AnimeAvatar({ avatar, size = 100, activ
       <rect width="200" height="200" fill={`url(#${gradientId})`}/>
       <circle cx="168" cy="30" r="64" fill={avatar.color} opacity=".19"/>
       <circle cx="18" cy="188" r="63" fill={a.outfitAccent} opacity=".10"/>
+      <AnimeBackdrop design={a.backdrop} accent={avatar.color}/>
       <g transform={`translate(${a.offsetX} ${a.offsetY}) translate(100 100) scale(${a.zoom / 100}) translate(-100 -100)`}>
         {layer('backHair', <g transform={`translate(100 0) scale(${a.hairVolume / 100} 1) translate(-100 0)`}>
         {/* Rear hair and independent ponytail/twin-tail layers */}
@@ -70,7 +75,17 @@ export const AnimeAvatar = memo(function AnimeAvatar({ avatar, size = 100, activ
         {layer('body', <>
         {/* Outfit layers and collar */}
         <g transform={`translate(100 0) scale(${a.shoulderWidth / 100} 1) translate(-100 0)`}>
-        <path d="M19 214Q21 171 51 163L78 151 121 151 149 163Q179 172 184 214Z" fill={artStyle === 'classic' ? a.outfitColor : `url(#${fabricId})`} stroke={a.outfitAccent} strokeWidth="2" />
+        <path data-avatar-bust={a.bodyShape} d={bustPaths[a.bodyShape]} fill={artStyle === 'classic' ? a.outfitColor : `url(#${fabricId})`} stroke={a.outfitAccent} strokeWidth="2" />
+        {a.outfit === 'sweater' && <g fill="none" stroke={a.outfitAccent} strokeLinecap="round">
+          <path d="M71 158Q101 191 129 158" strokeWidth="6"/>
+          <path d="M70 160Q100 197 130 160" strokeWidth="1.4" opacity=".8"/>
+          <path d="M80 177l5 25 M91 184l2 21 M100 186v20 M109 184l-2 21 M120 177l-5 25" strokeWidth="1.15" opacity=".52"/>
+        </g>}
+        {a.outfit === 'pinafore' && <g>
+          <path d="M58 161L72 157 84 181H116L128 157 142 161 130 214H70Z" fill={a.outfitAccent} stroke={a.outfitColor} strokeWidth="1.5"/>
+          <path d="M75 187H125M85 198Q101 209 116 198" fill="none" stroke={a.outfitColor} strokeWidth="1.4" strokeDasharray="2 3"/>
+          <circle cx="82" cy="181" r="3.2" fill={avatar.color}/><circle cx="118" cy="181" r="3.2" fill={avatar.color}/>
+        </g>}
         {a.outfit === 'hoodie' && <><path d="M60 164Q94 188 140 164L157 208 42 208Z" fill={a.outfitColor}/><path d="M72 161L65 189 82 196 M127 160L134 189 118 196" stroke={a.outfitAccent} strokeWidth="3" fill="none" strokeLinecap="round"/><path d="M66 193Q100 187 135 193" stroke={a.outfitAccent} fill="none" opacity=".65" /></>}
         {a.outfit === 'uniform' && <><path d="M68 159L99 194 131 159 138 178 99 209 59 178Z" fill={a.outfitAccent}/><path d="M75 161L100 188 125 161 116 174 100 193 84 173Z" fill="#ffffff" opacity=".82"/><path d="M99 190L91 214 107 214Z" fill={avatar.color}/></>}
         {a.outfit === 'dress' && <><path d="M62 162Q99 186 137 162L145 213H55Z" fill={a.outfitAccent} opacity=".45"/><path d="M85 163Q100 180 114 163" fill="none" stroke="#fff" strokeWidth="3"/><circle cx="100" cy="190" r="5" fill={avatar.color}/></>}
@@ -80,13 +95,16 @@ export const AnimeAvatar = memo(function AnimeAvatar({ avatar, size = 100, activ
         {a.outfit === 'cardigan' && <><path d='M72 161L96 210 53 211 54 168Z M128 161L104 210 146 211 146 168Z' fill={a.outfitAccent}/><path d='M100 182L100 210' stroke='#fff' strokeWidth='2'/></>}
         {(a.outfit === 'blazer' || a.outfit === 'sailor' || a.outfit === 'cape' || a.outfit === 'gothic' || a.outfit === 'streetwear') && <><path d="M62 163L98 190 137 163 148 209 51 209Z" fill={a.outfitAccent} opacity=".37"/>{a.outfit === 'sailor' && <path d="M65 164L99 193 136 164" stroke="#fff" strokeWidth="4" fill="none"/>}{a.outfit === 'cape' && <path d="M56 162L24 200 54 218 100 178 146 218 176 200 144 162" fill={a.outfitColor} stroke={a.outfitAccent} strokeWidth="2"/>}{a.outfit === 'blazer' && <path d="M73 159L99 187 126 159 117 183 100 202 82 183Z" fill="#fff" opacity=".8"/>}{a.outfit === 'gothic' && <path d="M77 168L99 198 124 169M81 179L119 179" fill="none" stroke="#fff" strokeWidth="1.8"/>}</>}
         {a.outfit === 'jacket' && <><path d="M65 164L98 186 84 207 59 178Z M136 164L102 186 119 207 145 178Z" fill={a.outfitAccent}/><path d="M101 183L101 212" stroke="white" strokeWidth="2"/></>}
-        </g>
-        <AnimeOutfitFinish appearance={a} style={artStyle}/></>)}
+        <AnimeOutfitFinish appearance={a} style={artStyle}/>
+        </g></>)}
         {layer('skin', <>
         {/* Neck and face */}
-        <path d="M86 136L84 163Q100 179 116 163L114 136Z" fill={artStyle === 'classic' ? a.skin : `url(#${skinId})`} stroke="#9e6868" strokeWidth="1.4" />
+        <path data-avatar-detail="neck" transform={`translate(100 0) scale(${a.neckWidth / 100} 1) translate(-100 0)`}
+          d={a.outfit === 'turtleneck' ? 'M86 136L86 146Q100 151 114 146V136Z' : 'M86 136L84 160Q100 175 116 160L114 136Z'}
+          fill={artStyle === 'classic' ? a.skin : `url(#${skinId})`} stroke={skinShade} strokeWidth="1.4" />
+        <AnimeEars shape={a.ears} skin={a.skin} shade={skinShade}/>
         </>)}
-        {layer('face', <path d={`M${100-rx} 82 Q${100-rx-3} 119 81 140 Q99 ${faceBottom+4} 119 140 Q${100+rx+3} 117 ${100+rx} 82 Q137 48 100 50 Q63 48 ${100-rx} 82Z`} fill={artStyle === 'classic' ? a.skin : `url(#${skinId})`} stroke="#bc8992" strokeWidth={artStyle === 'classic' ? 2.3 : 1.45} />)}
+        {layer('face', <path d={`M${100-rx} 82 Q${100-rx-3} 119 81 140 Q99 ${faceBottom+4} 119 140 Q${100+rx+3} 117 ${100+rx} 82 Q137 48 100 50 Q63 48 ${100-rx} 82Z`} fill={artStyle === 'classic' ? a.skin : `url(#${skinId})`} stroke={skinShade} strokeWidth={artStyle === 'classic' ? 2.3 : 1.45} />)}
         {layer('eyebrows', <>
         <path d={a.brows === 'arched' || faceExpression === 'angry' ? 'M70 94Q79 82 89 94 M111 94Q123 82 133 94' : a.brows === 'straight' ? 'M70 94L89 94 M111 94L133 94' : 'M70 96Q77 86 88 94 M111 94Q124 86 133 97'} fill="none" stroke={a.hairColor} strokeWidth={isFocused || faceExpression === 'angry' ? 3.8 : 2.5} strokeLinecap="round"/>
         </>)}
@@ -98,7 +116,7 @@ export const AnimeAvatar = memo(function AnimeAvatar({ avatar, size = 100, activ
         {a.makeup === 'beauty-mark' && <circle cx='127' cy='132' r='2' fill='#5c3c46'/>}
         {a.makeup === 'star-cheeks' && <g fill={a.hairAccent}><path d='M63 123l2 4 4 1-4 2-2 4-2-4-4-2 4-1Z'/><path d='M137 123l2 4 4 1-4 2-2 4-2-4-4-2 4-1Z'/></g>}
         {a.makeup === 'eyeliner' && <path d='M63 102L58 98M138 102L143 98' stroke={a.hairColor} strokeWidth='3' strokeLinecap='round'/>}
-        <path d="M100 117L98 122 101 124" fill="none" stroke="#bc8992" strokeWidth="1.4"/>
+        <AnimeNose shape={a.nose} shade={skinShade}/>
         <path d={isHappy ? 'M88 134Q100 149 113 134Q100 141 88 134Z' : faceExpression === 'curious' ? 'M95 137Q100 141 106 137' : faceExpression === 'sad' ? 'M92 141Q100 133 108 141' : faceExpression === 'surprised' ? 'M96 136Q100 132 104 136Q104 148 100 148Q96 148 96 136Z' : faceExpression === 'angry' ? 'M91 137L109 138' : isFocused ? 'M94 138L105 138' : a.mouth === 'laugh' ? 'M88 133Q100 154 114 133Z' : a.mouth === 'grin' ? 'M88 134Q100 146 114 134L109 139 93 139Z' : a.mouth === 'fang' ? 'M90 136Q101 145 111 136L108 141 105 136 100 141Z' : a.mouth === 'pout' ? 'M95 140Q100 134 105 140' : a.mouth === 'open' ? 'M95 134Q100 129 105 134Q105 147 100 147Q95 147 95 134Z' : a.mouth === 'cat-smile' ? 'M89 134L97 140 101 135 105 140 112 134' : a.mouth === 'frown' ? 'M91 143Q100 135 110 143' : a.mouth === 'soft-smile' ? 'M91 136Q100 142 109 136' : a.mouth === 'smile' ? 'M91 134Q100 148 110 134' : a.mouth === 'smirk' ? 'M92 138Q104 142 111 134' : a.mouth === 'neutral' ? 'M94 137L106 137' : 'M92 136Q100 140 108 136'} fill={isHappy || faceExpression === 'surprised' ? '#b95776' : 'none'} stroke="#a75f78" strokeWidth="2" strokeLinecap="round"/>
         <AnimeFaceFinish appearance={a} style={artStyle} expression={faceExpression}/></>)}
         {layer('frontHair', <g transform={`translate(100 0) scale(${a.hairVolume / 100} 1) translate(-100 0)`}>
@@ -123,23 +141,26 @@ export const AnimeAvatar = memo(function AnimeAvatar({ avatar, size = 100, activ
         </g>)}
         {layer('accessories', <>
         {/* Interchangeable anime accessories */}
-        {(a.accessory === 'ribbon' || a.accessorySecondary === 'ribbon') && <g transform="translate(135 56)"><path d="M0 0L-17 -10Q-23 5 -17 11Z M0 0L17 -10Q22 5 17 11Z" fill={a.outfitAccent} stroke={a.outfitColor} strokeWidth="1.3"/><circle r="4" fill={avatar.color}/></g>}
-        {(a.accessory === 'glasses' || a.accessorySecondary === 'glasses') && <g stroke={a.outfitAccent} fill="none" strokeWidth="2"><rect x="61" y="99" width="35" height="22" rx="8"/><rect x="106" y="99" width="35" height="22" rx="8"/><path d="M96 104Q101 100 106 104"/></g>}
-        {(a.accessory === 'earrings' || a.accessorySecondary === 'earrings') && <g fill={a.outfitAccent}><circle cx="58" cy="125" r="3"/><circle cx="142" cy="125" r="3"/><path d="M58 128l-4 11 4 4 4-4Z M142 128l-4 11 4 4 4-4Z"/></g>}
+        {[...new Set([a.accessory, a.accessorySecondary])].map(kind => (
+          <AnimeOrnament key={kind} kind={kind} accent={accessoryAccent} dark={a.outfitColor}/>
+        ))}
+        {(a.accessory === 'ribbon' || a.accessorySecondary === 'ribbon') && <g transform="translate(135 56)"><path d="M0 0L-17 -10Q-23 5 -17 11Z M0 0L17 -10Q22 5 17 11Z" fill={accessoryAccent} stroke={a.outfitColor} strokeWidth="1.3"/><circle r="4" fill={avatar.color}/></g>}
+        {(a.accessory === 'glasses' || a.accessorySecondary === 'glasses') && <g stroke={accessoryAccent} fill="none" strokeWidth="2"><rect x="61" y="99" width="35" height="22" rx="8"/><rect x="106" y="99" width="35" height="22" rx="8"/><path d="M96 104Q101 100 106 104"/></g>}
+        {(a.accessory === 'earrings' || a.accessorySecondary === 'earrings') && <g fill={accessoryAccent}><circle cx="58" cy="125" r="3"/><circle cx="142" cy="125" r="3"/><path d="M58 128l-4 11 4 4 4-4Z M142 128l-4 11 4 4 4-4Z"/></g>}
         {(a.accessory === 'cat-ears' || a.accessorySecondary === 'cat-ears') && <g fill={a.hairColor} stroke={a.hairAccent} strokeWidth="2"><path d="M64 48L55 11 90 37Z"/><path d="M111 37L148 11 139 52Z"/></g>}
         {(a.accessory === 'face-mask' || a.accessorySecondary === 'face-mask') && <g><path d='M72 117Q100 128 128 117L124 145Q100 156 77 145Z' fill='#e5eff4' stroke='#92a0b0' strokeWidth='2'/><path d='M72 122L58 117M128 122L143 117' fill='none' stroke='#a9b7cc' strokeWidth='2'/><path d='M82 130L118 130M84 136L116 136' stroke='#c8d6dd' strokeWidth='1'/></g>}
-        {(a.accessory === 'beret' || a.accessorySecondary === 'beret') && <g><ellipse cx='100' cy='37' rx='56' ry='20' fill={a.outfitAccent} stroke={a.outfitColor} strokeWidth='2'/><path d='M60 36Q57 2 113 9Q151 14 143 37Z' fill={a.outfitColor}/><circle cx='106' cy='9' r='4' fill={a.outfitAccent}/></g>}
-        {(a.accessory === 'witch-hat' || a.accessorySecondary === 'witch-hat') && <g><path d='M45 41L107 -18 134 39Z' fill={a.outfitColor} stroke={a.outfitAccent} strokeWidth='3'/><ellipse cx='100' cy='41' rx='71' ry='10' fill={a.outfitColor} stroke={a.outfitAccent} strokeWidth='2'/><path d='M82 30L128 30' stroke={a.outfitAccent} strokeWidth='6'/></g>}
-        {(a.accessory === 'cap' || a.accessorySecondary === 'cap') && <g><path d='M53 61Q52 20 101 22Q148 20 148 60Z' fill={a.outfitColor} stroke={a.outfitAccent} strokeWidth='3'/><path d='M85 59Q139 52 167 66Q142 77 86 66Z' fill={a.outfitAccent}/></g>}
-        {(a.accessory === 'headphones' || a.accessorySecondary === 'headphones') && <g fill={a.outfitColor} stroke={a.outfitAccent} strokeWidth='3'><path d='M50 114Q41 16 100 22Q163 22 151 114' fill='none'/><rect x='43' y='96' width='17' height='34' rx='7'/><rect x='141' y='96' width='17' height='34' rx='7'/></g>}
-        {(a.accessory === 'eyepatch' || a.accessorySecondary === 'eyepatch') && <g><path d='M61 108Q79 93 97 107Q93 124 77 125Q62 120 61 108Z' fill={a.outfitColor} stroke={a.outfitAccent} strokeWidth='2'/><path d='M60 100L141 90' stroke={a.outfitAccent} strokeWidth='2'/></g>}
-        {(a.accessory === 'choker' || a.accessorySecondary === 'choker') && <g><path d='M85 153Q99 157 116 153L118 162Q99 167 83 162Z' fill={a.outfitColor}/><circle cx='100' cy='160' r='4' fill={a.outfitAccent}/></g>}
-        {(a.accessory === 'flower-crown' || a.accessorySecondary === 'flower-crown') && <g>{[59,72,85,99,113,127,140].map((x,i) => <g key={x} transform={`translate(${x},${43-Math.sin((i/6)*Math.PI)*19})`}><circle r='6' fill={a.outfitAccent}/><circle r='3' fill={avatar.color}/></g>)}</g>}
-        {(a.accessory === 'halo' || a.accessorySecondary === 'halo') && <ellipse cx="101" cy="18" rx="33" ry="8" fill="none" stroke={a.outfitAccent} strokeWidth="5" />}
-        {(a.accessory === 'hairclip' || a.accessorySecondary === 'hairclip') && <g transform="translate(143 71)"><path d="M-11 -4L11 4M-10 3L10 -3" fill="none" stroke={a.outfitAccent} strokeWidth="4" strokeLinecap="round"/></g>}
-        {(a.accessory === 'tiara' || a.accessorySecondary === 'tiara') && <path d="M65 45L73 27 87 40 100 20 114 40 129 27 136 45Z" fill={a.outfitAccent} stroke="#fff" strokeWidth="1.3"/>}
+        {(a.accessory === 'beret' || a.accessorySecondary === 'beret') && <g><ellipse cx='100' cy='37' rx='56' ry='20' fill={accessoryAccent} stroke={a.outfitColor} strokeWidth='2'/><path d='M60 36Q57 2 113 9Q151 14 143 37Z' fill={a.outfitColor}/><circle cx='106' cy='9' r='4' fill={accessoryAccent}/></g>}
+        {(a.accessory === 'witch-hat' || a.accessorySecondary === 'witch-hat') && <g><path d='M45 41L107 -18 134 39Z' fill={a.outfitColor} stroke={accessoryAccent} strokeWidth='3'/><ellipse cx='100' cy='41' rx='71' ry='10' fill={a.outfitColor} stroke={accessoryAccent} strokeWidth='2'/><path d='M82 30L128 30' stroke={accessoryAccent} strokeWidth='6'/></g>}
+        {(a.accessory === 'cap' || a.accessorySecondary === 'cap') && <g><path d='M53 61Q52 20 101 22Q148 20 148 60Z' fill={a.outfitColor} stroke={accessoryAccent} strokeWidth='3'/><path d='M85 59Q139 52 167 66Q142 77 86 66Z' fill={accessoryAccent}/></g>}
+        {(a.accessory === 'headphones' || a.accessorySecondary === 'headphones') && <g fill={a.outfitColor} stroke={accessoryAccent} strokeWidth='3'><path d='M50 114Q41 16 100 22Q163 22 151 114' fill='none'/><rect x='43' y='96' width='17' height='34' rx='7'/><rect x='141' y='96' width='17' height='34' rx='7'/></g>}
+        {(a.accessory === 'eyepatch' || a.accessorySecondary === 'eyepatch') && <g><path d='M61 108Q79 93 97 107Q93 124 77 125Q62 120 61 108Z' fill={a.outfitColor} stroke={accessoryAccent} strokeWidth='2'/><path d='M60 100L141 90' stroke={accessoryAccent} strokeWidth='2'/></g>}
+        {(a.accessory === 'choker' || a.accessorySecondary === 'choker') && <g><path d='M85 153Q99 157 116 153L118 162Q99 167 83 162Z' fill={a.outfitColor}/><circle cx='100' cy='160' r='4' fill={accessoryAccent}/></g>}
+        {(a.accessory === 'flower-crown' || a.accessorySecondary === 'flower-crown') && <g>{[59,72,85,99,113,127,140].map((x,i) => <g key={x} transform={`translate(${x},${43-Math.sin((i/6)*Math.PI)*19})`}><circle r='6' fill={accessoryAccent}/><circle r='3' fill={avatar.color}/></g>)}</g>}
+        {(a.accessory === 'halo' || a.accessorySecondary === 'halo') && <ellipse cx="101" cy="18" rx="33" ry="8" fill="none" stroke={accessoryAccent} strokeWidth="5" />}
+        {(a.accessory === 'hairclip' || a.accessorySecondary === 'hairclip') && <g transform="translate(143 71)"><path d="M-11 -4L11 4M-10 3L10 -3" fill="none" stroke={accessoryAccent} strokeWidth="4" strokeLinecap="round"/></g>}
+        {(a.accessory === 'tiara' || a.accessorySecondary === 'tiara') && <path d="M65 45L73 27 87 40 100 20 114 40 129 27 136 45Z" fill={accessoryAccent} stroke="#fff" strokeWidth="1.3"/>}
         {(a.accessory === 'nose-bandage' || a.accessorySecondary === 'nose-bandage') && <g transform="rotate(-18 100 122)"><rect x="92" y="119" width="18" height="6" rx="2" fill="#efd6c0" stroke="#cfb39a" strokeWidth=".6"/><path d="M98 120v4M101 120v4M104 120v4" stroke="#b6a28f" strokeWidth=".6"/></g>}
-        {(a.accessory === 'visor' || a.accessorySecondary === 'visor') && <path d="M58 101Q101 92 143 101L135 118Q101 127 65 118Z" fill="#7dd3dd" fillOpacity=".43" stroke={a.outfitAccent} strokeWidth="2"/>}
+        {(a.accessory === 'visor' || a.accessorySecondary === 'visor') && <path d="M58 101Q101 92 143 101L135 118Q101 127 65 118Z" fill="#7dd3dd" fillOpacity=".43" stroke={accessoryAccent} strokeWidth="2"/>}
         </>)}
         {layer('lighting', <><path d="M53 58Q75 22 101 28" fill="none" stroke="#fff" strokeWidth="2.4" opacity={artStyle === 'classic' ? .18 : .44} strokeLinecap="round"/><ellipse cx="157" cy="39" rx="3" ry="8" transform="rotate(45 157 39)" fill="#fff" opacity=".28"/></>)}
       </g>

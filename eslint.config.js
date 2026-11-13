@@ -3,7 +3,8 @@ import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 export default tseslint.config(
-  { ignores: ['runtime/**', 'dist/**', '.test-dist/**', 'src-tauri/target/**', 'zips/**','output/**'] },
+  // VarMover is an unmounted reference editor. Solarium imports only its draft catalog metadata.
+  { ignores: ['runtime/**', 'dist/**', '.test-dist/**', 'src-tauri/target/**', 'zips/**','output/**', 'src/varmover/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   { files:['tests/**/*.cjs','scripts/**/*.cjs'],languageOptions:{globals:globals.node},rules:{'@typescript-eslint/no-require-imports':'off','@typescript-eslint/no-unused-vars':'off'} },

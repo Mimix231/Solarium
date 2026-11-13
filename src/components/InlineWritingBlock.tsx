@@ -9,9 +9,11 @@ import { markdownContent, structuredContent, writingExtensions } from '../writin
 import { downloadBytes, exportDocx } from '../blocks/exports';
 import { readableProse, repeatedPassages } from '../writing/prose';
 import { MarkdownBody } from './MarkdownBody';
+import { useSolarium } from '../state/useSolarium';
 
 export interface WritingBlockContext { access: AccessContext; messageId: string; documentId?:string; storyId?: string | null; onContinue?: (title: string) => void }
 export function InlineWritingBlock({ block, context, onAdvanced }: { block: ContentBlock; context: WritingBlockContext; onAdvanced?: () => void }) {
+  const spacer = useSolarium(state => state.workspace.preferences.sceneSpacer ?? 'rule');
   const repo = useMemo(() => new WritingRepository({sessionId:context.access.sessionId,projectId:context.access.projectId}), [context.access.sessionId, context.access.projectId]);
   const [saved, setSaved] = useState<{ document: WritingDocument; markdown: string } | null>(null);
   const [editing, setEditing] = useState(false), [error, setError] = useState('');
@@ -37,7 +39,7 @@ export function InlineWritingBlock({ block, context, onAdvanced }: { block: Cont
       setEditing(true);
     } catch (e) { setError(String(e)); }
   }
-  return <section id={`inline-writing-${saved?.document.id??context.documentId??block.id}`} className="inline-writing-block" aria-label={`Writing block: ${block.title}`}>
+  return <section id={`inline-writing-${saved?.document.id??context.documentId??block.id}`} className="inline-writing-block" data-scene-spacer={spacer} aria-label={`Writing block: ${block.title}`}>
     <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap" className="inline-writing-heading"><Typography fontWeight={700} flex={1}>{saved?.document.title ?? block.title}</Typography>{block.status === 'streaming' ? <Typography fontSize={11}>Writing…</Typography> : <><Button size="small" onClick={() => editing ? setEditing(false) : void edit()}>{editing ? 'Read' : 'Edit'}</Button><Button size="small" onClick={() => downloadBytes(text, 'text/markdown;charset=utf-8', `${block.title}.md`)}>Markdown</Button><Button size="small" onClick={() => exportDocx(text, block.title)}>DOCX</Button><Button size="small" onClick={() => context.onContinue?.(block.title)}>Continue</Button><details><summary>More</summary><Button size="small" onClick={onAdvanced}>Revision history & exports</Button></details></>}</Stack>
     {(presentation.issues.length>0||block.issues?.length||repeated.length>0)&&<Alert severity="info">{repeated.length?'A passage may repeat an earlier part of this chapter. The original text is preserved.':'A repeated writing marker was removed from the reading view. Your original revision is preserved.'}{saved&&presentation.issues.length>0&&<Button size="small" onClick={()=>void recoverFormatting()}>Save readable formatting as a new revision</Button>}</Alert>}
     {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}

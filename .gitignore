@@ -11,7 +11,11 @@ junk/
 output/
 
 # Managed inference engines, packages and model caches (large / local only)
-runtime/
+runtime/coding-tools
+runtime/installer
+runtime/llama-cpp
+runtime/logs
+runtime/vllm
 
 # Imported Python service bytecode and local merge diagnostics
 __pycache__/
@@ -21,3 +25,6 @@ __pycache__/
 # Reproducible source identity and local development diagnostics
 src/quality/source-identity.generated.ts
 .coding-*
+
+# Generated offline SPICA Phase 01 contract test output
+.spica-phase01-test/

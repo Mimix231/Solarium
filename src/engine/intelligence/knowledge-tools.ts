@@ -3,6 +3,7 @@ import type { ChatSession, CreatorProject, Preferences } from '../../domain/type
 import { WritingRepository } from '../../writing/repository';
 import { markdownContent } from '../../writing/schema';
 import { StoryRepository, claimKinds, claimSections, type ClaimData } from '../../stories/repository';
+import { FictionRepository, profileFields, type ProfileField } from '../../stories/fiction';
 import { SourceRepository } from '../../sources/repository';
 import { researchTopic, nativeSearchProvider } from '../../research/research';
 import { saveStorySetup, type StorySetup } from '../../stories/setup';
@@ -24,7 +25,9 @@ export const knowledgeToolDefinitions:AgentToolDefinition[]=[
   define('move_writing_document','Move an authored document to a category inside the same project/story.',{document_id:str,category_id:{type:['string','null']}},['document_id','category_id']),
   define('create_story_world','Create a separate story continuity; never changes the assistant Spark persona.',{title:str,origin_kind:{type:'string',enum:['original','fanfiction','mixed']},franchise:str,canon_anchor:str,divergence:str},['title','origin_kind']),
   define('create_story_character','Save a story character avatar/profile, separate from the Spark. Names/aliases deduplicate. Voice/motive notes are interpretations until authored by the user or supported by evidence. A portrait can use an image attachment already supplied in this chat.',{name:str,aliases:{type:'array',items:str,maxItems:30},kind:{type:'string',enum:['canon','original','adapted']},voice:str,personality:str,motivation:str,portrait_attachment_id:str},['name']),
-  define('read_story_memory','Read the active story cast, voices, character knowledge and established events, offline. An omitted knowledge state is unspecified, never omniscience.',{}),
+  define('read_story_memory','Read scoped cast and memories offline. For a selected arc profile, pass character_id, field and optional character offset to read a page of its exact text.',{
+    character_id:str,field:{type:'string',enum:profileFields},offset:{type:'integer',minimum:0},
+  }),
   define('remember_character_fact','Save a character correction explicitly supplied in the latest user instruction. Quote that instruction exactly and copy its stated value verbatim. This creates a locked user fact, never confirmed external canon.',{character_id:str,section:{type:'string',enum:claimSections},field:str,value:{type:'string',minLength:1,maxLength:1000},user_quote:str},['character_id','section','field','value','user_quote']),
   define('remember_story_event','Save an event that actually occurs in a saved chapter, with per-character knowledge. Requires the exact current document revision and a short verbatim passage; plans do not become memories.',{document_id:str,revision_id:str,summary:{type:'string',minLength:1,maxLength:700},quote:{type:'string',minLength:8,maxLength:500},knowledge:{type:'array',maxItems:30,items:{type:'object',additionalProperties:false,properties:{character:str,state:{type:'string',enum:['knows','suspects','unknown']},belief:{type:'string',maxLength:500},belief_quote:{type:'string',maxLength:500}},required:['character','state']}}},['document_id','revision_id','summary','quote','knowledge']),
   define('research_character','Research the named character at the active story point; read actual pages and save concise evidence in this project/chat Sources. No invented profile.',{name:str,section:{type:'string',enum:claimSections}},['name']),
@@ -99,7 +102,28 @@ export async function executeKnowledgeTool(name:string,args:Record<string,unknow
       const claims:ClaimData[]=[];for(const [field,section] of [['voice','Personality & Voice'],['personality','Personality & Voice'],['motivation','Motivations']] as const)if(args[field])claims.push({characterId:character.id,section,field,value:String(args[field]),kind:'interpretation',sourceLinks:[],locked:false,reviewed:false});
       if(claims.length)await stories.saveClaims(character,claims);return JSON.stringify(character);
     }
-    case 'read_story_memory':return JSON.stringify({world:await stories.world(mustStory()),characters:await Promise.all((await stories.characters(mustStory())).map(async c=>({id:c.id,name:c.title,aliases:c.data.aliases,role:c.data.role,claims:await stories.claims(c.id,mustStory())}))),events:await stories.activeEvents(mustStory()),notice:'Scoped story data; character knowledge is distinct from author knowledge and assistant identity.'});
+    case 'read_story_memory': {
+      const storyId=mustStory();
+      if(args.field!==undefined){
+        if(!session.fiction||typeof args.character_id!=='string')throw Error('Select an arc profile and provide its character_id.');
+        const fiction=new FictionRepository(stories);
+        const {profiles}=await fiction.selection(storyId,session.fiction);
+        const profile=profiles.find(item=>item.data.characterId===args.character_id);
+        if(!profile)throw Error('This character is outside the selected chapter cast.');
+        const field=args.field as ProfileField;
+        const chars=Array.from((await fiction.read(profile))[field]??'');
+        const offset=Number(args.offset??0);
+        if(offset>chars.length)throw Error('Profile offset is beyond the saved field.');
+        const nextOffset=Math.min(chars.length,offset+1400);
+        return JSON.stringify({characterId:profile.data.characterId,field,offset,nextOffset,total:chars.length,hasMore:nextOffset<chars.length,
+          text:chars.slice(offset,nextOffset).join('')});
+      }
+      const world=await stories.world(storyId);
+      if(session.fiction)return JSON.stringify({storyId,categoryId:session.fiction.categoryId,cast:session.fiction.characterIds,
+        profileFields,context:await stories.contextPack(storyId,session.messages.filter(message=>message.role==='user').at(-1)?.content??'',true,session.fiction)});
+      const data={...world.data};delete data.icon;
+      return JSON.stringify({world:{...world,data},characters:await Promise.all((await stories.characters(storyId)).map(async c=>({id:c.id,name:c.title,aliases:c.data.aliases,role:c.data.role,claims:await stories.claims(c.id,storyId)}))),events:await stories.activeEvents(storyId),notice:'Scoped story data; character knowledge is distinct from author knowledge and assistant identity.'});
+    }
     case 'remember_character_fact':{
       const cast=await stories.characters(mustStory());const character=cast.find(c=>c.id===args.character_id);if(!character)throw Error('Character is outside this story.');
       const latest=session.messages.filter(m=>m.role==='user').at(-1)?.content??'';const quote=String(args.user_quote),value=String(args.value);

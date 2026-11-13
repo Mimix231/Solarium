@@ -42,7 +42,7 @@ async function runConversationInner(options:AgentOptions,sink:ConversationSink,i
     }
   };
   try{
-    await runAgent({...options,session,messageId,
+    await runAgent({...options,session,messageId,onWorkspace:workspace,
       onAnswer:delta=>{answer+=delta;codeStream.push(delta);if(!managed){stream.push(delta);if(performance.now()-lastDocumentUpdate>180){lastDocumentUpdate=performance.now();writingStatus();}}options.onAnswer(delta);},
       onAnswerReplace:text=>{answer=text;codeStream.replace(text);if(!managed)stream.replaceVisible(text);options.onAnswerReplace?.(text);},
       onWorkUpdate:text=>{answer=answer.slice(0,-text.length);codeStream.replace(answer);stream.replaceVisible(answer);workspace({operationId:`progress:${messageId}:${progress++}`,kind:'inspect',status:'completed',title:'Progress update',detail:text,output:text});options.onWorkUpdate?.(text);},

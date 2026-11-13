@@ -1,4 +1,114 @@
-.spica-studio { height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 16px; padding: clamp(14px, 2.4vw, 32px); }
+/* Phase 02 — one centered glass overlay over the existing Solarium conversation. */
+.spica-workbench-dialog .MuiBackdrop-root {
+  background: rgba(2, 9, 22, .68);
+  backdrop-filter: blur(7px) saturate(.82);
+  -webkit-backdrop-filter: blur(7px) saturate(.82);
+}
+.MuiDialog-paper.spica-workbench {
+  --spica-cyan: #74dcd4;
+  --spica-violet: #a389ff;
+  --spica-edge: color-mix(in srgb, #7bbad9 34%, transparent);
+  box-sizing: border-box;
+  width: min(1510px, calc(100vw - 34px)); max-width: none;
+  height: min(88dvh, 950px); max-height: calc(100dvh - 20px);
+  margin: 0; overflow: hidden; color: var(--text, #f2f4ff);
+  border: 1px solid color-mix(in srgb, #819eff 64%, transparent);
+  border-radius: 20px;
+  background:
+    radial-gradient(ellipse at 100% 0%, rgba(134, 83, 239, .24), transparent 49%),
+    radial-gradient(ellipse at 0% 92%, rgba(32, 160, 161, .18), transparent 53%),
+    linear-gradient(135deg, rgba(22, 34, 64, .97), rgba(13, 23, 42, .98));
+  box-shadow: 0 28px 110px #020714dd, 0 0 32px #636ed633, inset 0 1px 0 #b4ceff29;
+  backdrop-filter: blur(25px) saturate(1.18);
+  -webkit-backdrop-filter: blur(25px) saturate(1.18);
+}
+.spica-workbench-header, .spica-workbench-footer { padding: 12px clamp(14px, 2vw, 25px); flex: none; }
+.spica-workbench-header { border-bottom: 1px solid var(--spica-edge); background: linear-gradient(90deg,#27406333,#41315f28); }
+.spica-workbench-header .MuiTypography-h6 { font-size: clamp(16px, 1.25vw, 20px); font-weight: 730; line-height: 1.2; }
+.spica-workbench-mark {
+  display: grid; place-items: center; width: 41px; height: 41px; border-radius: 13px;
+  color: #d1c4ff; background: linear-gradient(130deg,#484fc37a,#28557a60);
+  border: 1px solid #8888e25e; box-shadow: 0 0 17px #775de653;
+}
+.spica-workbench-footer { border-top: 1px solid var(--spica-edge); display: flex; flex-wrap: wrap; gap: 10px;
+  justify-content: space-between; align-items: center; background: #0d1836bb; }
+.spica-workbench-footer-actions { margin-left: auto; justify-content: end; }
+.spica-workbench-empty { flex: 1; overflow: auto; padding: 20px; }
+.spica-workbench-grid { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); gap: 12px; padding: 12px; min-height: 0; }
+.spica-workbench-evidence, .spica-live-preview-pane {
+  display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden;
+  border: 1px solid var(--spica-edge); border-radius: 14px;
+  background: linear-gradient(160deg, #1b2a4a99, #101b30bd); box-shadow: inset 0 1px #c5cfff10;
+}
+.spica-workbench-tabs { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 4px; padding: 8px; flex: none; border-bottom: 1px solid var(--spica-edge); scrollbar-width: thin; }
+.spica-workbench-tabs .MuiButton-root { white-space: nowrap; font-size: 11px; padding: 5px 10px; min-width: unset; }
+.spica-workbench-tabs .MuiButton-contained { background: linear-gradient(120deg,#5e45cf,#6856da); box-shadow: 0 0 14px #7454e53d; }
+.spica-workbench-tab, .spica-workbench-preview { min-width: 0; min-height: 0; overflow: auto; scrollbar-width: thin; }
+.spica-workbench-tab { flex: 1; display: flex; flex-direction: column; gap: 10px; padding: 11px; }
+.spica-workbench-preview { display: flex; flex-direction: column; overflow: hidden; }
+.spica-live-preview-pane { height: 100%; }
+.spica-live-preview-caption { flex: none; padding: 11px 13px; min-height: 48px; border-bottom: 1px solid var(--spica-edge); }
+.spica-live-preview-body { flex: 1; min-height: 0; overflow: auto; padding: 10px; scrollbar-width: thin; }
+.spica-live-preview-body .spica-preview-dialog[data-mode="dock"] { min-height: 100%; }
+.spica-live-preview-body .spica-preview-viewport:not([data-width="compact"]) { width: 100%; }
+.spica-live-preview-body .spica-preview-scroll { max-height: none; }
+.spica-workbench .spica-layout { grid-template-columns: minmax(0, 1fr); }
+.spica-build-stream { min-height: 0; }
+.spica-build-events {
+  display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 8px; list-style: none;
+  flex: 0 0 auto; max-height: clamp(150px, 26dvh, 310px); overflow-y: auto; border: 1px solid #a0caff21;
+  border-radius: 10px; background: rgba(4, 14, 30, .45); scrollbar-width: thin;
+}
+.spica-build-event { display: flex; align-items: flex-start; gap: 9px; padding: 6px 8px; border-radius: 8px; border: 1px solid transparent; }
+.spica-build-event:hover { background: #cedbff09; border-color: #b7d9fa16; }
+.spica-build-event[data-status="running"] { background: #657aff13; }
+.spica-build-event[data-status="failed"] { background: #b32c341a; }
+.spica-build-event[data-status="passed"] .spica-build-event-icon { filter: drop-shadow(0 0 5px #6cd7a955); }
+.spica-build-event-icon { padding-top: 2px; line-height: 0; }
+.spica-build-event-empty { padding: 12px; }
+.spica-terminal-shell { min-width: 0; overflow: hidden; border: 1px solid #426b8075; border-radius: 11px;
+  background: #060e1eeb; box-shadow: inset 0 0 22px #19335933; }
+.spica-terminal-title { padding: 7px 10px; color: #91cbd4; background: #15263b; border-bottom: 1px solid #45647655; }
+.spica-terminal-output {
+  box-sizing: border-box; display: block; min-height: 150px; max-height: clamp(175px, 25dvh, 310px);
+  overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+  padding: 12px; margin: 0; color: #bbdfd8;
+  font: 11px/1.55 'Cascadia Code', Consolas, 'Liberation Mono', monospace; tab-size: 2; scrollbar-width: thin;
+}
+.spica-diff-panel { min-height: 0; }
+.spica-monaco-diff { min-width: 0; height: clamp(300px, 44dvh, 590px); overflow: hidden; border: 1px solid #86a5ce38; border-radius: 10px; }
+.spica-diff-oversized { max-height: 450px; overflow-y: auto; }
+.spica-build-timeline { align-items: center; flex: 1 1 390px; overflow-x: auto; scrollbar-width: thin; }
+.spica-timeline-step { display: flex; flex: 1 0 auto; align-items: center; gap: 5px; color: #aabbd3; }
+.spica-timeline-step[data-status="running"] { color: #bca4ff; }
+.spica-timeline-step[data-status="passed"] { color: #76dec0; }
+.spica-timeline-step[data-status="failed"] { color: #fa9999; }
+.spica-timeline-step[data-status="cancelled"] { color: #f6c78a; }
+.spica-timeline-dot { display: grid; place-items: center; border-radius: 50%; border: 1px solid currentColor;
+  width: 17px; height: 17px; opacity: .9; }
+.spica-timeline-spinner { width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; animation: spica-pulse 1.2s ease-in-out infinite; }
+.spica-sr-only { position: absolute; overflow: hidden; width: 1px; height: 1px; padding: 0; clip: rect(0,0,0,0); white-space: nowrap; }
+@keyframes spica-pulse { 50% { opacity: .4; transform: scale(.68); } }
+@media (max-width: 970px) {
+  .spica-workbench-grid { gap: 9px; padding: 9px; }
+  .spica-workbench-footer-actions { margin-left: 0; }
+}
+@media (max-width: 760px) {
+  .MuiDialog-paper.spica-workbench { width: calc(100vw - 12px); height: calc(100dvh - 12px); max-height: none; border-radius: 14px; }
+  .spica-workbench-grid { overflow-y: auto; display: flex; flex-direction: column; }
+  .spica-workbench-evidence { flex: 0 0 auto; min-height: 300px; max-height: 52dvh; }
+  .spica-workbench-preview { flex: 0 0 auto; min-height: 430px; overflow: visible; }
+  .spica-live-preview-pane { min-height: 430px; }
+  .spica-monaco-diff { height: 310px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spica-timeline-spinner { animation: none; }
+  .MuiDialog-paper.spica-workbench { scroll-behavior: auto; }
+}
+@media (forced-colors: active) {
+  .MuiDialog-paper.spica-workbench, .spica-workbench-evidence, .spica-live-preview-pane { border: 1px solid CanvasText; background: Canvas; }
+  .spica-terminal-shell, .spica-build-events { border: 1px solid CanvasText; }
+}
 .spica-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; }
 .spica-layout { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(280px, 2fr); gap: 12px; }
 .spica-panel { padding: 16px; border: 1px solid color-mix(in srgb, currentColor 20%, transparent); border-radius: 13px; min-width: 0; }
@@ -9,4 +119,35 @@
 .spica-outline button:hover, .spica-outline button[aria-current] { background: color-mix(in srgb, currentColor 10%, transparent); }
 .spica-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; margin: 0; padding: 10px; border-radius: 8px; background: color-mix(in srgb, currentColor 7%, transparent); }
 .spica-panel summary { cursor: pointer; }
+.spica-warehouse-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.spica-warehouse-filters form { flex: 1 1 300px; }
+.spica-warehouse-filters > .MuiFormControl-root { min-width: 130px; max-width: min(100%, 320px); }
+.spica-warehouse-list { display: grid; gap: 5px; list-style: none; margin: 8px 0; padding: 0; }
+.spica-warehouse-list button { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px; text-align: start; border-radius: 8px; border: 1px solid transparent; background: color-mix(in srgb, currentColor 5%, transparent); color: inherit; font: inherit; cursor: pointer; }
+.spica-warehouse-list button:hover, .spica-warehouse-list button[aria-pressed="true"] { border-color: color-mix(in srgb, currentColor 32%, transparent); background: color-mix(in srgb, currentColor 10%, transparent); }
+.spica-warehouse-list button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.spica-warehouse-list button span { font-size: 11px; flex-shrink: 0; opacity: .85; }
+.spica-warehouse-detail code { overflow-wrap: anywhere; }
+.spica-warehouse-detail ul { margin: 0; padding-inline-start: 20px; font-size: 13px; }
+.spica-flow-steps { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.spica-flow-steps li { display: flex; flex-direction: column; gap: 7px; padding: 8px 12px; border-radius: 8px; background: color-mix(in srgb, currentColor 5%, transparent); }
+.spica-surface-nav { display: flex; flex-wrap: wrap; gap: 3px; }
+.spica-evidence { display: grid; min-width: 0; overflow-wrap: anywhere; gap: 4px; margin-block: 6px; }
+.spica-evidence-list { max-height: 440px; overflow: auto; align-content: start; }
 @media (max-width: 750px) { .spica-layout { grid-template-columns: minmax(0, 1fr); } }
+
+/* Dream Workbench: window chrome and the integrated preview stay in the centered overlay. */
+.spica-live-preview-window { flex: 0 0 auto; margin: 10px 12px 0; padding: 8px 12px; min-height: 34px;
+  color: #c6d2ec; background: #070f24a9; border: 1px solid #526c9d51; border-bottom: 0;
+  border-radius: 12px 12px 0 0; }
+.spica-window-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+.spica-window-close { background: #ed7187; }.spica-window-min { background: #f5c867; }.spica-window-max { background: #69d8a1; }
+.spica-live-preview-body { display: flex; flex-direction: column; padding: 0 12px 12px; }
+.spica-live-preview-body .spica-preview-dialog[data-mode="dock"] { flex: 1; border: 1px solid #546daf70; border-radius: 0 0 12px 12px;
+  background: linear-gradient(142deg,#121f3de8,#181d47e9); box-shadow: 0 8px 24px #060d235c, inset 0 1px #a3c8ff1a; }
+.spica-live-preview-body .spica-preview-header { padding: 8px 12px; background: #242f5b88; }
+.spica-live-preview-body .spica-preview-scroll { background: linear-gradient(135deg,#0c1630,#171a3c); padding: 11px; }
+.spica-live-preview-body .spica-preview-viewport { box-shadow: 0 7px 24px #0206196a; border-radius: 9px; }
+.spica-live-preview-body .spica-preview-toolbar { background: #18264a55; }
+.spica-live-preview-body .spica-preview-dialog [data-spica-part="app"] { min-height: 380px; }
+@media (prefers-reduced-motion: reduce) { .spica-live-preview-window { transition: none; } }

@@ -1,3 +1,9 @@
+# Solarium × SPICA — Phase 01 source update
+
+The **12-mega-phase roadmap** and Phase 01 implementation notes are in [`roadmap/`](roadmap/). Phase 01 has been applied to the Solarium source: see [`roadmap/09_PHASE01_IMPLEMENTATION_REPORT.md`](roadmap/09_PHASE01_IMPLEMENTATION_REPORT.md) and [`../src/spica/blocks/README.md`](../src/spica/blocks/README.md). Registered legacy blocks have one module each; large draft catalogs do not become executable by being indexed. This pack still contains earlier architectural documents as references.
+
+---
+
 # SPICA — 350K-Capacity Block Warehouse: Copilot Implementation Pack
 
 **Edition:** 0.3 — 9 November 2026  
@@ -71,3 +77,7 @@ These are **historical project references**, not a live repository audit. The ea
 The Spark-facing warehouse is assembled from the real `blockRegistry` and `recipeCatalog` in `src/spica/program.ts`; it does not import Markdown or draft research profiles as executable entries. `src/spica/warehouse.ts` provides bounded local search and exact ID/version inspection, with maturity, target, capability, installation, and implementation status derived from those registered adapters and the active graph. Results are paged through the existing SPICA tool path before graph edits; no second agent loop or network request is introduced.
 
 The runtime index is intentionally small and its counts are derived from the registries. The 10,000 web-research profiles and 350,000 category slots described in this proposal remain catalog designs, not installed or executable functionality.
+
+## Canon integration checkpoint
+
+The current source has Phase 01 (registered block-file architecture) and Phase 02 (centered glass SpicaWorkbench with real terminal-style build evidence and source-diff preview) implemented. See [`roadmap/SPICA_ROUND_STATUS.md`](roadmap/SPICA_ROUND_STATUS.md) and [`roadmap/10_PHASE02_IMPLEMENTATION_REPORT.md`](roadmap/10_PHASE02_IMPLEMENTATION_REPORT.md) for test results and native release limitations. **Phase 03 is not implemented yet.**

@@ -1,11 +1,13 @@
 import type { ChatSession, CreatorProject, MemoryItem, Spark } from '../domain/types';
-import { listProjectFiles, readProjectFile, readPublicWebpage, searchPublicWeb, searchProjectCode, applyProjectChanges, replaceProjectText, type ProjectFileChange } from './creator';
-import { buildContextualSearchIntent, rankResearchResults } from './search-intent';
+import { listProjectFiles, readProjectFile, searchProjectCode, applyProjectChanges, replaceProjectText, type ProjectFileChange } from './creator';
+import type { ConversationResearch } from '../research/conversation';
 import { knowledgeToolDefinitions, executeKnowledgeTool, knowledgeNames, knowledgeWebNames, type KnowledgeExecution } from './intelligence/knowledge-tools';
-import { validateToolArguments } from './intelligence/tool-validation';
+import { ToolContractRegistry, ToolCallValidator, ToolExecutionCoordinator } from './intelligence/tool-contract-intelligence';
 import { inspectEnvironment, type ProjectEnvironment } from './intelligence/project';
 import { codingToolDefinitions, codingNames, codingWebNames, executeCodingTool, type CodingExecution } from './intelligence/coding-tools';
 import { runProjectCommand } from './intelligence/commands';
+import { spicaToolContract } from '../spica/tools';
+import { spicaResearchNames, spicaResearchNetworkNames,executeSpicaResearchTool } from '../spica/research-tools';
 export const toolDefinitions = [
   ...codingToolDefinitions,
   ...knowledgeToolDefinitions,
@@ -19,8 +21,8 @@ export const toolDefinitions = [
   { type: 'function', function: { name: 'replace_project_text', description: 'Make a precise user-approved text replacement in one existing source file, using an exact unique fragment. Prefer this for small changes so the model does not rewrite an entire file. The Rust backend verifies the text occurs exactly once and creates a backup.', parameters: { type: 'object', properties: { path: { type: 'string' }, expected_fragment: { type: 'string' }, replacement: { type: 'string' } }, required: ['path', 'expected_fragment', 'replacement'], additionalProperties: false } } },
   { type: 'function', function: { name: 'apply_project_changes', description: 'Create or modify reviewed source files inside the linked project. First inspect existing files and pass their exact content in expected. For new files expected=null. Approval depends on the chat execution mode (Ask / Auto / YOLO); changes remain restricted to the linked project directory. Up to 12 files per call. Only call when user requested actual changes.', parameters: { type: 'object', properties: { files: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' }, expected: { type: ['string','null'] } }, required: ['path', 'content', 'expected'], additionalProperties: false } } }, required: ['files'], additionalProperties: false } } },
   { type: 'function', function: { name: 'run_project_check', description: 'Run one real, reviewed build/test command in the linked project folder. Permission follows Ask / Auto / YOLO; only a fixed allowlist of checks is supported.', parameters: { type: 'object', properties: { check: { type: 'string', enum: ['npm_check', 'npm_test', 'npm_build', 'cargo_check', 'git_diff', 'git_status'] } }, required: ['check'], additionalProperties: false } } },
-  { type: 'function', function: { name: 'search_web', description: 'Search public websites for the user. Requires user permission and internet connectivity.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'], additionalProperties: false } } },
-  { type: 'function', function: { name: 'open_web_page', description: 'Fetch readable text from a public HTTPS page. Requires user permission.', parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'], additionalProperties: false } } },
+  { type: 'function', function: { name: 'search_web', description: 'Search with short public terms from the user request. Returns JSON candidates with IDs and snippets. A weak Bing response may retry the same query on DuckDuckGo. Refine weak results and select a relevant candidate using open_web_page.', parameters: { type: 'object', properties: { query: { type: 'string', minLength: 1, maxLength: 280 }, fallback: { type: 'boolean' } }, required: ['query'], additionalProperties: false } } },
+  { type: 'function', function: { name: 'open_web_page', description: 'Read the actual page by source_id from search_web, or supply a public HTTPS url explicitly provided by the user. Use its passage as evidence.', parameters: { type: 'object', properties: { source_id: { type: 'string' }, url: { type: 'string' } }, additionalProperties: false } } },
   { type: 'function', function: { name: 'search_memories', description: 'Search user-approved Solarium memories for context.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'], additionalProperties: false } } },
 ] as const;
 /** Serialized tool declarations sent to the model; the native registry remains authoritative. */
@@ -123,7 +125,7 @@ export function selectActionTools(
 export function allowedToolDefinitions(webEnabled: boolean, projectEnabled = true): typeof toolDefinitions[number][] {
   return toolDefinitions.filter((tool) => {
     const name: string = tool.function.name;
-    if (!webEnabled && (name === 'search_web' || name === 'open_web_page' || knowledgeWebNames.includes(name)||codingWebNames.includes(name))) return false;
+    if (!webEnabled && (name === 'search_web' || name === 'open_web_page' || spicaResearchNetworkNames.has(name) || knowledgeWebNames.includes(name)||codingWebNames.includes(name))) return false;
     if (!projectEnabled && ['inspect_project','search_project_code','apply_project_changes','replace_project_text','list_project_files','read_project_file','run_project_check','install_project_dependencies',...codingNames.filter(n=>!['recall_context','list_generated_code','read_generated_code'].includes(n))].includes(name)) return false;
     return true;
   });
@@ -192,8 +194,16 @@ export function executeTool(name: string, args: Record<string, unknown>, spark: 
 }
 
 /** Native web and project-file tools are read-only; project files are confined to the folder explicitly linked by the user. */
-export async function executeAgentTool(name: string, args: Record<string, unknown>, spark: Spark, memories: MemoryItem[], session: ChatSession, projects: CreatorProject[], onCheckOutput?: (stream: 'stdout' | 'stderr', chunk: string) => void, execution?:KnowledgeExecution & CodingExecution): Promise<string> {
-  const validation=validateToolArguments(name,args,toolDefinitions);if(!validation.ok)throw Error(validation.error.message);
+export async function executeAgentTool(name: string, args: Record<string, unknown>, spark: Spark, memories: MemoryItem[], session: ChatSession, projects: CreatorProject[], onCheckOutput?: (stream: 'stdout' | 'stderr', chunk: string) => void, execution?:KnowledgeExecution & CodingExecution & { research?: ConversationResearch }): Promise<string> {
+  const definition = toolDefinitions.find(tool => tool.function.name === name);
+  const program = Boolean(execution?.spicaProgram && !execution.spicaStyle);
+  const contracts = new ToolContractRegistry(definition ? [spicaToolContract(definition, program)] : []);
+  args = new ToolExecutionCoordinator(new ToolCallValidator(contracts)).prepare(name, args);
+  if(spicaResearchNames.has(name)){
+    const project=projects.find(p=>p.id===session.projectId);
+    if(!project||!execution?.research||!execution.signal)throw Error('This research tool requires an active project and research run.');
+    return executeSpicaResearchTool(name,args,execution.research,project.id,execution.signal,Boolean(execution.webEnabled));
+  }
   if(codingNames.includes(name)){if(!execution)throw Error('No active coding context.');return executeCodingTool(name,args,session,projects,execution,onCheckOutput);}
   if(knowledgeNames.includes(name)){if(!execution)throw Error('Knowledge tools require an active conversation execution context.');return executeKnowledgeTool(name,args,session,projects,execution);}
   if(['search_web','open_web_page'].includes(name)&&!execution?.webEnabled)throw Error('Web Search is OFF.');
@@ -257,24 +267,12 @@ export async function executeAgentTool(name: string, args: Record<string, unknow
       const environment=await inspectEnvironment(project.id,project.folder);if(environment.detected.packageManager!=='npm'||!environment.manifests.some(m=>m.path==='package.json'))throw Error('Automatic dependency installation requires an npm package.json project.');
       return JSON.stringify(await runProjectCommand(project.folder,execution?.webEnabled?'install:network':'install:cached',Boolean(execution?.webEnabled),execution?.signal,onCheckOutput?e=>onCheckOutput(e.stream,e.chunk):undefined));
     }
-    case 'search_web': {
-      if (typeof args.query !== 'string' || !args.query.trim()) throw Error('Missing query.');
-      const userGoal = session.messages.filter((message) => message.role === 'user').at(-1)?.content ?? '';
-      const project = projects.find((item) => item.id === session.projectId);
-      const earlierGoal = session.messages.find((message) => message.role === 'user' && message.content.trim().length > 45)?.content ?? '';
-      const intent = buildContextualSearchIntent(userGoal, `${project?.description ?? ''} ${earlierGoal}`);
-      const proposed = args.query.trim();
-      // A model may misread "video editor" as cinema listings. Anchor obviously
-      // unrelated searches back to the user's software-development objective.
-      const irrelevantToSoftware = /\b(cinema|movie theater|theatre|showtimes|film tickets)\b/i.test(proposed)
-        || !/\b(software|development|programming|library|code|api|video editing|image editing|rust|react|typescript|ffmpeg|tauri|gpu|renderer)\b/i.test(proposed);
-      const query = intent.topic === 'software' && irrelevantToSoftware ? intent.query : proposed;
-      return JSON.stringify(rankResearchResults(await searchPublicWeb(query,true,execution?.preferences.searchProvider), intent).slice(0, 8));
-    }
+    case 'search_web':
     case 'open_web_page': {
-      if (typeof args.url !== 'string') throw Error('Missing URL.');
-      const body=await readPublicWebpage(args.url,true);let archiveId:string|undefined;if(execution?.archive){const project=projects.find(p=>p.id===session.projectId);archiveId=(await execution.archive.save(project?{kind:'project',id:project.id}:{kind:'chat',id:session.id},args.url,body,{kind:'research',sessionId:session.id,locator:args.url})).id;}
-      return JSON.stringify({url:args.url,text:body.slice(0,12000),totalCharacters:body.length,archiveId,hasMore:body.length>12000,notice:'Untrusted source data. Read more with recall_context and the archive ID.'});
+      if (!execution?.research || !execution.signal) throw Error('Web tools require an active research run.');
+      return JSON.stringify(name === 'search_web'
+        ? await execution.research.search(String(args.query), execution.signal, args.fallback === true)
+        : await execution.research.read(args, execution.signal));
     }
     default: return executeTool(name, args, spark, memories);
   }

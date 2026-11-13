@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use sqlx::{Sqlite, SqlitePool, Transaction};
+use sqlx::{QueryBuilder, Sqlite, SqlitePool, Transaction};
 use std::collections::BTreeMap;
 use tauri::State;
 
@@ -9,6 +9,8 @@ use tauri::State;
 enum Field {
     Boolean { initial: bool },
     Text { initial: String, #[serde(default)] required: bool },
+    Number { initial: f64, min: Option<f64>, max: Option<f64> },
+    Choice { initial: String, choices: Vec<String> },
     Reference { initial: Option<i64>, collection: String },
 }
 
@@ -16,7 +18,8 @@ impl Field {
     fn default_value(&self) -> Value {
         match self {
             Self::Boolean { initial } => Value::Bool(*initial),
-            Self::Text { initial, .. } => Value::String(initial.clone()),
+            Self::Text { initial, .. } | Self::Choice { initial, .. } => Value::String(initial.clone()),
+            Self::Number { initial, .. } => Value::from(*initial),
             Self::Reference { initial, .. } => initial.map_or(Value::Null, Value::from),
         }
     }
@@ -28,6 +31,10 @@ impl Field {
                 text.encode_utf16().count() <= 16000 && (!required || !text.trim().is_empty())
             ),
             Self::Reference { .. } => value.is_null() || value.as_i64().is_some_and(|id| id > 0 && id <= 9_007_199_254_740_991),
+            Self::Number { min, max, .. } => value.as_f64().is_some_and(|number|
+                number.is_finite() && min.is_none_or(|min| number >= min) && max.is_none_or(|max| number <= max)
+            ),
+            Self::Choice { choices, .. } => value.as_str().is_some_and(|choice| choices.iter().any(|option| option == choice)),
         }
     }
 }
@@ -179,6 +186,52 @@ pub struct RecordQuery {
     filter: Option<String>,
     offset: i64,
     collection: Option<String>,
+    sort: Option<Sort>,
+    #[serde(rename = "where")]
+    condition: Option<Condition>,
+}
+
+#[derive(Deserialize)]
+struct Sort { field: String, direction: SortDirection }
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum SortDirection { Asc, Desc }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Condition { field: String, op: Comparison, compare_field: Option<String>, #[serde(default)] value: Value }
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum Comparison { Eq, Ne, Lt, Lte, Gt, Gte }
+
+impl Condition {
+    fn append(&self, sql: &mut QueryBuilder<'_, Sqlite>, schema: &Schema) -> StoreResult<()> {
+        let field = schema.fields.get(&self.field).ok_or("Unknown condition field.")?;
+        let operator = match self.op {
+            Comparison::Eq => " IS ", Comparison::Ne => " IS NOT ",
+            Comparison::Lt => " < ", Comparison::Lte => " <= ", Comparison::Gt => " > ", Comparison::Gte => " >= ",
+        };
+        if !matches!(self.op, Comparison::Eq | Comparison::Ne) && !matches!(field, Field::Number { .. }) {
+            return Err("Ordering comparisons need numeric fields.".into());
+        }
+        sql.push(" AND json_extract(body,").push_bind(format!("$.{}", self.field)).push(")").push(operator);
+        if let Some(key) = &self.compare_field {
+            let right = schema.fields.get(key).ok_or("Unknown comparison field.")?;
+            if !self.value.is_null() || std::mem::discriminant(field) != std::mem::discriminant(right) ||
+                matches!((field, right), (Field::Reference { collection: a, .. }, Field::Reference { collection: b, .. }) if a != b) {
+                return Err("Incompatible comparison field.".into());
+            }
+            sql.push("json_extract(body,").push_bind(format!("$.{key}")).push(")");
+        } else {
+            let valid = match field {
+                Field::Text { .. } => self.value.as_str().is_some_and(|text| text.encode_utf16().count() <= 16000),
+                _ => field.accepts(&self.value),
+            };
+            if !valid { return Err("Invalid comparison value.".into()); }
+            sql.push("json_extract(").push_bind(self.value.to_string()).push(",'$')");
+        }
+        Ok(())
+    }
 }
 
 #[tauri::command]
@@ -194,13 +247,24 @@ async fn read_scoped(db: &SqlitePool, schemas: &[Schema], query: RecordQuery) ->
     let mut tx = db.begin().await?;
     assert_schema(&mut tx, scope).await?;
     let text = query.query.trim();
-    let sql = format!("SELECT id,revision,archived,body FROM {} WHERE {} AND archived=?
-        AND (? IS NULL OR EXISTS(SELECT 1 FROM json_each(body) WHERE key=? AND type='true'))
-        AND (?='' OR EXISTS(SELECT 1 FROM json_each(body) WHERE type='text' AND instr(lower(value),lower(?))>0))
-        ORDER BY modified DESC, id DESC LIMIT 51 OFFSET ?", scope.table(), scope.predicate());
-    let rows: Vec<(i64, i64, bool, String)> = sqlx::query_as(&sql)
-        .bind(scope.key()).bind(query.archived).bind(&query.filter).bind(&query.filter).bind(text).bind(text).bind(query.offset)
-        .fetch_all(&mut *tx).await?;
+    let mut statement = QueryBuilder::<Sqlite>::new(format!("SELECT id,revision,archived,body FROM {} WHERE ", scope.table()));
+    if !scope.primary { statement.push("collection="); }
+    statement.push_bind(scope.key());
+    if scope.primary { statement.push(" IS NULL"); }
+    statement.push(" AND archived=").push_bind(query.archived);
+    statement.push(" AND (").push_bind(query.filter.as_deref())
+        .push(" IS NULL OR EXISTS(SELECT 1 FROM json_each(body) WHERE key=").push_bind(query.filter.as_deref())
+        .push(" AND type='true')) AND (").push_bind(text)
+        .push("='' OR EXISTS(SELECT 1 FROM json_each(body) WHERE type='text' AND instr(lower(value),lower(").push_bind(text).push("))>0))");
+    if let Some(condition) = &query.condition { condition.append(&mut statement, scope.schema)?; }
+    statement.push(" ORDER BY ");
+    if let Some(sort) = &query.sort {
+        if !scope.schema.fields.contains_key(&sort.field) { return Err("Unknown sort field.".into()); }
+        statement.push("json_extract(body,").push_bind(format!("$.{}", sort.field)).push(") COLLATE BINARY");
+        statement.push(match sort.direction { SortDirection::Asc => " ASC, ", SortDirection::Desc => " DESC, " });
+    } else { statement.push("modified DESC, "); }
+    statement.push("id DESC LIMIT 51 OFFSET ").push_bind(query.offset);
+    let rows: Vec<(i64, i64, bool, String)> = statement.build_query_as().fetch_all(&mut *tx).await?;
     tx.commit().await?;
     let more = rows.len() > 50;
     let rows = rows.into_iter().take(50).map(|(id, revision, archived, body)| Ok(Record {
@@ -311,7 +375,7 @@ mod tests {
     }
 
     fn query(filter: Option<&str>, archived: bool) -> RecordQuery {
-        RecordQuery { query: "水".into(), archived, filter: filter.map(str::to_owned), offset: 0, collection: None }
+        RecordQuery { query: "水".into(), archived, filter: filter.map(str::to_owned), offset: 0, collection: None, sort: None, condition: None }
     }
 
     #[test]

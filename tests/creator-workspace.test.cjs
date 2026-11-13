@@ -48,6 +48,18 @@ test('anime appearance survives export/import for multiple eyes, irises, hats, f
   }
 });
 
+test('both accessory slots and portrait elements survive a saved workspace reload', () => {
+  const workspace = defaultWorkspace();
+  const anime = workspace.sparks[0].avatar.anime;
+  const additions = { accessory: 'moon-pin', accessorySecondary: 'pocket-bird', accessoryAccent: '#e2b79f',
+    outfit: 'sweater', bodyShape: 'petite', neckWidth: 112, ears: 'pointed', nose: 'button', backdrop: 'orbit' };
+  Object.assign(anime, additions);
+  const restored = validateWorkspace(JSON.parse(JSON.stringify(workspace))).sparks[0].avatar.anime;
+  for (const [key, value] of Object.entries(additions)) assert.equal(restored[key], value);
+  anime.accessorySecondary = 'flower-crown';
+  assert.equal(validateSpark(workspace.sparks[0]).avatar.anime.accessorySecondary, 'flower-crown');
+});
+
 test('local model prompt includes project instructions and attached source text without requiring a planner', async () => {
   const prev=global.fetch;
   let body;

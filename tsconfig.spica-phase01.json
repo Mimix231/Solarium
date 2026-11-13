@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "types": [],
+    "outDir": ".spica-phase01-test",
+    "rootDir": "src",
+    "noEmit": false
+  },
+  "include": [
+    "src/spica/program.ts",
+    "src/spica/warehouse.ts",
+    "src/spica/capabilities.ts",
+    "src/spica/runtime/blocks/registry.ts",
+    "src/spica/runtime/blocks/standalone.ts"
+  ]
+}

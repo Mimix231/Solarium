@@ -36,13 +36,20 @@ async function mountApp() {
   const name = design.program?.csvTransform;
   const transform = name && design.program?.grants.includes('custom.transform') && typeof exports[name] === 'function' ? exports[name] as CsvTransform : undefined;
   let trace: FlowTrace[] = [];
+  let exported: string | undefined;
+  const saveExport: SaveExport | undefined = desktop || descriptor ? async (name, body, format) => {
+    exported = undefined;
+    const written = desktop ? await invoke<string | null>('save_record_export', { name, body, format }) : name;
+    if (descriptor && written && format === 'csv') exported = body;
+    return written;
+  } : undefined;
   createRoot(root).render(<SpicaApp standalone plan={design} {...store} footer={custom.footerLabel?.(design)} transform={transform}
-    saveExport={desktop ? (name, body, format) => invoke('save_record_export', { name, body, format }) : undefined}
+    saveExport={saveExport}
     onTrace={steps => { trace = steps; }} />);
   if (!descriptor) return;
   const scenario = design.program?.scenarios.find(scenario => scenario.id === descriptor.id);
   if (!scenario) throw Error('Unknown runtime scenario.');
-  const report = { ...await runScenario(root, store.records, scenario, descriptor.phase), trace };
+  const report = { ...await runScenario(root, store.records, scenario, descriptor.phase, undefined, () => exported), trace };
   if (desktop) await invoke('finish_spica_test', { report });
   else {
     const result = document.createElement('pre');

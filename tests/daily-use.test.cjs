@@ -74,22 +74,93 @@ test('authored document recall uses exact saved text and excludes foreign or per
   await repo.create({scope:{kind:'library',id:'personal'},title:'Private other book',markdown:'PERSONAL_SECRET'});const other=new WritingRepository({sessionId:'other',projectId:'q'},store);await other.create({scope:{kind:'project',id:'q'},title:'Chapter 1 Brass Key',markdown:'FOREIGN_SECRET'});
   const context=await writingContext(repo,'Write chapter 2 and preserve the brass key.');assert.match(context,/blue cloth/);assert.match(context,/read_writing_document/);assert.ok(!context.includes('PERSONAL_SECRET')&&!context.includes('FOREIGN_SECRET'));
 });
-test('planned writing keeps uncapped native scene streams and persists a 50k+ document and revision',async()=>{
+test('planned writing keeps uncapped scene streams and persists a 50k+ chapter with unlabelled breaks',async()=>{
   const {defaultWorkspace}=require('../.test-dist/domain/defaults.js');const {WritingRepository}=require('../.test-dist/writing/repository.js');const w=defaultWorkspace(),store=new Store();let calls=0;const requests=[];let streamed='';
-  const plan=JSON.stringify({title:'Transport regression chapter',facts:['A brass key is retained.'],scenes:[{title:'Arrival',purpose:'Meet the keeper',stateAfter:'Keeper agrees to help'},{title:'Departure',purpose:'Use the key',stateAfter:'The door opens'}]});
-  const adapter={kind:'llama.cpp',countTokens:async()=>100,async generate(model,messages,caps,cb,signal,request){requests.push({messages,request});calls++;const text=calls===1?plan:Array.from({length:420},(_,i)=>`Scene ${calls}, paragraph ${i}: The keeper carried the brass key through a changing landscape, considering the promise made at the gate.\n\n`).join('');cb.reasoning('Actual test reasoning channel.');for(let i=0;i<text.length;i+=157)cb.answer(text.slice(i,i+157));return{answer:text,reasoning:'Actual test reasoning channel.',calls:[],finishReason:'stop'};}};
-  const opts={spark:w.sparks[0],model:{modelId:'test',backend:'llama.cpp',endpoint:'http://127.0.0.1:8080',contextSize:4096},session:{id:'writing-test',mode:'creative',messages:[{role:'user',content:'Write a chapter of 50,000 characters involving a brass key. Save the chapter under "Acceptance/Chapters".'}]},preferences:w.preferences,memories:[],signal:new AbortController().signal,events:{emit(){}},onAnswer:d=>{streamed+=d;},onApproval:async()=> 'allow'};
-  const answer=await runLongWriting(opts,adapter,{contextSize:4096},'',null,store);assert.equal(calls,3);assert.equal(answer,streamed);assert.ok(requests.every(r=>r.request.outputTokens===-1));
+  const plan=JSON.stringify({title:'Transport regression chapter',facts:['A brass key is retained.'],
+    scenes:Array.from({length:6},(_,i)=>({title:'Gate '+i,purpose:'Cross gate '+i,stateAfter:'Passed gate '+i,developments:[
+      {purpose:'Unlock gate '+i,stateAfter:'The lock opens at gate '+i},
+      {purpose:'Escort the crew',stateAfter:'Crew has passed gate '+i},
+    ]}))});
+  const adapter={kind:'llama.cpp',countTokens:async()=>100,async generate(model,messages,caps,cb,signal,request){
+    requests.push({messages,request});const turn=calls++-1;
+    let text=turn===-1?'<|tool_call>search{query:"unneeded"}':plan;
+    if(turn===0){
+      assert.match(messages.at(-1).content,/Revise the rejected plan/);
+      assert.ok(messages.some(message=>message.content.includes('requested research is already complete')));
+    }
+    if(turn>0){
+      const scene=Math.ceil(turn/2),development=turn%2===1?1:2;
+      const ending=`The keeper and crew reached checkpoint ${scene}.${development}.`;
+      const paragraphs=Array.from({length:39},(_,i)=>`Paragraph ${turn}-${i}: The keeper carried the brass key through a changing landscape, considering the promise made at the gate.\n\n`).join('');
+      const heading=development===1?`### Scene ${scene}`:`**Scene ${scene}: the next action**`;
+      text=heading+'\n\n'+paragraphs+ending+'<solarium-scene>'+JSON.stringify({beatId:`scene-${scene}/development-${development}`,quote:ending,endState:ending})+'</solarium-scene>';
+    }
+    cb.reasoning('Actual test reasoning channel.');
+    for(let i=0;i<text.length;i+=157)cb.answer(text.slice(i,i+157));
+    return {answer:text,reasoning:'Actual test reasoning channel.',calls:[],finishReason:'stop'};
+  }};
+  const opts={spark:w.sparks[0],model:{modelId:'test',backend:'llama.cpp',endpoint:'http://127.0.0.1:8080',contextSize:4096},session:{id:'writing-test',mode:'creative',messages:[{role:'user',content:'Write a chapter of 50,000 characters involving a brass key. Save the chapter under "Acceptance/Chapters".'}]},researchSourceIds:['source-fixture'],preferences:w.preferences,memories:[],signal:new AbortController().signal,events:{emit(){}},onAnswer:d=>{streamed+=d;},onApproval:async()=> 'allow'};
+  const answer=await runLongWriting(opts,adapter,{contextSize:4096},'Saved evidence fixture',null,store);assert.equal(calls,14);assert.equal(answer,streamed);assert.ok(requests.every(r=>r.request.outputTokens===-1));
+  assert.doesNotMatch(answer,/^(?:### |\*\*)Scene \d+/m);
+  assert.equal((answer.match(/^\*\*\*$/gm)??[]).length,5);
   for(const r of requests){const users=r.messages.filter(m=>m.role==='user');assert.equal(users.length,1);assert.ok(users[0].content.includes(opts.session.messages[0].content));assert.match(users[0].content,/CURRENT SOLARIUM DOCUMENT OPERATION/);}
-  const repo=new WritingRepository({sessionId:'writing-test',projectId:null},store);const docs=await repo.list();assert.equal(docs.length,1);const saved=await repo.get(docs[0].id);assert.ok(saved.content.markdownProjection.length>50000);assert.equal(saved.document.data.metadata.targetCharacters,50000);assert.equal((await repo.categories()).find(c=>c.id===saved.document.data.categoryId).title,'Chapters');assert.equal((await repo.revisions(docs[0].id)).length,4);
+  const repo=new WritingRepository({sessionId:'writing-test',projectId:null},store);const docs=await repo.list();assert.equal(docs.length,1);const saved=await repo.get(docs[0].id);assert.ok(saved.content.markdownProjection.length>50000);assert.equal(saved.document.data.metadata.targetCharacters,50000);assert.equal((await repo.categories()).find(c=>c.id===saved.document.data.categoryId).title,'Chapters');assert.equal((await repo.revisions(docs[0].id)).length,8);
   const tasks=await store.list({scopes:repo.scopes(),collection:'writing_task'});assert.equal(tasks[0].data.state,'completed');assert.ok(!requests.some(r=>r.messages.some(m=>/continue thinking/i.test(m.content))));
 });
 test('an actual stopped scene preserves partial prose without an automatic reasoning replay',async()=>{
   const {defaultWorkspace}=require('../.test-dist/domain/defaults.js');const w=defaultWorkspace(),store=new Store(),abort=new AbortController();let calls=0;
-  const adapter={kind:'llama.cpp',countTokens:async()=>100,async generate(model,messages,caps,cb){calls++;if(calls===1){const text=JSON.stringify({title:'Stopped chapter',facts:[],scenes:[{title:'A',purpose:'A',stateAfter:'A'},{title:'B',purpose:'B',stateAfter:'B'}]});cb.answer(text);return{answer:text,calls:[],finishReason:'stop'};}cb.answer('The key turned halfway.');abort.abort();throw new DOMException('Stopped','AbortError');}};
+  const adapter={kind:'llama.cpp',countTokens:async()=>100,async generate(model,messages,caps,cb){calls++;if(calls===1){const text=JSON.stringify({title:'Stopped chapter',facts:[],scenes:['A','B'].map(title=>({title,purpose:title,stateAfter:title,developments:[{purpose:'Open '+title,stateAfter:title+' opened'},{purpose:'Cross '+title,stateAfter:title+' crossed'}]}))});cb.answer(text);return{answer:text,calls:[],finishReason:'stop'};}cb.answer('The key turned halfway.');abort.abort();throw new DOMException('Stopped','AbortError');}};
   const opts={spark:w.sparks[0],model:{modelId:'test',backend:'llama.cpp',contextSize:4096},session:{id:'stop',mode:'creative',messages:[{role:'user',content:'Write a 50k character chapter.'}]},preferences:w.preferences,memories:[],signal:abort.signal,events:{emit(){}},onAnswer(){},onApproval:async()=> 'allow'};
   await assert.rejects(runLongWriting(opts,adapter,{contextSize:4096},'',null,store),/Stopped/);assert.equal(calls,2);
   const tasks=await store.list({scopes:[{kind:'chat',id:'stop'}],collection:'writing_task'});assert.equal(tasks[0].data.state,'cancelled');assert.ok([...store.bodies.values()].some(body=>body==='The key turned halfway.'));
+});
+test('a scene stays pending through premature EOS and resumes after its saved first development',async()=>{
+  const {defaultWorkspace}=require('../.test-dist/domain/defaults.js');
+  const {WritingRepository}=require('../.test-dist/writing/repository.js');
+  const {unfinishedWriting}=require('../.test-dist/writing/long-task.js');
+  const workspace=defaultWorkspace(),store=new Store(),abort=new AbortController();
+  const repo=new WritingRepository({sessionId:'scene-recovery',projectId:null},store);
+  const unlocked='Mara heard the bolt fall clear of the strike.';
+  const escaped='The last apprentice stepped safely onto the landing.';
+  const first=Array.from({length:100},(_,i)=>`Mara tested the iron key beside mark ${i}.\n\n`).join('')+unlocked;
+  const second=Array.from({length:110},(_,i)=>`Soren guided the apprentice past landing ${i}.\n\n`).join('')+escaped;
+  const proof=(index,quote)=>'<solarium-scene>'+JSON.stringify({beatId:'scene-1/development-'+index,quote,endState:quote})+'</solarium-scene>';
+  const plan=JSON.stringify({title:'Open the gate',facts:[],scenes:[{title:'The escape',purpose:'Free the apprentices',stateAfter:escaped,
+    developments:[{purpose:'Turn the key',stateAfter:unlocked},{purpose:'Guide the apprentices out',stateAfter:escaped}]}]});
+  const options={spark:workspace.sparks[0],model:{modelId:'test',backend:'llama.cpp',contextSize:4096},session:{id:'scene-recovery',mode:'creative',messages:[{role:'user',content:'Write a chapter of 8,000 characters about freeing the apprentice crew.'}]},
+    messageId:'original',preferences:workspace.preferences,memories:[],signal:abort.signal,events:{emit(){}},onAnswer(){},onAnswerReplace(){},onApproval:async()=> 'allow'};
+  let turns=0;
+  const adapter={kind:'llama.cpp',countTokens:async()=>100,async generate(model,messages,caps,cb){
+    const turn=turns++;
+    if(turn===2)assert.match(messages.at(-1).content,/Repair this draft before advancing/);
+    if(turn===3){cb.answer('Soren approached the crew.');abort.abort();throw new DOMException('Stopped','AbortError');}
+    const answer=[plan,'Mara noticed the lock and considered trying the key.',first+proof(1,unlocked)][turn];
+    cb.answer(answer);return {answer,calls:[],finishReason:'stop'};
+  }};
+  await assert.rejects(runLongWriting(options,adapter,{contextSize:4096},'',null,store),/Stopped/);
+  assert.equal(turns,4);
+  const task=await unfinishedWriting(repo,options.session.id);
+  assert.equal(task.data.nextScene,0);
+  assert.equal(task.data.scenes[0].developments[0].proof.quote,unlocked);
+  assert.equal(await store.body(task.id,[task.scope]),first);
+  assert.equal((await repo.get(task.data.documentId)).content.markdownProjection,'');
+  assert.match((await repo.draft(task.data.documentId)).markdown,/Soren approached the crew/);
+  const reply=await runLongWriting({...options,messageId:'resumed',signal:new AbortController().signal},{
+    ...adapter,async generate(model,messages,caps,cb,signal,request){
+      assert.match(messages.at(-1).content,/Write development 2 of 2/);
+      assert.match(messages.at(-1).content,/Mara heard the bolt fall/);
+      assert.equal(request.outputTokens,-1);
+      const answer=second+proof(2,escaped);cb.answer(answer);return{answer,calls:[],finishReason:'stop'};
+    },
+  },{contextSize:4096},'',task,store);
+  const saved=await repo.get(task.data.documentId);
+  assert.equal(saved.document.data.status,'final');
+  assert.ok(saved.document.data.messageBindings.includes('resumed'));
+  assert.ok(checkChapterLength(saved.content.markdownProjection,{minimum:8000,unit:'characters'}).complete);
+  assert.equal(saved.content.markdownProjection.indexOf(unlocked),first.length-unlocked.length);
+  assert.equal(reply.match(/Mara heard the bolt fall/g).length,1);
+  assert.doesNotMatch(saved.content.markdownProjection,/^\*\*\*$/m);
+  assert.equal(await unfinishedWriting(repo,options.session.id),null);
 });
 test('agent executes three real failed checks, preserves their diagnostics, repairs and verifies all commands',async()=>{
   // Only the native boundary and model transport are substituted. Node actually

@@ -34,6 +34,7 @@ export interface QualityRun {
 }
 export interface QualityOptions {
   model: LocalModel; spark: Spark; signal: AbortSignal; webEnabled: boolean;
+  researchRequest?: string;
   onApproval: (name: string, args: Record<string, unknown>) => Promise<'allow' | 'deny'>;
   onProgress?: (run: QualityRun) => void;
 }
@@ -50,6 +51,11 @@ export async function runQualityCase(test: QualityCase, options: QualityOptions)
   const {invoke}=await import('@tauri-apps/api/core');
   const binary=await invoke<{nativeBinarySha256:string}>('coding_quality_identity');
   if (test.requiresWeb && !options.webEnabled) throw Error('This case requires the app’s Web Search permission. It was not enabled by the quality runner.');
+  if (test.requiresWeb) {
+    const request = options.researchRequest?.trim();
+    if (!request) throw Error('Enter the research request for this check.');
+    test = { ...test, messages: [{ role: 'user', content: 'Research online and read the relevant sources for this request.\n' + request }] };
+  }
   const state = useSolarium.getState();
   const ready=await readyModel(options.model,state.workspace.preferences);options={...options,model:ready.model};state.upsertModel(ready.model);
   const time = now(); const sessionId = uid(); let projectId: string | null = null;

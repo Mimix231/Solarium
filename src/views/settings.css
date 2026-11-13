@@ -1,0 +1,18 @@
+.settings-shell { width: 100%; }
+.settings-tabs { margin-bottom: 1.25rem; border-bottom: 1px solid color-mix(in srgb, currentColor 18%, transparent); }
+.settings-general { display: grid; grid-template-columns: minmax(150px, 210px) minmax(0, 1fr); align-items: start; gap: 1rem; max-width: 1200px; }
+.settings-section-content, .fiction-settings-editor { min-width: 0; }
+.settings-section-content [hidden] { display: none; }
+.settings-section-nav, .fiction-settings-list { display: grid; align-content: start; gap: .45rem; }
+.settings-section-nav button, .fiction-settings-list button { justify-content: flex-start; overflow-wrap: anywhere; text-align: start; }
+.fiction-settings-grid { display: grid; grid-template-columns: minmax(130px, .8fr) minmax(135px, .8fr) minmax(280px, 2.5fr); align-items: start; gap: 1rem; max-width: 1450px; }
+.fiction-settings-list { max-height: 65vh; overflow: auto; }
+@media (max-width: 920px) {
+  .fiction-settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fiction-settings-editor { grid-column: 1 / -1; }
+  .fiction-settings-list { max-height: 32vh; }
+}
+@media (max-width: 650px) {
+  .settings-general { grid-template-columns: minmax(0, 1fr); }
+  .settings-section-nav { display: flex; flex-wrap: wrap; }
+}

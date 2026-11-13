@@ -5,7 +5,7 @@ import { accessibleScopes, assertScope, sameScope, validateBody, type AccessCont
 export type SourceKind = 'chat_message' | 'chat_selection' | 'webpage' | 'document' | 'project_file' | 'code_block' | 'writing_block' | 'image' | 'note';
 export type SourceOrigin =
   | { kind: 'message'; sessionId: string; messageId: string; blockId?: string; selection?: string }
-  | { kind: 'web'; url: string; accessedAt: string; readState: 'found' | 'read'; title?: string }
+  | { kind: 'web'; url: string; accessedAt: string; readState: 'found' | 'read'; title?: string; locator?: string; requestedUrl?: string; parentUrl?: string }
   | { kind: 'file'; originalName: string; relativePath?: string; fingerprint?: string }
   | { kind: 'user_note' };
 export interface SourceData { kind: SourceKind; origin: SourceOrigin; tags: string[]; enabled: boolean; contentHash: string; createdAt: string; description?: string; mimeType?: string; arc?: number; chapter?: number; continuity?: string }

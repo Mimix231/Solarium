@@ -3,7 +3,7 @@ import type { InferenceAdapter } from './backends';
 import { generationMetrics } from './backends';
 import { prepareGeneration, CHUNK_SIZE, CONTEXT_HEADROOM } from './context-window';
 import type { GenerationRequestOptions, LlamaMessage, LlamaTurnResult } from './llama';
-export interface GenerationOutcome {backend:string;reason:'natural_eos'|'tool_call'|'output_or_context_limit'|'content_filter'|'unknown'|'cancelled'|'transport_error'|'input_limit';contextSize:number|null;promptTokens:number|null;contextShift:'supported'|'unsupported'|'unknown';detail?:string}
+export interface GenerationOutcome {backend:string;reason:'natural_eos'|'tool_call'|'output_or_context_limit'|'content_filter'|'unknown'|'cancelled'|'transport_error'|'input_limit';contextSize:number|null;promptTokens:number|null;contextShift:'supported'|'unsupported'|'unknown';tokenCountSource?:'server'|'estimate'|'unknown';detail?:string}
 
 /** Retained for compatibility: 2048 is a streaming *batch*, not a new LLM request. */
 export const OUTPUT_SEGMENT_TOKENS = CHUNK_SIZE;
@@ -15,6 +15,8 @@ export interface ContinuousAnswerOptions {
   messages: LlamaMessage[];
   signal: AbortSignal;
   request?: GenerationRequestOptions;
+  /** Limit input assembly per natural tool turn, not streamed output tokens. */
+  workingContextLimit?:number;
   onAnswer(delta: string): void;
   onReasoning(delta: string): void;
   onToolDelta?(index: number, name: string, argsSoFar: string): void;
@@ -81,9 +83,11 @@ export async function streamContinuousAnswer(options: ContinuousAnswerOptions): 
 
   let result: LlamaTurnResult;
   let promptTokens:number|null=null;
+  let tokenCountSource:'server'|'estimate'|'unknown'='unknown';
   let contextSize:number|null=capabilities.contextSize??model.contextSize??null;
   try {
-    const prepared = await prepareGeneration(adapter, model, capabilities, messages, signal, request);
+    const prepared = await prepareGeneration(adapter, model, capabilities, messages, signal, request, 0, options.workingContextLimit);
+    tokenCountSource=prepared.tokenCountSource;
     promptTokens=prepared.promptTokens;contextSize=prepared.contextSize;
     // Continue on the same loaded engine: -1 asks llama.cpp to keep streaming
     // until the model's own stop or a genuine server limitation. The server
@@ -95,7 +99,7 @@ export async function streamContinuousAnswer(options: ContinuousAnswerOptions): 
       { answer: onAnswer, reasoning: onReasoning, toolDelta: options.onToolDelta }, signal,
       { ...request, tools: prepared.tools, outputTokens });
   } catch(error){
-    options.onOutcome?.({backend:adapter.kind,reason:signal.aborted?'cancelled':error instanceof Error&&(/INPUT context|oversized context|ModelContextError/i.test(error.message)||error.name==='ModelContextError')?'input_limit':'transport_error',contextSize,promptTokens,contextShift:capabilities.contextShift??'unknown',detail:String(error)});
+    options.onOutcome?.({backend:adapter.kind,reason:signal.aborted?'cancelled':error instanceof Error&&(/INPUT context|oversized context|ModelContextError/i.test(error.message)||error.name==='ModelContextError')?'input_limit':'transport_error',contextSize,promptTokens,contextShift:capabilities.contextShift??'unknown',tokenCountSource,detail:String(error)});
     throw error;
   } finally {
     setThinking(false);
@@ -103,7 +107,7 @@ export async function streamContinuousAnswer(options: ContinuousAnswerOptions): 
   const generated=reasoning+answer+result.calls.map(call=>call.function.arguments).join('');
   onMetrics?.(generationMetrics(adapter.kind, model.modelId, started, firstToken, performance.now(), generated,
     result.usage?.completionTokens));
-  options.onOutcome?.({backend:adapter.kind,reason:result.calls.length&&result.finishReason!=='length'?'tool_call':result.finishReason==='stop'?'natural_eos':result.finishReason==='tool_calls'?'tool_call':result.finishReason==='length'?'output_or_context_limit':result.finishReason==='content_filter'?'content_filter':'unknown',contextSize,promptTokens,contextShift:capabilities.contextShift??'unknown'});
+  options.onOutcome?.({backend:adapter.kind,reason:result.calls.length&&result.finishReason!=='length'?'tool_call':result.finishReason==='stop'?'natural_eos':result.finishReason==='tool_calls'?'tool_call':result.finishReason==='length'?'output_or_context_limit':result.finishReason==='content_filter'?'content_filter':'unknown',contextSize,promptTokens,contextShift:capabilities.contextShift??'unknown',tokenCountSource});
   const warning = result.finishReason === 'length'
     ? (reasoning && !answer
       ? 'The inference backend reached its context/output capacity during reasoning before producing an answer. The reasoning is saved; enlarge the loaded model context to allow completion.'

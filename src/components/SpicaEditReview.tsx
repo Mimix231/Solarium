@@ -1,10 +1,11 @@
 import { styleProperties, type StyleChange, type StyleValue } from '../spica/appearance';
-import type { CollectionField } from '../spica/graph';
+import type { Collection, CollectionField, GraphEdit } from '../spica/graph';
 import './spica-preview.css';
 
 type Review = {
   graph: { fromRevision: number; toRevision: number; addedFields: CollectionField[] };
   appearance?: StyleChange[];
+  behavior?: { collections: Collection[]; grants?: string[] };
   database?: string;
 };
 
@@ -17,6 +18,13 @@ function Value({ value }: { value: StyleValue | null }) {
 
 export function SpicaEditReview({ args }: { args: Record<string, unknown> }) {
   const review = args.review as Review | undefined;
+  const edits = Array.isArray(args.edits) ? args.edits as GraphEdit[] : [];
+  const added = new Set(edits.flatMap(edit => edit.op === 'add_collection' ? [edit.collection.id] : []));
+  const grants = edits.flatMap(edit => {
+    if (edit.op === 'set_capability') return [{ id: edit.capability, enabled: edit.enabled }];
+    if (edit.op === 'grant_capability' || edit.op === 'revoke_capability') return [{ id: edit.capability, enabled: edit.op === 'grant_capability' }];
+    return [];
+  });
   return <div className="spica-edit-review">
     {review && <>
       <p>Graph revision {review.graph.fromRevision} → {review.graph.toRevision}</p>
@@ -33,6 +41,13 @@ export function SpicaEditReview({ args }: { args: Record<string, unknown> }) {
         </li>)}</ul>
         <p>{review.database}</p>
       </>}
+      {review.behavior?.collections.filter(collection => added.has(collection.id)).map(collection => <div key={collection.id}>
+        <strong>New collection · {collection.label}</strong>
+        <ul>{collection.fields.map(field => <li key={field.key}>{field.label} ({field.key}) · {field.type} · Default {JSON.stringify(field.initial)}</li>)}</ul>
+      </div>)}
+      {grants.length > 0 && <ul aria-label="Proposed app capability changes">
+        {grants.map(edit => <li key={edit.id}>{edit.enabled ? 'Grant' : 'Remove'} {edit.id}</li>)}
+      </ul>}
     </>}
     <details open={review ? undefined : true}>
       <summary>Graph edit details</summary>

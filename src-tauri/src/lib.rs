@@ -16,6 +16,7 @@ mod registered_commands;
 mod dependency_api;
 mod project_snapshot;
 mod spica_preview;
+mod spica_catalog;
 mod foundation;
 mod quality;
 mod runtime_profile;
@@ -442,7 +443,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             glitch::glitch_workspace_action, glitch::glitch_project_request, glitch::glitch_watch, glitch::glitch_workspace_settings,
-            spica_preview::spica_executable_hash, spica_preview::launch_spica_app, spica_preview::run_spica_scenario,
+            spica_preview::spica_executable_hash, spica_preview::spica_lock_fingerprints, spica_preview::spica_web_artifact_hash, spica_preview::spica_web_lock_fingerprints, spica_preview::launch_spica_app, spica_preview::run_spica_scenario,
+            spica_catalog::spica_catalog_prepare, spica_catalog::spica_catalog_search, spica_catalog::spica_catalog_inspect, spica_catalog::spica_catalog_categories,
+            spica_catalog::spica_catalog_register_category, spica_catalog::spica_catalog_add_drafts,
             glitch_terminal::glitch_terminal_create, glitch_terminal::glitch_terminal_read,
             glitch_terminal::glitch_terminal_write, glitch_terminal::glitch_terminal_resize, glitch_terminal::glitch_terminal_kill,
             quality::create_quality_fixture,

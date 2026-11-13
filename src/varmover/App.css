@@ -1,0 +1,186 @@
+:root {
+  color: #e8eaed;
+  background: #17191d;
+  font-family:
+    Inter,
+    "Segoe UI",
+    system-ui,
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+
+  --editor-bg: #17191d;
+  --panel-bg: #1d2025;
+  --panel-raised: #24272d;
+  --field-bg: #121418;
+
+  --border-subtle: #30343b;
+  --border-strong: #434852;
+
+  --text-primary: #e8eaed;
+  --text-secondary: #a8adb7;
+  --accent: #d39a45;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+button {
+  color: inherit;
+  font: inherit;
+}
+
+.editor {
+  display: grid;
+  grid-template-areas:
+    "titlebar titlebar titlebar"
+    "project scene inspector"
+    "bottom bottom bottom"
+    "status status status";
+  grid-template-columns: 250px minmax(400px, 1fr) 310px;
+  grid-template-rows: 42px minmax(300px, 1fr) 230px 24px;
+  width: 100%;
+  height: 100%;
+  background: var(--editor-bg);
+}
+
+.titlebar {
+  grid-area: titlebar;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 12px;
+  background: var(--panel-raised);
+  border-bottom: 1px solid var(--border-strong);
+  user-select: none;
+}
+
+.main-menu,
+.play-controls,
+.bottom-tabs {
+  display: flex;
+  align-items: center;
+}
+
+.main-menu button,
+.play-controls button,
+.bottom-tabs button,
+.panel-content button {
+  min-height: 28px;
+  padding: 4px 10px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.main-menu button:hover,
+.play-controls button:hover,
+.bottom-tabs button:hover,
+.panel-content button:hover {
+  color: var(--text-primary);
+  background: #30343b;
+  border-color: #3c414a;
+}
+
+.play-controls {
+  gap: 4px;
+  margin-left: auto;
+}
+
+.project-panel,
+.scene-panel,
+.inspector-panel,
+.bottom-panel {
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel-bg);
+}
+
+.project-panel {
+  grid-area: project;
+  border-right: 1px solid var(--border-strong);
+}
+
+.scene-panel {
+  grid-area: scene;
+}
+
+.inspector-panel {
+  grid-area: inspector;
+  border-left: 1px solid var(--border-strong);
+}
+
+.bottom-panel {
+  grid-area: bottom;
+  border-top: 1px solid var(--border-strong);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  color: var(--text-primary);
+  background: var(--panel-raised);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.panel-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  color: var(--text-secondary);
+}
+
+.panel-content button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.scene-content {
+  display: grid;
+  width: 100%;
+  height: calc(100% - 33px);
+  place-items: center;
+  color: var(--text-secondary);
+  background-color: #111318;
+  background-image:
+    linear-gradient(#24272d 1px, transparent 1px),
+    linear-gradient(90deg, #24272d 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.bottom-tabs {
+  min-height: 32px;
+  padding: 2px 6px;
+  background: var(--panel-raised);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.statusbar {
+  grid-area: status;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  color: #1a1b1d;
+  background: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}

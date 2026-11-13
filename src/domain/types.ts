@@ -7,13 +7,19 @@ export type Expression = 'neutral' | 'curious' | 'happy' | 'focused' | 'sad' | '
 export type AvatarStyle = 'orb' | 'portrait' | 'glyph' | 'anime';
 export type AnimeHair = 'soft-bob' | 'shag' | 'long-waves' | 'short-curls' | 'side-braid' | 'high-ponytail' | 'low-twintails' | 'bob' | 'long' | 'twin-tails' | 'ponytail' | 'pixie' | 'hime' | 'messy' | 'wolf-cut' | 'braided-crown' | 'side-ponytail' | 'curly' | 'layered' | 'ahoge';
 export type AnimeEyes = 'gentle' | 'fox' | 'doll' | 'hooded' | 'downturned' | 'round' | 'sharp' | 'sleepy' | 'almond' | 'droopy' | 'wide' | 'narrow' | 'upturned';
-export type AnimeOutfit = 'blazer' | 'sailor' | 'cape' | 'gothic' | 'streetwear' | 'hoodie' | 'uniform' | 'dress' | 'jacket' | 'kimono' | 'turtleneck' | 'armor' | 'cardigan';
-export type AnimeAccessory = 'hairclip' | 'tiara' | 'nose-bandage' | 'visor' | 'none' | 'ribbon' | 'glasses' | 'earrings' | 'cat-ears' | 'halo' | 'face-mask' | 'beret' | 'witch-hat' | 'cap' | 'headphones' | 'eyepatch' | 'choker' | 'flower-crown';
+export type AnimeOutfit = typeof import('../avatar/layer-system').animeOutfits[number];
+export type AnimeAccessory = typeof import('../avatar/layer-system').animeAccessories[number];
 export interface AnimeExpressionPreset { mouth?: AnimeAppearance['mouth']; brows?: AnimeAppearance['brows']; eyeShape?: AnimeEyes; blush?: number }
 export interface AnimeAppearance {
   skin: string; hairColor: string; hairAccent: string; eyeColor: string; outfitColor: string; outfitAccent: string; background: string;
+  accessoryAccent?: string;
   hairstyle: AnimeHair; eyeShape: AnimeEyes; outfit: AnimeOutfit; accessory: AnimeAccessory;
   bangs: 'curtain' | 'straight' | 'swept' | 'wispy' | 'hime-cut' | 'side-part' | 'micro'; face: 'oval' | 'round' | 'sharp';
+  bodyShape: typeof import('../avatar/layer-system').animeBodyShapes[number];
+  ears: typeof import('../avatar/layer-system').animeEarShapes[number];
+  nose: typeof import('../avatar/layer-system').animeNoses[number];
+  backdrop: typeof import('../avatar/layer-system').animeBackdrops[number];
+  neckWidth: number;
   blush: number; eyeScale: number; hairVolume: number; zoom: number; offsetX: number; offsetY: number;
   sideHair: 'none' | 'wispy' | 'braids' | 'ringlets' | 'long-locks' | 'short-locks'; brows: 'soft' | 'arched' | 'straight'; pupil: 'round' | 'star' | 'slit' | 'heart' | 'diamond' | 'cat';
   mouth: 'subtle' | 'smile' | 'smirk' | 'neutral' | 'grin' | 'laugh' | 'fang' | 'pout' | 'open' | 'cat-smile' | 'frown' | 'soft-smile'; accessorySecondary: AnimeAccessory;
@@ -84,6 +90,7 @@ export interface ConsoleChannel { id: string; title: string; projectId: string |
 export interface CreatorProject { id: string; name: string; description: string; instructions: string; folder: string; sparkId: string | null; modelId: string | null; createdAt: string; updatedAt: string }
 export interface ChatSession {
   storyId?: string | null;
+  fiction?: import('../stories/fiction').FictionSelection | null;
   parentSessionId?: string; forkMessageId?: string;
   id: string; title: string; sparkId: string; modelId: string | null; projectId?: string | null;
   mode: SparkMode; createdAt: string; updatedAt: string; messages: ChatMessage[];
@@ -99,6 +106,8 @@ export interface MemoryItem {
 export type ThemeId = 'crystal' | 'obsidian' | 'aurora' | 'material' | 'slate' | 'solar' | 'peach' | 'cherry' | 'lime' | 'blueberry' | 'tangerine' | 'kiwi' | 'strawberry';
 export type Density = 'ultra' | 'compact' | 'comfortable';
 export interface Preferences {
+  spicaCycleBudget?: 2048 | 4096 | 8192 | 'auto';
+  sceneSpacer?: import('../writing/prose').SceneSpacerStyle;
   searchProvider?: import('../research/research').SearchProviderConfig;
   theme: ThemeId; density: Density; reducedMotion: boolean; workspaceMode?: 'companion' | 'workspace';
   sidebarOpen: boolean; showActivity: boolean; actionMode?: ActionMode; consoleChannels?: ConsoleChannel[]; startupView?: 'home' | 'chat';

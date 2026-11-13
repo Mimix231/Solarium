@@ -109,17 +109,28 @@ button:focus-visible, a:focus-visible, [role='button']:focus-visible { outline: 
 .avatar-studio-dialog { background: var(--app-bg) !important; color: inherit !important }
 .avatar-studio-header { display:flex; align-items:center; justify-content:space-between; padding:9px 17px; border-bottom:1px solid var(--line); background:var(--title-surface,var(--surface-strong)); min-height:53px; gap:10px }
 .avatar-studio-layout { flex:1; min-height:0; display:grid; grid-template-columns:150px minmax(230px,1fr) minmax(280px,390px) }
-.avatar-studio-nav { background:var(--side-surface); border-right:1px solid var(--line); padding:13px 9px }
+.avatar-studio-nav { background:var(--side-surface); border-right:1px solid var(--line); padding:13px 9px; overflow:auto }
+.avatar-nav-group + .avatar-nav-group { margin-top:12px; padding-top:12px; border-top:1px solid var(--line) }
+.avatar-nav-group > span { display:block; padding:3px 12px 7px; font-size:10px; font-weight:750; letter-spacing:.08em; color:var(--text-muted); text-transform:uppercase }
 .avatar-studio-nav button { width:100%; border:0; padding:9px 12px; margin-bottom:4px; border-radius:9px; background:transparent; color:inherit; text-align:left; cursor:pointer; font-size:12px }
 .avatar-studio-nav button.active, .avatar-studio-nav button:hover { background:var(--surface-hover); color:var(--accent) }
-.avatar-stage { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; background:var(--app-decoration,none) }
-.avatar-stage-preview { width:min(420px,85%); aspect-ratio:1; display:grid; place-items:center; border:1px solid var(--line); background:var(--surface); border-radius:27px; box-shadow:var(--shadow); overflow:hidden }
+.avatar-stage { display:flex; flex-direction:column; align-items:center; justify-content:safe center; min-height:0; padding:20px; overflow:auto; background:radial-gradient(ellipse at 50% 42%,var(--surface-hover),transparent 68%), var(--app-decoration,none) }
+.avatar-stage-preview { width:min(420px,85%); aspect-ratio:1; flex:none; display:grid; place-items:center; border:1px solid var(--line); padding:5px; background:var(--surface-strong); border-radius:27px; box-shadow:0 16px 44px #05081350; overflow:hidden }
 .avatar-stage-preview .spark-avatar { width:100%; height:100%; border-radius:20px }
 .avatar-properties { background:var(--side-surface); border-left:1px solid var(--line); padding:19px; overflow:auto; min-height:0 }
 .avatar-option-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(95px,1fr)); gap:9px }
-.avatar-option { min-height:112px; padding:9px 5px; border:1px solid var(--line); background:var(--surface); border-radius:12px; color:inherit; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; font-size:10px; cursor:pointer }
+.avatar-option { min-height:112px; padding:9px 5px; border:1px solid var(--line); background:var(--surface); border-radius:12px; color:inherit; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; font-size:10px; cursor:pointer; transition:transform .16s ease, border-color .16s ease, background-color .16s ease }
 .avatar-option:hover, .avatar-option.chosen { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); background:var(--surface-hover) }
+.avatar-option:hover { transform:translateY(-2px) }
+.avatar-option:active { transform:translateY(0) scale(.98) }
+.avatar-option:focus-visible, .avatar-studio-nav button:focus-visible, .avatar-accessory-slots button:focus-visible { outline:2px solid var(--accent); outline-offset:2px }
+.avatar-option-art { display:grid; place-items:center; max-width:100% }
 .avatar-option span { overflow-wrap:anywhere; text-align:center }
+.avatar-accessory-slots { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-bottom:14px }
+.avatar-accessory-slots button { min-width:0; padding:9px 12px; text-align:left; border:1px solid var(--line); background:var(--surface); border-radius:10px; color:inherit; cursor:pointer }
+.avatar-accessory-slots button[aria-pressed='true'] { border-color:var(--accent); background:var(--surface-hover) }
+.avatar-accessory-slots button span { display:block; margin-top:3px; font-size:11px; overflow-wrap:anywhere }
+@media (prefers-reduced-motion: reduce) { .avatar-option { transition:none }.avatar-option:hover, .avatar-option:active { transform:none } }
 @media(max-width:900px){.avatar-studio-layout{grid-template-columns:105px minmax(220px,1fr) minmax(235px,310px)}.avatar-studio-nav button{padding:8px}.avatar-properties{padding:10px}}
 @media(max-width:680px){.avatar-studio-layout{grid-template-columns:85px 1fr;overflow:auto}.avatar-stage{min-height:340px}.avatar-properties{grid-column:2;min-height:280px}.avatar-studio-header{flex-wrap:wrap}.avatar-option-grid{grid-template-columns:repeat(2,1fr)}}
 

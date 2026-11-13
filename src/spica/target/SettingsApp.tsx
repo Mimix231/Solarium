@@ -1,6 +1,9 @@
 import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useMediaQuery } from '@mui/material';
 import { validPreferenceValue, type AppPlan, type Value } from '../graph';
 import { appearanceCss, type Appearance, type PreviewStyle } from '../appearance';
+import { SpicaMaterialProvider } from './SpicaUiTheme';
+import { SpicaAction, SpicaTextInput, SpicaOptionSelect, SpicaToggle } from './ui/SpicaControls';
 
 export type Preferences = Record<string, Value>;
 export interface PreferenceStorage {
@@ -29,12 +32,15 @@ export function SpicaSurface({ appearance, theme = 'system', preview, stylesheet
   const id = stylesheetScope ?? localId;
   const css = stylesheetScope ? '' : appearanceCss(appearance, id, preview);
   const scheme = appearance?.theme?.scheme;
-  return <div className="spica-frame">
-    <div className="spica-app" data-theme={scheme && scheme !== 'system' ? scheme : theme} data-spica-surface={id}
+  const darkSystem = useMediaQuery('(prefers-color-scheme: dark)');
+  const requestedScheme = scheme && scheme !== 'system' ? scheme : theme;
+  const renderedScheme = requestedScheme === 'dark' || requestedScheme === 'light' ? requestedScheme : darkSystem ? 'dark' : 'light';
+  return <SpicaMaterialProvider appearance={appearance} scheme={renderedScheme}><div className="spica-frame">
+    <div className="spica-app" data-theme={renderedScheme} data-spica-surface={id}
       data-spica-part="app" data-spica-layout={appearance?.theme?.layout} data-spica-simulate={preview?.state !== 'base' && preview ? '' : undefined}>
       {css && <style>{css}</style>}{children}
     </div>
-  </div>;
+  </div></SpicaMaterialProvider>;
 }
 
 export function SettingsApp({ plan, storage, footer, appearance, preview, stylesheetScope }: {
@@ -90,8 +96,8 @@ export function SettingsApp({ plan, storage, footer, appearance, preview, styles
     <aside className="spica-app-nav" data-spica-part="settings-sidebar">
       <strong data-spica-part="settings-name">{plan.name}</strong>
       <nav aria-label="Settings pages">
-        {plan.pages.map(item => <button key={item.id} type="button" data-spica-part={'settings-tab-' + item.id}
-          aria-current={page.id === item.id ? 'page' : undefined} onClick={() => setPage(item.id)}>{item.label}</button>)}
+        {plan.pages.map(item => <SpicaAction key={item.id} part={'settings-tab-' + item.id}
+          emphasis={page.id === item.id} onClick={() => setPage(item.id)}>{item.label}</SpicaAction>)}
       </nav>
       {footer && <div className="spica-app-footer" data-spica-part="app-footer">{footer}</div>}
     </aside>
@@ -100,22 +106,24 @@ export function SettingsApp({ plan, storage, footer, appearance, preview, styles
       <form onSubmit={event => { event.preventDefault(); void perform(() => save(values, 'Preferences saved')); }}>
         <fieldset disabled={!ready || busy} data-spica-part="settings-fields">
           {page.controls.length === 0 && <p data-spica-part="settings-empty">This page has no settings yet.</p>}
-          {page.controls.map(({ id, label, widget, definition }) => <label key={id} className="spica-field" data-spica-part={'setting-field-' + id}>
-            <span>{label}</span>
-            {widget === 'toggle' ? <input type="checkbox" data-spica-part={'setting-input-' + id} checked={values[definition.key] === true}
-              onChange={event => change(definition.key, event.target.checked)} /> :
-              widget === 'select' && definition.type === 'choice' ? <select data-spica-part={'setting-input-' + id} value={String(values[definition.key] ?? definition.initial)}
-                onChange={event => change(definition.key, event.target.value)}>
-                {definition.choices.map(choice => <option key={choice}>{choice}</option>)}
-              </select> : widget === 'textarea' ? <textarea data-spica-part={'setting-input-' + id} rows={8} maxLength={16000} value={String(values[definition.key] ?? '')}
-                onChange={event => change(definition.key, event.target.value)} /> :
-                <input type="text" data-spica-part={'setting-input-' + id} maxLength={16000} value={String(values[definition.key] ?? '')}
-                  onChange={event => change(definition.key, event.target.value)} />}
-          </label>)}
+          {page.controls.map(({ id, label, widget, definition }) => <div key={id} className="spica-field"
+            data-spica-part={'setting-field-' + id}>
+            {widget === 'toggle' ? <SpicaToggle label={label} part={'setting-input-' + id}
+              checked={values[definition.key] === true} onChange={value => change(definition.key, value)} /> :
+              widget === 'select' && definition.type === 'choice' ? <div className="spica-material-field">
+                <span>{label}</span><SpicaOptionSelect label={label} part={'setting-input-' + id}
+                  value={String(values[definition.key] ?? definition.initial)}
+                  onChange={value => change(definition.key, value)}>
+                  {definition.choices.map(choice => <option key={choice}>{choice}</option>)}
+                </SpicaOptionSelect></div> :
+                <SpicaTextInput label={label} part={'setting-input-' + id} multiline={widget === 'textarea'}
+                  rows={widget === 'textarea' ? 6 : undefined} value={String(values[definition.key] ?? '')}
+                  onChange={value => change(definition.key, value)} />}
+          </div>)}
         </fieldset>
         <div className="spica-app-actions" data-spica-part="settings-actions">
-          <button type="submit" data-spica-part="settings-save" disabled={!ready || busy || !dirty}>Save preferences</button>
-          <button type="button" data-spica-part="settings-export" disabled={!ready || busy} onClick={exportPreferences}>Export JSON</button>
+          <SpicaAction type="submit" emphasis part="settings-save" disabled={!ready || busy || !dirty}>Save preferences</SpicaAction>
+          <SpicaAction part="settings-export" disabled={!ready || busy} onClick={exportPreferences}>Export JSON</SpicaAction>
           <label className="spica-file" data-spica-part="settings-import">
             Import JSON
             <input aria-label="Import preferences JSON" type="file" accept=".json,application/json" disabled={!ready || busy}

@@ -14,6 +14,20 @@ export interface AvatarLayerTransform {
 export type AvatarLayerSettings = Partial<Record<AvatarLayerId, Partial<AvatarLayerTransform>>>;
 export type CharacterArtStyle = 'modern' | 'classic' | 'chibi';
 
+export const animeAccessories = [
+  'none', 'moon-pin', 'pearl-drops', 'bunny-ears', 'heart-glasses', 'pocket-bird',
+  'hairclip', 'tiara', 'nose-bandage', 'visor', 'ribbon', 'glasses', 'earrings', 'cat-ears', 'halo',
+  'face-mask', 'beret', 'witch-hat', 'cap', 'headphones', 'eyepatch', 'choker', 'flower-crown',
+] as const;
+export const animeOutfits = [
+  'sweater', 'pinafore', 'blazer', 'sailor', 'cape', 'gothic', 'streetwear', 'hoodie',
+  'uniform', 'dress', 'jacket', 'kimono', 'turtleneck', 'armor', 'cardigan',
+] as const;
+export const animeBodyShapes = ['standard', 'petite', 'soft', 'tailored'] as const;
+export const animeEarShapes = ['natural', 'pointed', 'hidden'] as const;
+export const animeNoses = ['classic', 'button', 'minimal', 'defined'] as const;
+export const animeBackdrops = ['glow', 'orbit', 'petals', 'studio'] as const;
+
 export const characterArtStyles: Record<CharacterArtStyle, { title: string; description: string }> = {
   modern: { title: 'Modern Anime', description: 'Layered shading, reflective irises and delicate highlights.' },
   classic: { title: 'Classic Cel', description: 'Bolder outlines, warm vintage cel shading and flat color regions.' },

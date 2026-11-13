@@ -99,7 +99,7 @@ test('project implementation without a folder returns an actionable answer, not 
 test('Thinking renders safe Markdown and auto-research is not triggered by project edits', () => {
   const root=path.join(__dirname,'..');
   assert.match(fs.readFileSync(path.join(root,'src/components/ThinkingPanel.tsx'),'utf8'), /<MarkdownBody text=/);
-  assert.match(fs.readFileSync(path.join(root,'src/views/Chat.tsx'),'utf8'), /shouldAutoResearch\(text\)/);
+  assert.match(fs.readFileSync(path.join(root,'src/engine/agent.ts'),'utf8'), /researchStage \? webNow/);
   assert.match(fs.readFileSync(path.join(root,'src/views/Projects.tsx'),'utf8'), /No source folder attached/);
 });
 

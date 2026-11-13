@@ -1,6 +1,7 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {SourceRepository,DuplicateSourceError,chunkSource,sourcePromptContext}=require('../.test-dist/sources/repository.js');
+const {SourceRepository,DuplicateSourceError,chunkSource,contentHash,sourcePromptContext}=require('../.test-dist/sources/repository.js');
+const {SpicaResearchRun}=require('../.test-dist/spica/research-run.js');
 const {WritingRepository}=require('../.test-dist/writing/repository.js');
 const {markdownContent,structuredContent,validateStructured}=require('../.test-dist/writing/schema.js');
 const {WritingDraftStream}=require('../.test-dist/writing/stream.js');
@@ -10,6 +11,9 @@ const {toolDefinitions,selectActionTools,allowedToolDefinitions}=require('../.te
 const {sceneIntent,rankCandidates,researchTopic,verifyScene}=require('../.test-dist/research/research.js');
 const {exportAll,importFoundation,cleanupDeletedOwners}=require('../.test-dist/foundation/backup.js');
 const {defaultWorkspace}=require('../.test-dist/domain/defaults.js');
+const {FictionRepository}=require('../.test-dist/stories/fiction.js');
+const {ContextArchive}=require('../.test-dist/foundation/archive.js');
+const {ConversationResearch}=require('../.test-dist/research/conversation.js');
 
 /** Test double implements the actual atomic store boundary, not the domain behavior under test. */
 class MemoryStore{
@@ -20,6 +24,155 @@ class MemoryStore{
 }
 const access={sessionId:'chat-a',projectId:'project-a'},chat={kind:'chat',id:'chat-a'},project={kind:'project',id:'project-a'};
 const note=(scope,content,title='Architecture')=>({scope,title,content,kind:'note',origin:{kind:'user_note'}});
+
+test('web search archives JSON and reads only the result the Spark chooses', async () => {
+  const calls = [];
+  const store = new MemoryStore();
+  const good = 'https://example.test/recipe';
+  const query = 'leftover fries breakfast hash';
+  const provider = {
+    kind: 'searxng',
+    search: async term => { calls.push(term); return [{ url: good, title: 'Leftover fries hash', excerpt: 'Crisp leftovers.' }]; },
+    read: async url => { calls.push(url); return { url, title: 'Breakfast hash', locator: 'Ingredients',
+      retrievedAt: '2026-11-10T12:00:00Z', text: 'Fry the leftover fries with diced peppers.', contentHash: 'fixture' }; },
+  };
+  let online = true;
+  const archive = new ContextArchive(access, store);
+  const repo = new SourceRepository(access, store);
+  const research = new ConversationResearch(new SpicaResearchRun(async () => provider, () => online), chat, chat.id,
+    'Find a way to use the fries left from last night.', archive, repo);
+  const signal = new AbortController().signal;
+  const hits = await research.search(query, signal);
+  assert.deepEqual(calls, [query]);
+  assert.equal(JSON.parse((await archive.read(hits.archiveId)).text).results[0].id, hits.results[0].id);
+  assert.equal(research.hasEvidence, false);
+  await assert.rejects(research.read({ url: 'https://example.test/not-a-result' }, signal), /current search results/);
+  const page = await research.read({ source_id: hits.results[0].id }, signal);
+  assert.equal(page.url, good);
+  assert.equal((await repo.get(page.sourceId)).source.data.origin.locator, 'Ingredients');
+  assert.match(research.context, /diced peppers/);
+  assert.deepEqual(calls, [query, good]);
+  online = false;
+  await assert.rejects(research.search('a different query', signal), /OFF/);
+  assert.equal(calls.length, 2);
+});
+
+test('weak search results fall back without changing the approved query and weak passages do not satisfy research', async () => {
+  const query = 'telescope tracking motor firmware';
+  const index = 'https://example.test/search';
+  const useful = 'https://example.test/motor-firmware';
+  const attempts = [];
+  const provider = {
+    kind: 'bing',
+    search: async term => { attempts.push(['bing', term]); return [{ url: index, title: 'Announcements' }]; },
+    fallbackSearch: async term => {
+      attempts.push(['duckduckgo', term]);
+      return [{ url: index, title: query }, { url: useful, title: query }];
+    },
+    read: async url => ({ url, title: query, locator: 'Manual', retrievedAt: '2026-11-10T12:00:00Z',
+      text: url === useful ? 'The telescope tracking motor firmware calibrates position during boot.' : 'Subscribe to our newsletter.',
+      contentHash: url }),
+  };
+  const signal = new AbortController().signal;
+  const research = new ConversationResearch(new SpicaResearchRun(async () => provider, () => true), chat, chat.id, query, null, null);
+  const found = await research.search(query, signal);
+  assert.deepEqual(attempts, [['bing', query], ['duckduckgo', query]]);
+  assert.equal(found.provider, 'duckduckgo');
+  assert.equal(found.relevance, 'matched');
+  assert.equal((await research.read({ source_id: found.results[0].id }, signal)).relevance, 'weak');
+  assert.equal(research.hasEvidence, false);
+  await assert.rejects(research.read({ source_id: found.results[0].id }, signal), /already read/);
+  assert.equal((await research.read({ source_id: found.results[1].id }, signal)).relevance, 'matched');
+  assert.match(research.context, /calibrates position/);
+});
+
+test('Fiction stores two 50k Unicode fields, scopes arc profiles and keeps revisions through backup', async () => {
+  const store = new MemoryStore();
+  const stories = new StoryRepository(access, store);
+  const fiction = new FictionRepository(stories);
+  const group = await stories.create('Harbor Chronicles', { kind: 'library', id: 'personal' }, { chapterTarget: 50000 });
+  const arc = await fiction.saveCategory(group.id, 'Arrival', { arc: 1, chapter: 2 });
+  const later = await fiction.saveCategory(group.id, 'Departure', { arc: 2 });
+  const lead = await stories.character(group.id, 'Marin');
+  const full = '水🐦'.repeat(25000);
+  const original = await fiction.saveProfile(group.id, arc.id, lead.id, { personality: full, appearance: full, knowledge: 'Protects the harbor map.' }, null);
+  assert.equal(Array.from((await fiction.read(original)).appearance).length, 50000);
+  await assert.rejects(fiction.saveProfile(group.id, arc.id, lead.id, { appearance: full + 'x' }, 1), /50,000/);
+  const updated = await fiction.saveProfile(group.id, arc.id, lead.id, { ...await fiction.read(original), constraints: 'Never reveals the map to strangers.' }, 1);
+  assert.equal(updated.version, 2);
+  await fiction.saveProfile(group.id, later.id, lead.id, { knowledge: 'LEAK FROM LATER ARC' }, null);
+  const context = await stories.contextPack(group.id, 'Marin hides the map', true, { categoryId: arc.id, characterIds: [lead.id] });
+  assert.match(context, /Never reveals the map/);
+  assert.doesNotMatch(context, /LEAK FROM LATER ARC/);
+  const clone = await fiction.copyPersonal(group.id, chat);
+  assert.equal(clone.scope.id, chat.id);
+  const workspace = defaultWorkspace();
+  workspace.sessions = [{ id: chat.id }];
+  const exported = await exportAll(workspace, store);
+  const restored = new MemoryStore();
+  await importFoundation(exported.foundation, workspace, restored);
+  const restoredFiction = new FictionRepository(new StoryRepository(access, restored));
+  const [clonedCategory] = await restoredFiction.categories(clone.id);
+  const [profile] = await restoredFiction.profiles(clone.id, clonedCategory.id);
+  assert.equal((await restoredFiction.read(profile)).personality, full);
+});
+
+test('SPICA research separates snippets, follows observed links, and saves scoped retrieved provenance', async () => {
+  const first = 'https://example.test/docs';
+  const linked = 'https://example.test/releases';
+  const text = '[paragraph 4] Tauri release notes say to inspect the command result.';
+  const calls = [];
+  let online = false;
+  const run = new SpicaResearchRun(async () => ({
+    search: async query => { calls.push(query); return [{ url: first, title: 'Tauri docs', excerpt: 'Search snippet' }]; },
+    read: async url => {
+      calls.push(url);
+      return { url, title: 'Tauri', text, locator: 'Tauri', retrievedAt: '2026-11-09T12:00:00Z', contentHash: await contentHash(text),
+        links: url === first ? [{ url: linked, title: 'Release notes' }, { url: 'https://foreign.test/', title: 'Other domain' }] : [] };
+    },
+  }), () => online);
+  const signal = new AbortController().signal;
+  const store = new MemoryStore();
+  const repo = new SourceRepository({ projectId: project.id, sessionId: null }, store);
+  await assert.rejects(run.search('Tauri command result', signal), /OFF/);
+  await assert.rejects(run.readUrl(first, 'Tauri command result', signal), /OFF/);
+  assert.deepEqual(calls, []);
+  online = true;
+  await assert.rejects(run.readUrl('file:///project/private.txt', 'Tauri', signal), /public HTTPS/);
+  await run.search('Tauri command result', signal);
+  await assert.rejects(run.search('Tauri command result', signal), /already ran/);
+  assert.equal(run.snapshot().sources[0].status, 'candidate');
+  await assert.rejects(run.save(first, project.id, repo), /Read a source/);
+  await assert.rejects(run.follow(first, linked, signal), /returned reference/);
+  await run.read(first, signal);
+  assert.deepEqual(run.links(first).map(link => link.url), [linked]);
+  await assert.rejects(run.follow(first, 'https://foreign.test/', signal), /returned reference/);
+  assert.equal(await run.follow(first, linked, signal), linked);
+  assert.equal(run.compare(first, linked).sameExcerpt, true);
+  assert.equal(run.compare(first, linked).linked, true);
+  assert.deepEqual(calls, ['Tauri command result', first, linked]);
+  online = false;
+  const source = await run.save(linked, project.id, repo);
+  assert.equal(source.data.origin.parentUrl, first);
+  assert.equal(source.data.origin.locator, 'Tauri');
+  assert.equal((await repo.get(source.id)).content, text);
+  assert.equal((await run.save(linked, project.id, repo)).id, source.id);
+  assert.equal((await new SourceRepository({ projectId: 'another', sessionId: null }, store).list()).length, 0);
+});
+
+test('SPICA research ignores a result after Stop and enforces the query budget', async () => {
+  const controller = new AbortController();
+  let calls = 0;
+  const run = new SpicaResearchRun(async () => ({
+    search: async () => { if (++calls === 1) controller.abort(); return []; },
+    read: async () => { throw Error('Unexpected read'); },
+  }), () => true);
+  await assert.rejects(run.search('stopped', controller.signal), { name: 'AbortError' });
+  assert.deepEqual(run.snapshot().sources, []);
+  for (let i = 0; i < 3; i++) await run.search(`query ${i}`, new AbortController().signal);
+  await assert.rejects(run.search('over budget', new AbortController().signal), /budget/);
+  assert.equal(calls, 4);
+});
 
 test('malformed/missing/unsafe tool arguments remain structured failures before execution',()=>{
   for(const [name,args]of [['run_project_check','{'],['run_project_check','{}'],['run_project_check','{"check":"rm"}'],['read_project_file','{"path":7}'],['read_project_file','{"path":"../secret"}'],['apply_project_changes','{"files":[]}'],['calculate','{"expression":"1+1","shell":"x"}']]){const r=validateToolArguments(name,args,toolDefinitions);assert.equal(r.ok,false);assert.equal(r.error.code,'INVALID_ARGUMENTS');}

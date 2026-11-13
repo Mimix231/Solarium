@@ -1,13 +1,13 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import {
-  normalizeStyleValue, styleProperties, styleTargets, styleValues, supportedProperties, supportedStates,
+  normalizeStyleValue, styleProperties, styleTargets, styleTokenOptions, styleValues, supportedProperties, supportedStates,
   type StyleEdit, type StyleProperty, type StyleState,
 } from '../spica/appearance';
 import { changeGraph, compileGraph, stableGraphJson, type AppPlan } from '../spica/graph';
 import type { SpicaRecord } from '../spica/repository';
-import { memoryAdapters } from '../spica/data';
+import { memoryAdapters, type SpicaPreviewMemory } from '../spica/data';
 import type { FlowTrace, ProgramEdit, Scenario, ScenarioStep } from '../spica/program';
-import { runScenario, type ScenarioReport } from '../spica/target/scenario';
+import { auditLayout, runScenario, type LayoutIssue, type ScenarioReport } from '../spica/target/scenario';
 import { SpicaApp } from '../spica/target/SpicaApp';
 import '../spica/target/settings.css';
 import './spica-preview.css';
@@ -23,11 +23,12 @@ interface Props {
   error?: string;
   onLaunch?(): void;
   onEdit?(edit: StyleEdit): Promise<void>;
-  onProgramEdit?(edit: ProgramEdit): Promise<void>;
+  onProgramEdit?(edit: ProgramEdit): Promise<boolean>;
   saving?: boolean;
+  embedded?: boolean;
 }
 
-export function SpicaPreview({ record, mode, onMode, verification, error, onLaunch, onEdit, onProgramEdit, saving }: Props) {
+export function SpicaPreview({ record, mode, onMode, verification, error, onLaunch, onEdit, onProgramEdit, saving, embedded }: Props) {
   const titleId = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const openedFrom = useRef<HTMLElement | null>(null);
@@ -39,11 +40,15 @@ export function SpicaPreview({ record, mode, onMode, verification, error, onLaun
   const [property, setProperty] = useState<StyleProperty>('scheme');
   const [draft, setDraft] = useState<{ key: string; value: string }>();
   const [trace, setTrace] = useState<FlowTrace[]>([]);
+  const [audit, setAudit] = useState<{ key: string; issues: LayoutIssue[] }>();
   const [recording, setRecording] = useState<ScenarioStep[] | null>(null);
+  const isRecording = recording !== null;
   const [scenarioLabel, setScenarioLabel] = useState('');
   const [replay, setReplay] = useState<{ scenario: Scenario; key: number }>();
   const viewportRef = useRef<HTMLDivElement>(null);
   const { graph, revision } = record.data;
+  const previewMemory = useRef<SpicaPreviewMemory & { appId: string }>({ appId: record.data.appId });
+  if (previewMemory.current.appId !== record.data.appId) previewMemory.current = { appId: record.data.appId };
   const targets = useMemo(() => styleTargets(graph), [graph]);
   const part = targets.find(part => part.id === targetId) ?? targets[0]!;
   const states = supportedStates(part);
@@ -51,6 +56,7 @@ export function SpicaPreview({ record, mode, onMode, verification, error, onLaun
   const properties = supportedProperties(part, activeState);
   const activeProperty = properties.includes(property) ? property : properties[0]!;
   const spec = styleProperties[activeProperty];
+  const tokens = part.id === 'app' ? [] : styleTokenOptions(activeProperty);
   const saved = styleValues(graph.appearance, part.id, activeState)[activeProperty];
   const key = `${revision}/${part.id}/${activeState}/${activeProperty}`;
   const input = draft?.key === key ? draft.value : String(saved ?? spec.fallback);
@@ -61,14 +67,15 @@ export function SpicaPreview({ record, mode, onMode, verification, error, onLaun
   }, [graph]);
   // A style revision updates the same renderer and keeps in-progress sample edits.
   const plan = useMemo(() => JSON.parse(design) as AppPlan, [design]);
-  const samples = useMemo(() => memoryAdapters(plan, true), [plan]);
+  const samples = useMemo(() => isRecording ? memoryAdapters(plan) : memoryAdapters(plan, true, previewMemory.current),
+    [isRecording, plan]);
   let appearance = graph.appearance;
   let validation = '';
   let change: StyleEdit | undefined;
   const changed = draft?.key === key;
   if (changed) {
     try {
-      const value = normalizeStyleValue(activeProperty, spec.type === 'number' && input.trim() ? Number(input) : input);
+      const value = normalizeStyleValue(activeProperty, spec.type === 'number' && input.trim() && !input.startsWith('$') ? Number(input) : input, part.id !== 'app');
       if (value !== saved) {
         change = { ...edit, value };
         appearance = changeGraph(graph, [change]).appearance;
@@ -113,8 +120,8 @@ export function SpicaPreview({ record, mode, onMode, verification, error, onLaun
     });
   }
   function beginRecording() {
-    const screen = viewportRef.current?.querySelector<HTMLElement>('[data-spica-screen]')?.dataset.spicaScreen;
-    setRecording(screen ? [{ action: 'screen', screen }] : []);
+    setTrace([]);
+    setRecording([]);
   }
   function captureExpectation() {
     const section = viewportRef.current?.querySelector<HTMLElement>('[data-spica-screen]');
@@ -128,13 +135,13 @@ export function SpicaPreview({ record, mode, onMode, verification, error, onLaun
     onCancel={event => { event.preventDefault(); onMode(mode === 'overlay' ? 'dock' : 'closed'); }}>
     <header className="spica-preview-header">
       <div>
-        <h2 id={titleId}>App preview</h2>
-        <p>Sample data · {plan.name} · Graph revision {revision}{change ? ' · Style draft' : ''}</p>
+        <h2 id={titleId}>{plan.name} · Live design preview</h2>
+        <p>Revision {revision} · Interactive sample data{change ? ' · Unsaved style draft' : ''}</p>
       </div>
-      <div className="spica-preview-buttons">
+      {!embedded && <div className="spica-preview-buttons">
         <button type="button" onClick={() => onMode(mode === 'overlay' ? 'dock' : 'overlay')}>{mode === 'overlay' ? 'Dock preview' : 'Expand preview'}</button>
         <button type="button" onClick={() => onMode('closed')}>Close preview</button>
-      </div>
+      </div>}
     </header>
     <div className="spica-preview-toolbar">
       <div className="spica-preview-buttons" role="group" aria-label="Preview width">
@@ -142,13 +149,23 @@ export function SpicaPreview({ record, mode, onMode, verification, error, onLaun
         <button type="button" aria-pressed={width === 'wide'} onClick={() => setWidth('wide')}>Wide</button>
       </div>
       {onEdit && <button type="button" aria-expanded={inspector} onClick={() => { setInspector(value => !value); setPicking(false); }}>Appearance</button>}
+      <button type="button" onClick={() => {
+        const root = viewportRef.current?.querySelector<HTMLElement>('.spica-app');
+        if (root) setAudit({ key: revision + '/' + width, issues: auditLayout(root) });
+      }}>Check layout</button>
       <span role="status">{verification ?? 'Sample app'}</span>
       {onLaunch && <button type="button" onClick={onLaunch}>Launch verified app</button>}
     </div>
     {error && <p className="spica-preview-error" role="alert">{error}</p>}
+    {audit?.key === revision + '/' + width && <div className="spica-style-inspector" aria-live="polite">
+      <strong>{audit.issues.length ? `${audit.issues.length} focus or overflow issues` : 'Focus and overflow checks passed on this screen'}</strong>
+      {audit.issues.length > 0 && <ul>{audit.issues.map(issue => <li key={issue.block + issue.kind}>
+        {issue.message} <button type="button" onClick={() => { choose(issue.block); setInspector(true); }}>{issue.block}</button>
+      </li>)}</ul>}
+    </div>}
     <div className="spica-preview-scroll">
       <div ref={viewportRef} className="spica-preview-viewport" data-width={width}>
-        <SpicaApp key={design} plan={plan} appearance={inspector ? appearance : graph.appearance} {...samples}
+        <SpicaApp key={isRecording ? 'recording/' + design : design} plan={plan} appearance={inspector ? appearance : graph.appearance} {...samples}
           onTrace={setTrace} onAction={recording ? recordAction : undefined}
           preview={inspector ? { target: part.id, state: activeState, inspect: picking } : undefined} />
         {inspector && picking && <div className="spica-pick-layer" aria-hidden="true" onClick={selectBlock} />}
@@ -164,15 +181,17 @@ export function SpicaPreview({ record, mode, onMode, verification, error, onLaun
         {onProgramEdit && !recording && <button type="button" disabled={saving} onClick={beginRecording}>Record interaction</button>}
       </div>
       {onProgramEdit && recording && <div className="spica-recording">
-        <p>{recording.length} steps recorded. Assertions capture the current screen and its first visible record or flow error.</p>
+        <p>{recording.length} steps recorded in an empty sample database. Assertions capture the current screen and its first visible record or flow error.</p>
         <label>Scenario name<input value={scenarioLabel} maxLength={100} onChange={event => setScenarioLabel(event.target.value)} /></label>
         <div className="spica-preview-buttons"><button type="button" disabled={recording.length >= 60} onClick={captureExpectation}>Capture assertion</button>
-          <button type="button" disabled={saving || !scenarioLabel.trim() || !recording.some(step => step.action === 'expect')} onClick={() => {
+          <button type="button" disabled={saving || !scenarioLabel.trim() || !recording.some(step => step.action === 'expect')} onClick={async () => {
             const scenario = { id: 'recorded_' + Date.now(), label: scenarioLabel.trim(), steps: recording };
-            void onProgramEdit({ op: 'put_scenario', scenario });
-            setRecording(null); setScenarioLabel('');
+            if (await onProgramEdit({ op: 'put_scenario', scenario })) {
+              setRecording(null);
+              setScenarioLabel('');
+            }
           }}>Save recorded scenario</button>
-          <button type="button" onClick={() => setRecording(null)}>Discard recording</button></div>
+          <button type="button" disabled={saving} onClick={() => setRecording(null)}>Discard recording</button></div>
       </div>}
       {replay && <ScenarioReplay key={`${revision}/${replay.key}`} plan={plan} scenario={replay.scenario} appearance={graph.appearance} onClose={() => setReplay(undefined)} />}
     </details> : null}
@@ -193,10 +212,13 @@ export function SpicaPreview({ record, mode, onMode, verification, error, onLaun
         </select></label>
         <div className="spica-style-value">
           <label>Value{spec.type === 'choice' ? <select value={input} onChange={event => setDraft({ key, value: event.target.value })}>
-            {spec.choices.map(choice => <option key={choice}>{choice}</option>)}
-          </select> : <input value={input} type={spec.type === 'number' ? 'number' : 'text'} aria-invalid={!!validation}
-            min={spec.type === 'number' ? spec.min : undefined} max={spec.type === 'number' ? spec.max : undefined}
-            maxLength={spec.type === 'color' ? 7 : undefined} onChange={event => setDraft({ key, value: event.target.value })} />}</label>
+            {[...spec.choices, ...tokens].map(choice => <option key={choice}>{choice}</option>)}
+          </select> : <input value={input} inputMode={spec.type === 'number' && !input.startsWith('$') ? 'numeric' : undefined} aria-invalid={!!validation}
+            onChange={event => setDraft({ key, value: event.target.value })} />}</label>
+          {tokens.length > 0 && spec.type !== 'choice' && <label>Theme token<select value={tokens.includes(input) ? input : ''}
+            onChange={event => setDraft({ key, value: event.target.value || String(spec.fallback) })}>
+            <option value="">Custom value</option>{tokens.map(token => <option key={token}>{token}</option>)}
+          </select></label>}
           {spec.type === 'color' && <input type="color" aria-label="Choose color" value={/^#[a-f\d]{6}$/i.test(input) ? input : String(spec.fallback)}
             onChange={event => setDraft({ key, value: event.target.value })} />}
         </div>
@@ -215,13 +237,15 @@ function ScenarioReplay({ plan, scenario, appearance, onClose }: { plan: AppPlan
   const [phase, setPhase] = useState<ScenarioReport['phase']>('initial');
   const [reports, setReports] = useState<ScenarioReport[]>([]);
   const root = useRef<HTMLDivElement>(null);
+  const exported = useRef<string | undefined>(undefined);
   const store = useMemo(() => memoryAdapters(plan), [plan]);
   useEffect(() => {
     const element = root.current;
     if (!element) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      void runScenario(element, store.records, scenario, phase, controller.signal).then(report => {
+      exported.current = undefined;
+      void runScenario(element, store.records, scenario, phase, controller.signal, () => exported.current).then(report => {
         if (controller.signal.aborted) return;
         setReports(old => [...old, report]);
         if (report.state === 'passed' && phase === 'initial' && scenario.reopened?.length) setPhase('reopen');
@@ -232,6 +256,7 @@ function ScenarioReplay({ plan, scenario, appearance, onClose }: { plan: AppPlan
   return <section className="spica-scenario-replay" aria-label="Isolated sample replay">
     <header><strong>{scenario.label} · Sample replay</strong><button type="button" onClick={onClose}>Close replay</button></header>
     <ul role="status">{reports.map(report => <li key={report.phase}>{report.phase === 'reopen' ? 'View remount' : 'Initial run'} · {report.state} · {report.completed} steps{report.diagnostic && ` · ${report.diagnostic}`}</li>)}</ul>
-    <div ref={root}><SpicaApp key={phase} plan={plan} {...store} appearance={appearance} /></div>
+    <div ref={root}><SpicaApp key={phase} plan={plan} {...store} appearance={appearance}
+      saveExport={async (name, body) => { exported.current = body; return name; }} /></div>
   </section>;
 }

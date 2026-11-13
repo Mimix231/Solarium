@@ -4,14 +4,239 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { starterGraph, changeGraph, compileGraph, validateGraph, collectionUpgrade, stableGraphJson } = require('../.test-dist/spica/graph.js');
 const { SpicaRepository } = require('../.test-dist/spica/repository.js');
-const { isSpicaProgramRequest, isSpicaStyleRequest, reviewSpicaEdit, selectSpicaTools, spicaEditSignature, spicaTools } = require('../.test-dist/spica/tools.js');
+const { isSpicaCreationRequest, isSpicaProgramRequest, isSpicaStyleRequest, isSpicaVerificationOnly, normalizeSpicaProposal, reviewSpicaEdit, selectSpicaTools, spicaEditSignature, spicaTools } = require('../.test-dist/spica/tools.js');
 const { appearanceCss, STANDALONE_STYLE_SCOPE, styleChanges, styleTargets } = require('../.test-dist/spica/appearance.js');
 const { decideToolPermission } = require('../.test-dist/engine/action-permissions.js');
 const { validateToolArguments } = require('../.test-dist/engine/intelligence/tool-validation.js');
-const { blockRegistry, recipeCatalog } = require('../.test-dist/spica/program.js');
-const { inspectSpicaComponent, searchSpicaWarehouse } = require('../.test-dist/spica/warehouse.js');
+const { blockRegistry, recipeCatalog, recordProblem } = require('../.test-dist/spica/program.js');
+const { stageImport, prepareImport, exportRecords, allRecords, memoryAdapters } = require('../.test-dist/spica/data.js');
+const { compileGameScene, moveGame } = require('../.test-dist/spica/game.js');
+const { browseSpicaWarehouse, inspectSpicaComponent, searchSpicaWarehouse } = require('../.test-dist/spica/warehouse.js');
+const { catalogManifests } = require('../.test-dist/spica/catalog/manifests.js');
+const { warehouseCapacity, warehouseCategories } = require('../.test-dist/spica/catalog/categories.js');
+const { codingNames } = require('../.test-dist/engine/intelligence/coding-tools.js');
+const { executeAgentTool } = require('../.test-dist/engine/tools.js');
+const { executeFlow } = require('../.test-dist/spica/program.js');
+const { readCsvTable, stageCsvRows } = require('../.test-dist/spica/data.js');
 
 const toggle = { op: 'add_setting', page: 'general', key: 'show_tips', label: 'Show tips', type: 'boolean', initial: false };
+
+test('a screen proposal passes the same SPICA contract in the live dispatcher and the graph', async () => {
+  const original = starterGraph('Workspace', 'notes');
+  const screen = { id: 'review', label: 'Review', view: 'review', collection: 'notes' };
+  const args = { revision: 1, edits: [{ op: 'put_screen', screen }] };
+  const tools = selectSpicaTools(spicaTools, 'read_spica_graph', true, false, false, true);
+  assert.equal(validateToolArguments('edit_spica_graph', { revision: 1, edits: [{ op: 'put_screen', screen: 'review',
+    id: 'review', label: 'Review', collection: 'notes' }] }, tools).ok, false);
+  assert.equal(validateToolArguments('edit_spica_graph', args, tools).ok, true);
+  const flat = { revision: 1, edits: [
+    { op: 'add_collection', id: 'incoming', label: 'Incoming', singular: 'entry', fields: [{ key: 'title', label: 'Title', type: 'text' }] },
+    { op: 'put_screen', id: 'review', label: 'Review', screen: 'review', collection: 'incoming' },
+    { op: 'grant_capability', capability: 'files.open' },
+  ] };
+  assert.equal(validateToolArguments('edit_spica_graph', normalizeSpicaProposal(flat), tools).ok, true);
+  assert.equal(validateToolArguments('edit_spica_graph', normalizeSpicaProposal({
+    revision: 1, edits: [{ op: 'put_screen', id: 'conflicting', label: screen.label, screen }],
+  }), tools).ok, false);
+  let saved;
+  const read = SpicaRepository.prototype.read, update = SpicaRepository.prototype.update;
+  SpicaRepository.prototype.read = async () => ({ data: { revision: 1, graph: original } });
+  SpicaRepository.prototype.update = async (revision, edits) => {
+    assert.equal(revision, 1);
+    saved = changeGraph(original, edits);
+    return { data: { revision: 2, graph: saved } };
+  };
+  try {
+    const result = JSON.parse(await executeAgentTool('edit_spica_graph', flat, {}, [], { projectId: 'typed' },
+      [{ id: 'typed', folder: 'linked' }], undefined, { spicaProgram: true, webEnabled: false }));
+    assert.equal(result.revision, 2);
+    assert.ok(saved.program.screens.some(item => item.id === screen.id));
+    assert.equal(saved.collections[0].id, 'incoming');
+    assert.deepEqual(saved.program.grants, ['records.write', 'files.open']);
+  } finally {
+    SpicaRepository.prototype.read = read;
+    SpicaRepository.prototype.update = update;
+  }
+});
+
+test('mapped inventory rows validate, branch and query typed fields before pagination', async () => {
+  const condition = { field: 'actual', op: 'ne', compareField: 'expected' };
+  const collection = { id: 'stock', label: 'Stock', singular: 'item', fields: [
+    { key: 'title', label: 'Product', type: 'text' },
+    { key: 'actual', label: 'Actual', type: 'number', min: 0 },
+    { key: 'expected', label: 'Expected', type: 'number', min: 0 },
+    { key: 'zone', label: 'Zone', type: 'choice', choices: ['Front', 'Back'] },
+    { key: 'note', label: 'Note', type: 'text' },
+  ] };
+  const flow = { id: 'submit', collection: 'stock', steps: [
+    { id: 'check', action: 'validate' },
+    { id: 'format', action: 'format', field: 'note', template: '{actual} of {expected}', when: condition },
+    { id: 'save', action: 'save' },
+  ] };
+  const graph = changeGraph(starterGraph('Inventory Reconciler'), [
+    { op: 'add_collection', collection },
+    { op: 'put_screen', screen: { id: 'intake', label: 'Intake', view: 'review', collection: 'stock', mapping: true, layout: 'split' } },
+    { op: 'put_screen', screen: { id: 'balance', label: 'Balance', view: 'table', collection: 'stock',
+      table: { columns: ['actual', 'expected', 'zone'], badge: { label: 'Balance', when: condition, yes: 'Mismatch', no: 'Matched' } } } },
+    { op: 'put_flow', flow },
+    { op: 'grant_capability', capability: 'files.open' }, { op: 'grant_capability', capability: 'files.export' },
+    { op: 'set_style', target: 'record-badge', property: 'background', value: '$panel' },
+  ]);
+  assert.match(appearanceCss(graph.appearance, 'test'), /background-color:var\(--panel\)/);
+  const plan = compileGraph(graph);
+  assert.equal(plan.blocks.csv_mapping, 1);
+  assert.equal(plan.blocks.record_number, 1);
+  assert.equal(plan.blocks.record_badge, 1);
+  const table = await readCsvTable('Name,Count,Target,Area\r\nCopper,12,20,Front\r\nBrass,oops,2,Back');
+  const rows = stageCsvRows(graph.collection, table, ['title', 'actual', 'expected', 'zone']);
+  assert.equal(rows[0].actual, 12);
+  assert.equal(recordProblem(graph.collection, rows[1]), 'Invalid Actual.');
+  const store = memoryAdapters(plan).records;
+  await assert.rejects(store.import('stock', rows), /Invalid Actual/);
+  assert.equal((await allRecords(store, 'stock')).length, 0);
+  rows[1].actual = 2;
+  await store.import('stock', rows);
+  const filtered = await store.list({ collection: 'stock', query: '', archived: false, filter: null, offset: 0,
+    where: condition, sort: { field: 'actual', direction: 'asc' } });
+  assert.deepEqual(filtered.rows.map(row => row.values.title), ['Copper']);
+  const formatted = await executeFlow(flow, graph.collection, graph.program, rows[0], async values => {
+    assert.equal(values.note, '12 of 20');
+    return { id: 1, revision: 1 };
+  });
+  assert.equal(formatted.trace[1].outcome, 'passed');
+  const unchanged = await executeFlow(flow, graph.collection, graph.program, rows[1], async values => {
+    assert.equal(values.note, '');
+    return { id: 2, revision: 1 };
+  });
+  assert.equal(unchanged.trace[1].outcome, 'skipped');
+});
+
+test('an explicit chat build stages graph creation, cached setup and native repair without exposing arbitrary project commands', () => {
+  const names = (last, needsEdit, state = {}) => selectSpicaTools(codingNames.map(name =>
+    spicaTools.find(tool => tool.function.name === name) ?? { function: { name } }), last, needsEdit, false, false, true, state)
+    .map(tool => tool.function.name);
+  assert.equal(isSpicaCreationRequest('Use SPICA to build a review utility'), true);
+  assert.equal(isSpicaCreationRequest('Build a CSV review utility'), true);
+  assert.equal(isSpicaCreationRequest('Explain how to build a SPICA app'), false);
+  assert.equal(isSpicaCreationRequest('Build the current SPICA app'), false);
+  assert.equal(isSpicaVerificationOnly('Verify the existing SPICA app'), true);
+  assert.equal(isSpicaVerificationOnly('Test and repair the SPICA app'), false);
+  assert.deepEqual(names(null, true, { hasGraph: false }), ['create_spica_app']);
+  assert.deepEqual(names('create_spica_app', true), ['search_spica_warehouse']);
+  assert.deepEqual(names('export_spica_app', false, { needsSetup: true }), ['prepare_spica_app']);
+  assert.deepEqual(names('prepare_spica_app', false), ['verify_spica_app']);
+  assert.deepEqual(names('verify_spica_app', true, { failed: true }), ['read_spica_graph']);
+  assert.deepEqual(names('read_spica_graph', true, { failed: true }), ['edit_spica_graph']);
+  assert.ok(names('edit_spica_graph', false, { canEdit: true }).includes('edit_spica_graph'));
+  assert.deepEqual(names('read_spica_graph', false, { verifyOnly: true }), ['verify_spica_app']);
+  assert.deepEqual(names(null, true, { refreshGraph: true }), ['read_spica_graph']);
+  for (const name of ['create_spica_app', 'prepare_spica_app']) {
+    assert.equal(decideToolPermission({ name, mode: 'auto', webEnabled: false, projectAttached: true }), 'ask');
+    assert.equal(decideToolPermission({ name, mode: 'yolo', webEnabled: false, projectAttached: false }), 'deny');
+  }
+});
+
+test('Dona can author typed collection fields with omitted defaults and explicit grants remain separate', () => {
+  const notes = starterGraph('Notes Organizer', 'notes');
+  const edits = [{ op: 'add_collection', collection: { id: 'csv_entries', label: 'CSV Entries', singular: 'CSV Entry', fields: [
+    { key: 'title', label: 'Title', required: true, type: 'text' },
+    { key: 'memo', label: 'Memo', type: 'text' },
+    { key: 'approved', label: 'Approved', type: 'boolean', initial: false },
+  ] } }, { op: 'put_screen', screen: { collection: 'csv_entries', id: 'csv_review', label: 'CSV Review', view: 'review' } }];
+  const record = { data: { graph: notes, revision: 9 } };
+  assert.equal(reviewSpicaEdit(record, { revision: 9, edits }).ok, true);
+  const saved = changeGraph(notes, edits);
+  assert.deepEqual(saved.collections[0].fields.map(field => field.initial), ['', '', false]);
+  assert.deepEqual(saved.program.grants, ['records.write']);
+  assert.throws(() => changeGraph(saved, [{ op: 'set_capability', capability: 'files.open', target: 'base' }]), /grant_capability/);
+  const access = changeGraph(saved, [{ op: 'grant_capability', capability: 'files.open' }, { op: 'grant_capability', capability: 'files.export' }]);
+  assert.deepEqual(access.program.grants, ['records.write', 'files.open', 'files.export']);
+  assert.deepEqual(changeGraph(access, [{ op: 'revoke_capability', capability: 'files.export' }]).program.grants, ['records.write', 'files.open']);
+  edits[0].collection.fields[1].initial = false;
+  assert.throws(() => changeGraph(notes, edits), /Field "memo" needs a text default/);
+});
+
+test('a blank SPICA graph composes a typed review, form, button, storage and native test without a recipe', async () => {
+  const blank = starterGraph('CSV Review');
+  const edits = [
+    { op: 'add_collection', collection: { id: 'entries', label: 'Entries', singular: 'entry', fields: [
+      { key: 'title', label: 'Title', type: 'text', initial: '', required: true },
+      { key: 'verified', label: 'Verified', type: 'boolean', initial: false },
+    ] } },
+    { op: 'put_screen', screen: { id: 'review', label: 'Review', view: 'review', collection: 'entries',
+      buttons: [{ id: 'add', label: 'Add entry', screen: 'form' }] } },
+    { op: 'put_screen', screen: { id: 'form', label: 'Add an entry', view: 'form', collection: 'entries',
+      layout: 'grid', submitLabel: 'Save entry', fields: ['title', 'verified'], submit: 'add' } },
+    { op: 'put_flow', flow: { id: 'add', collection: 'entries', steps: [
+      { id: 'validate', action: 'validate' }, { id: 'save', action: 'save' }, { id: 'open', action: 'navigate', screen: 'review' },
+    ] } },
+    { op: 'set_start_screen', screen: 'review' },
+    { op: 'grant_capability', capability: 'files.open' },
+    { op: 'grant_capability', capability: 'files.export' },
+  ];
+  const tools = selectSpicaTools(spicaTools, 'read_spica_graph', true, false, false, true);
+  assert.equal(validateToolArguments('edit_spica_graph', { revision: 1, edits }, tools).ok, true);
+  const graph = changeGraph(blank, edits);
+  const plan = compileGraph(graph);
+  assert.equal(blank.collection, undefined);
+  assert.deepEqual(plan.program.recipes, {});
+  assert.equal(plan.program.startScreen, 'review');
+  assert.equal(plan.blocks.review, 1);
+  assert.equal(plan.blocks.form_grid, 1);
+  assert.equal(plan.blocks.screen_button, 1);
+  assert.ok(plan.program.scenarios[0].steps.some(step => step.importBlocked));
+  assert.ok(plan.program.scenarios[0].steps.some(step => step.exportIncludes));
+  assert.equal(graph.program.scenarios.length, 0);
+  const csv = 'title,verified\r\n"",maybe\r\n"Already valid",true';
+  const staged = await stageImport(graph.collection, csv, 'csv');
+  assert.equal(staged.length, 2);
+  assert.equal(recordProblem(graph.collection, staged[0]), 'Title is required.');
+  await assert.rejects(prepareImport(graph.collection, csv, 'csv'), /Title is required/);
+  await assert.rejects(stageImport(graph.collection, 'title,unknown\r\nA,B', 'csv'), /Unknown CSV column/);
+  const store = memoryAdapters(plan).records;
+  await assert.rejects(store.import('entries', staged), /Title is required/);
+  assert.equal((await allRecords(store, 'entries')).length, 0);
+  staged[0] = { title: 'Corrected 水', verified: false };
+  assert.equal(await store.import('entries', staged), 2);
+  assert.match(exportRecords(graph.collection, await allRecords(store, 'entries'), 'csv'), /"Corrected 水","false"/);
+});
+
+test('a registered Shadowium tile scene collides and reaches its goal with a compiled keyboard scenario', () => {
+  const scene = { tiles: ['#####', '#P.G#', '#####'] };
+  const graph = changeGraph(starterGraph('Tile Scene'), [{ op: 'put_screen', screen: { id: 'play', label: 'Play', view: 'game', scene } }]);
+  const level = compileGameScene(scene);
+  assert.equal(moveGame(level, level.start, 'up'), level.start);
+  assert.deepEqual(moveGame(level, moveGame(level, level.start, 'right'), 'right'), level.goal);
+  const plan = compileGraph(graph);
+  assert.equal(plan.collection, undefined);
+  assert.equal(plan.blocks.game, 1);
+  assert.equal(plan.program.scenarios[0].steps.at(-1).goalReached, true);
+  assert.throws(() => changeGraph(graph, [{ op: 'put_screen', screen: { id: 'play', label: 'Play', view: 'game',
+    scene: { tiles: ['#####', '#P#G#', '#####'] } } }]), /reach the goal/);
+});
+
+test('SPICA source descriptors remain separate from exact registered component IDs', () => {
+  const seed = catalogManifests();
+  assert.equal(warehouseCategories.length, 35);
+  assert.equal(warehouseCapacity, 350000);
+  assert.deepEqual([seed.intents.length, seed.domains.length, seed.policies.length], [40, 25, 10]);
+  const profileIds = seed.intents.flatMap(([intent]) => seed.domains.flatMap(([domain]) =>
+    seed.policies.map(([policy]) => `spica.research.profile.${intent}.${domain}.${policy}`)));
+  assert.equal(new Set(profileIds).size, 10000);
+  assert.equal(new Set(seed.records.map(item => item.id)).size, seed.records.length);
+  assert.ok(seed.records.every(item => !/^spica\.(?:recipe|block)\./.test(item.id) && Object.keys(item).length === 6));
+  const graph = starterGraph('Notes', 'notes');
+  assert.throws(() => inspectSpicaComponent(graph, profileIds[0], '1.0.0'), /Unknown SPICA component/);
+  assert.throws(() => changeGraph(graph, [{ op: 'install_recipe', recipe: profileIds[0] }]), /Unknown recipe/);
+  const first = browseSpicaWarehouse(graph, { query: '', limit: 8 });
+  const paged = [...first.candidates];
+  for (let offset = 8; offset < first.totalMatches; offset += 8) {
+    paged.push(...browseSpicaWarehouse(graph, { query: '', offset, limit: 8 }).candidates);
+  }
+  assert.equal(first.totalMatches, blockRegistry.length + recipeCatalog.length);
+  assert.equal(paged.length, first.totalMatches);
+  assert.equal(new Set(paged.map(item => item.id)).size, first.totalMatches);
+});
 
 test('notes and tasks reuse the record contract and preview the same additive field the target emits', () => {
   const notes = starterGraph('Notes Organizer', 'notes');
@@ -126,7 +351,7 @@ test('the warehouse searches only registered runtime entries and returns a bound
     candidate.id === 'spica.recipe.quick_capture'), false);
   assert.equal(searchSpicaWarehouse(graph, { query: 'stl mesh', target: 'desktop' }).candidates.some(candidate =>
     candidate.id === 'spica.block.models'), true);
-  assert.equal(blockRegistry.length + recipeCatalog.length, 14);
+  assert.equal(blockRegistry.length + recipeCatalog.length, 29);
   assert.throws(() => searchSpicaWarehouse(graph, { query: '   ' }), /nonempty query/);
 });
 
@@ -148,6 +373,8 @@ test('warehouse inspection validates exact versions and resolves recipe executab
 });
 
 test('SPICA behavior discovery and recipe schemas follow real staged tool turns', () => {
+  assert.ok(codingNames.includes('search_spica_warehouse'));
+  assert.ok(codingNames.includes('inspect_spica_component'));
   assert.equal(isSpicaProgramRequest('Build a task app using reusable blocks'), true);
   assert.equal(isSpicaProgramRequest('Make a notebook app'), true);
   assert.equal(isSpicaProgramRequest('Explain how reusable blocks work'), false);
@@ -159,6 +386,11 @@ test('SPICA behavior discovery and recipe schemas follow real staged tool turns'
   const edit = names('read_spica_graph').find(name => name === 'edit_spica_graph');
   assert.equal(validateToolArguments(edit, { revision: 1, edits: [{ op: 'install_recipe', recipe: 'quick_capture' }] },
     selectSpicaTools(spicaTools, 'read_spica_graph', true, false, false, true)).ok, true);
+  const settingTool = selectSpicaTools(spicaTools, 'read_spica_graph', true, false, false, false)
+    .find(tool => tool.function.name === 'edit_spica_graph');
+  assert.equal(validateToolArguments('edit_spica_graph', { revision: 1, edits: [{
+    op: 'add_setting', page: 'general', key: 'compact', label: 'Compact', initial: false,
+  }] }, [settingTool]).ok, true);
   const permission = mode => decideToolPermission({ mode, name: 'search_spica_warehouse', webEnabled: false, projectAttached: true });
   assert.equal(permission('ask'), 'ask');
   assert.equal(permission('auto'), 'allow');
@@ -233,7 +465,7 @@ test('standalone appearance is emitted as a scoped asset under a self-only style
   assert.match(appearanceCss(compileGraph(graph).appearance, STANDALONE_STYLE_SCOPE), /data-spica-surface="standalone".*--accent:#ffbf47/);
   assert.match(source('emit.ts'), /appearanceCss\(plan.appearance, STANDALONE_STYLE_SCOPE\)/);
   assert.match(source('emit.ts'), /'src\/settings\.css': stylesheet/);
-  assert.match(source('emit.ts'), /style-src 'self'"/);
+  assert.match(source('emit.ts'), /style-src 'self' 'nonce-/);
   assert.doesNotMatch(source('emit.ts'), /unsafe-inline|<style>/);
   assert.match(source('target/entry.txt'), /<SpicaApp standalone/);
   assert.match(source('target/SettingsApp.tsx'), /stylesheetScope \? '' : appearanceCss/);

@@ -1,9 +1,10 @@
 import type { ChatMessage, ChatSession, Density, LocalModel, MemoryItem, Preferences, Spark, SparkAvatar, ThemeId, Workspace } from './types';
 import { defaultAnime, defaultAvatar, defaultTraits, defaultWorkspace, newSpark } from './defaults';
 import { now, traitNames, uid } from './types';
-import { avatarLayerOrder } from '../avatar/layer-system';
+import { animeAccessories, animeBackdrops, animeBodyShapes, animeEarShapes, animeNoses, animeOutfits, avatarLayerOrder } from '../avatar/layer-system';
 import { restoreVisualAction } from '../engine/visual-actions';
 import type { VisualAction } from '../engine/visual-actions';
+import { sceneSpacerStyles } from '../writing/prose';
 
 const object = (data: unknown): Record<string, unknown> => data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : {};
 const text = (data: unknown, max = 20_000): string => typeof data === 'string' ? data.slice(0, max) : '';
@@ -28,13 +29,19 @@ export function validateSpark(data: unknown): Spark {
     skin: hexColor(anime.skin, defaultAnime.skin), hairColor: hexColor(anime.hairColor, defaultAnime.hairColor),
     hairAccent: hexColor(anime.hairAccent, defaultAnime.hairAccent), eyeColor: hexColor(anime.eyeColor, defaultAnime.eyeColor),
     outfitColor: hexColor(anime.outfitColor, defaultAnime.outfitColor), outfitAccent: hexColor(anime.outfitAccent, defaultAnime.outfitAccent),
+    ...(typeof anime.accessoryAccent === 'string' ? { accessoryAccent: hexColor(anime.accessoryAccent, defaultAnime.outfitAccent) } : {}),
     background: hexColor(anime.background, defaultAnime.background),
     hairstyle: option(anime.hairstyle, ['soft-bob','shag','long-waves','short-curls','side-braid','high-ponytail','low-twintails','bob', 'long', 'twin-tails', 'ponytail', 'pixie', 'hime', 'messy','wolf-cut','braided-crown','side-ponytail','curly','layered','ahoge'] as const, defaultAnime.hairstyle),
     eyeShape: option(anime.eyeShape, ['gentle','fox','doll','hooded','downturned','round', 'sharp', 'sleepy','almond','droopy','wide','narrow','upturned'] as const, defaultAnime.eyeShape),
-    outfit: option(anime.outfit, ['blazer','sailor','cape','gothic','streetwear','hoodie', 'uniform', 'dress', 'jacket','kimono','turtleneck','armor','cardigan'] as const, defaultAnime.outfit),
-    accessory: option(anime.accessory, ['hairclip','tiara','nose-bandage','visor','none', 'ribbon', 'glasses', 'earrings', 'cat-ears', 'halo','face-mask','beret','witch-hat','cap','headphones','eyepatch','choker','flower-crown'] as const, defaultAnime.accessory),
+    outfit: option(anime.outfit, animeOutfits, defaultAnime.outfit),
+    accessory: option(anime.accessory, animeAccessories, defaultAnime.accessory),
     bangs: option(anime.bangs, ['curtain', 'straight', 'swept', 'wispy', 'hime-cut', 'side-part', 'micro'] as const, defaultAnime.bangs),
     face: option(anime.face, ['oval', 'round', 'sharp'] as const, defaultAnime.face),
+    bodyShape: option(anime.bodyShape, animeBodyShapes, defaultAnime.bodyShape),
+    ears: option(anime.ears, animeEarShapes, defaultAnime.ears),
+    nose: option(anime.nose, animeNoses, defaultAnime.nose),
+    backdrop: option(anime.backdrop, animeBackdrops, defaultAnime.backdrop),
+    neckWidth: number(anime.neckWidth, defaultAnime.neckWidth, 70, 135),
     blush: number(anime.blush, 25, 0, 100), eyeScale: number(anime.eyeScale, 100, 60, 140),
     hairVolume: number(anime.hairVolume, 100, 70, 140), zoom: number(anime.zoom, 100, 75, 140),
     offsetX: number(anime.offsetX, 0, -45, 45), offsetY: number(anime.offsetY, 0, -45, 45),
@@ -42,7 +49,7 @@ export function validateSpark(data: unknown): Spark {
     brows: option(anime.brows, ['soft','arched','straight'] as const, defaultAnime.brows),
     pupil: option(anime.pupil, ['round','star','slit','heart','diamond','cat'] as const, defaultAnime.pupil),
     mouth: option(anime.mouth, ['subtle','smile','smirk','neutral','grin','laugh','fang','pout','open','cat-smile','frown','soft-smile'] as const, defaultAnime.mouth),
-    accessorySecondary: option(anime.accessorySecondary, ['none','ribbon','glasses','earrings','cat-ears','halo'] as const, defaultAnime.accessorySecondary),
+    accessorySecondary: option(anime.accessorySecondary, animeAccessories, defaultAnime.accessorySecondary),
     irisPattern: option(anime.irisPattern, ['solid','ringed','sunburst','sparkle','gradient','flower','spiral','nebula','diamond','constellation'] as const, 'solid'),
     makeup: option(anime.makeup, ['none','freckles','eyeliner','beauty-mark','star-cheeks'] as const, 'none'),
     shoulderWidth: number(anime.shoulderWidth, 100, 70, 145),
@@ -149,11 +156,16 @@ function validateSession(data: unknown, sparkIds: Set<string>): ChatSession | nu
   const sparkId = text(d.sparkId, 100);
   if (!sparkIds.has(sparkId)) return null;
   const raw = Array.isArray(d.messages) ? d.messages : [];
+  const selection = object(d.fiction);
   return {
     id: text(d.id, 100) || uid(), sparkId,
     ...(text(d.parentSessionId, 100) ? { parentSessionId: text(d.parentSessionId, 100) } : {}),
     ...(text(d.forkMessageId, 100) ? { forkMessageId: text(d.forkMessageId, 100) } : {}),
     storyId: text(d.storyId,100) || null,
+    ...(text(selection.categoryId, 100) && Array.isArray(selection.characterIds) ? { fiction: {
+      categoryId: text(selection.categoryId, 100),
+      characterIds: [...new Set(selection.characterIds.map((id: unknown) => text(id, 100)).filter(Boolean) as string[])].slice(0, 12),
+    } } : {}),
     title: text(d.title, 100) || 'Conversation', modelId: text(d.modelId, 100) || null, projectId: text(d.projectId, 100) || null,
     mode: option(d.mode, ['conversation', 'work', 'research', 'creative'] as const, 'conversation'),
     createdAt: text(d.createdAt, 40) || now(), updatedAt: text(d.updatedAt, 40) || now(),
@@ -181,13 +193,14 @@ function validatePreferences(data: unknown): Preferences {
   return {
     theme: option<ThemeId>(p.theme, ['crystal','obsidian','aurora','material','slate','solar','peach','cherry','lime','blueberry','tangerine','kiwi','strawberry'], fallback.theme),
     density: option<Density>(p.density, ['ultra','compact','comfortable'], fallback.density),
-    reducedMotion: p.reducedMotion === true, workspaceMode: option(p.workspaceMode, ['companion','workspace'] as const, 'companion'),
+    reducedMotion: p.reducedMotion === true, spicaCycleBudget: p.spicaCycleBudget===2048 || p.spicaCycleBudget===4096 || p.spicaCycleBudget===8192 || p.spicaCycleBudget==='auto' ? p.spicaCycleBudget : 4096, workspaceMode: option(p.workspaceMode, ['companion','workspace'] as const, 'companion'),
     sidebarOpen: p.sidebarOpen !== false, showActivity: p.showActivity === true, actionMode: option(p.actionMode, ['ask','auto','yolo'] as const, 'ask'),
     llamaExecutable: text(p.llamaExecutable, 1200),
     serverPort: number(p.serverPort, 8080, 1024, 65535),
     ggufDirectory: text(p.ggufDirectory, 2048),
     toolPermissions: allowed,
     searchProvider: {kind: option(object(p.searchProvider).kind,['bing','searxng','duckduckgo'] as const,'bing'),endpoint:text(object(p.searchProvider).endpoint,1000)},
+    sceneSpacer: option(p.sceneSpacer, sceneSpacerStyles, 'rule'),
     startupView: option(p.startupView, ['home','chat'] as const, 'home'),
     consoleChannels: (Array.isArray(p.consoleChannels) ? p.consoleChannels : []).slice(0, 80).map((value: unknown) => {
       const c = object(value);

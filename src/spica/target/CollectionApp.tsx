@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { Collection, RecordValue } from '../graph';
-import { checkCapability, recordDefaults, type Program } from '../program';
-import { allRecords, type CollectionRecord, type CollectionStore } from '../data';
+import { checkCapability, matchesRecord, recordDefaults, type Program, type RecordSort, type RecordTable } from '../program';
+import { allRecords, csvCellValue, type CollectionRecord, type CollectionStore } from '../data';
+import { SpicaAction, SpicaTextInput, SpicaOptionSelect, SpicaToggle } from './ui/SpicaControls';
 export type { CollectionRecord, CollectionQuery, CollectionStore } from '../data';
 
 export function RecordFields({ fields, storage, values, onChange }: {
@@ -18,31 +19,45 @@ export function RecordFields({ fields, storage, values, onChange }: {
     return () => { live = false; };
   }, [keys, storage]);
   return <>{fields.map(field => {
-    const props = { 'data-spica-part': 'record-input-' + field.key, 'data-spica-field': field.key };
+    const part = 'record-input-' + field.key;
     const value = values[field.key];
-    return <label key={field.key} data-spica-part={'record-field-' + field.key}>
-      {field.label}
-      {field.type === 'boolean' ? <input {...props} type="checkbox" checked={value === true}
-        onChange={event => onChange(field.key, event.target.checked)} /> : field.type === 'reference' ?
-        <select {...props} value={typeof value === 'number' ? value : ''}
-          onChange={event => onChange(field.key, event.target.value ? Number(event.target.value) : null)}>
-          <option value="">None</option>
-          {typeof value === 'number' && !(references[field.collection] ?? []).some(row => row.id === value) && <option value={value}>Saved reference {value}</option>}
-          {(references[field.collection] ?? []).map(row => <option key={row.id} value={row.id}>{String(row.values.title)}</option>)}
-        </select> : field.multiline ? <textarea {...props} rows={10} maxLength={16000} aria-required={field.required}
-          value={String(value ?? '')} onChange={event => onChange(field.key, event.target.value)} /> :
-        <input {...props} type="text" maxLength={16000} aria-required={field.required} value={String(value ?? '')}
-          onChange={event => onChange(field.key, event.target.value)} />}
-    </label>;
+    return <div key={field.key} className="spica-material-record-field" data-spica-part={'record-field-' + field.key}>
+      {field.type === 'boolean' ? <SpicaToggle part={part} label={field.label} checked={value === true}
+        onChange={next => onChange(field.key, next)} /> : field.type === 'reference' ?
+        <div className="spica-material-field"><span>{field.label}</span>
+          <SpicaOptionSelect part={part} label={field.label} value={typeof value === 'number' ? value : ''}
+            onChange={next => onChange(field.key, next ? Number(next) : null)}>
+            <option value="">None</option>
+            {typeof value === 'number' && !(references[field.collection] ?? []).some(row => row.id === value) &&
+              <option value={value}>Saved reference {value}</option>}
+            {(references[field.collection] ?? []).map(row => <option key={row.id} value={row.id}>{String(row.values.title)}</option>)}
+          </SpicaOptionSelect></div> : field.type === 'choice' ?
+        <div className="spica-material-field"><span>{field.label}</span>
+          <SpicaOptionSelect part={part} label={field.label} value={String(value ?? '')}
+            onChange={next => onChange(field.key, next)}>
+            {field.choices.map(choice => <option key={choice}>{choice}</option>)}
+          </SpicaOptionSelect></div> :
+        <SpicaTextInput part={part} field={field.key} label={field.label} value={String(value ?? '')}
+          type={field.type === 'number' ? 'number' : 'text'} min={field.type === 'number' ? field.min : undefined}
+          max={field.type === 'number' ? field.max : undefined}
+          multiline={field.type === 'text' && !!field.multiline} rows={field.type === 'text' && field.multiline ? 6 : undefined}
+          required={field.type === 'text' ? !!field.required : false}
+          onChange={next => onChange(field.key, field.type === 'number' ? csvCellValue(field, next) : next)} />}
+    </div>;
   })}{error && <p role="alert">{error}</p>}</>;
+
 }
 
-export function CollectionApp({ collection, storage, fixedFilter, program, refreshKey = 0 }: {
-  collection: Collection; storage: CollectionStore; fixedFilter?: string; program?: Program; refreshKey?: number;
+export function CollectionApp({ collection, storage, fixedFilter, initialQuery = '', program, refreshKey = 0, table }: {
+  collection: Collection; storage: CollectionStore; fixedFilter?: string; initialQuery?: string; program?: Program; refreshKey?: number; table?: RecordTable;
 }) {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const [archived, setArchived] = useState(false);
   const [filter, setFilter] = useState<string | null>(fixedFilter ?? null);
+  const [sort, setSort] = useState<RecordSort | undefined>(table?.sort);
+  const [onlyMatches, setOnlyMatches] = useState(false);
+  const badge = table?.badge;
+  const where = onlyMatches ? badge?.when : undefined;
   const [offset, setOffset] = useState(0);
   const [rows, setRows] = useState<CollectionRecord[]>([]);
   const [more, setMore] = useState(false);
@@ -57,11 +72,24 @@ export function CollectionApp({ collection, storage, fixedFilter, program, refre
   const [available, setAvailable] = useState(false);
   const writing = useRef(false);
 
+  // A Spark can add or remove fields while this preview remains mounted. Keep
+  // the editor draft for surviving keys, hydrate new fields with schema defaults,
+  // and discard keys no longer in the graph rather than requiring a remount.
+  useEffect(() => {
+    setValues(previous => {
+      const defaults = recordDefaults(collection);
+      const next = Object.fromEntries(Object.entries(defaults).map(([key, value]) =>
+        [key, Object.hasOwn(previous, key) ? previous[key] : value])) as Record<string, RecordValue>;
+      return Object.keys(previous).length === Object.keys(next).length &&
+        Object.entries(next).every(([key, value]) => previous[key] === value) ? previous : next;
+    });
+  }, [collection]);
+
   useEffect(() => {
     let active = true;
     setLoading(true);
     const timer = window.setTimeout(() => {
-      void storage.list({ collection: collection.id, query, archived, filter, offset }).then(page => {
+      void storage.list({ collection: collection.id, query, archived, filter, offset, sort, where }).then(page => {
         if (!active) return;
         setRows(page.rows);
         setMore(page.more);
@@ -75,7 +103,7 @@ export function CollectionApp({ collection, storage, fixedFilter, program, refre
       });
     }, query ? 120 : 0);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [query, archived, collection.id, filter, offset, refresh, refreshKey, storage]);
+  }, [query, archived, collection.id, filter, offset, refresh, refreshKey, storage, sort, where]);
 
   function select(record: CollectionRecord | null) {
     if (dirty && !window.confirm('Discard the unsaved changes to this ' + collection.singular + '?')) return;
@@ -106,32 +134,58 @@ export function CollectionApp({ collection, storage, fixedFilter, program, refre
     finally { writing.current = false; setBusy(false); }
   }
 
-  return <div className="spica-collection">
+  return <div className="spica-collection" data-spica-record-view={table ? 'table' : undefined}>
     <section className="spica-record-list" aria-label={collection.label} data-spica-part="record-sidebar">
       <div className="spica-record-heading"><h2 data-spica-part="record-sidebar-heading">{collection.label}</h2>
-        <button type="button" data-spica-part="record-new" disabled={!available || busy} onClick={() => select(null)}>New {collection.singular}</button></div>
-      <label data-spica-part="record-search-label">Search {collection.label.toLowerCase()}
-        <input type="search" data-spica-part="record-search" maxLength={256} value={query} onChange={event => { setQuery(event.target.value); setOffset(0); }} />
-      </label>
-      <label className="spica-inline" data-spica-part="record-archived-label"><input type="checkbox" data-spica-part="record-archived"
-        checked={archived} onChange={event => { setArchived(event.target.checked); setOffset(0); }} /> Show archived</label>
+        <SpicaAction part="record-new" emphasis disabled={!available || busy} onClick={() => select(null)}>New {collection.singular}</SpicaAction></div>
+      <div data-spica-part="record-search-label"><SpicaTextInput label={'Search ' + collection.label.toLowerCase()}
+        type="search" part="record-search" maxLength={256} value={query}
+        onChange={next => { setQuery(next); setOffset(0); }} /></div>
+      <div className="spica-inline" data-spica-part="record-archived-label"><SpicaToggle part="record-archived"
+        label="Show archived" checked={archived} onChange={next => { setArchived(next); setOffset(0); }} /></div>
       {!fixedFilter && collection.fields.some(field => field.type === 'boolean' && field.filter) &&
-        <label data-spica-part="record-filter-label">Filter {collection.label.toLowerCase()}
-          <select data-spica-part="record-filter" value={filter ?? ''} onChange={event => { setFilter(event.target.value || null); setOffset(0); }}>
+        <div data-spica-part="record-filter-label" className="spica-material-field"><span>Filter {collection.label.toLowerCase()}</span>
+          <SpicaOptionSelect part="record-filter" label="Filter records" value={filter ?? ''}
+            onChange={next => { setFilter(next || null); setOffset(0); }}>
             <option value="">All</option>
             {collection.fields.filter(field => field.type === 'boolean' && field.filter)
               .map(field => <option key={field.key} value={field.key}>{field.label} only</option>)}
-          </select>
-        </label>}
+          </SpicaOptionSelect>
+        </div>}
+      {table && <div className="spica-table-controls">
+        <div className="spica-material-field"><span>Sort by</span><SpicaOptionSelect label="Sort by" inputAttributes={{ 'data-spica-sort': '' }} value={sort?.field ?? ''} onChange={field => {
+          setSort(field ? { field, direction: sort?.direction ?? 'asc' } : undefined); setOffset(0);
+        }}>
+          <option value="">Recently changed</option>
+          {collection.fields.map(field => <option key={field.key} value={field.key}>{field.label}</option>)}
+        </SpicaOptionSelect></div>
+        {sort && <div className="spica-material-field"><span>Direction</span><SpicaOptionSelect label="Sort direction" inputAttributes={{ 'data-spica-sort-direction': '' }} value={sort.direction}
+          onChange={next => { setSort({ ...sort, direction: next === 'desc' ? 'desc' : 'asc' }); setOffset(0); }}><option value="asc">Ascending</option><option value="desc">Descending</option></SpicaOptionSelect></div>}
+        {badge && <SpicaToggle part="record-table-filter" label={badge.yes + ' only'} checked={onlyMatches}
+          onChange={next => { setOnlyMatches(next); setOffset(0); }} />}
+      </div>}
       <div aria-busy={loading}>
-        {rows.length ? <ul>{rows.map(row => <li key={row.id}>
-          <button type="button" data-spica-part="record-row" disabled={busy} aria-current={row.id === selected?.id ? 'true' : undefined}
-            onClick={() => select(row)}>{String(row.values.title)}</button>
+        {rows.length && table ? <div className="spica-import-table" tabIndex={0} aria-label={collection.label + ' table'} data-spica-part="record-table">
+          <table>
+            <thead><tr><th scope="col">Record</th>{table.columns.map(key => <th scope="col" key={key}>{collection.fields.find(field => field.key === key)?.label}</th>)}
+              {badge && <th scope="col">{badge.label}</th>}</tr></thead>
+            <tbody>{rows.map(row => {
+              const matches = badge ? matchesRecord(row.values, badge.when) : false;
+              return <tr key={row.id}><th scope="row"><SpicaAction part="record-row" selected={row.id === selected?.id} disabled={busy}
+                onClick={() => select(row)}>{String(row.values.title)}</SpicaAction></th>
+                {table.columns.map(key => <td key={key}>{String(row.values[key] ?? '')}</td>)}
+                {badge && <td><span className="spica-record-badge" data-spica-part="record-badge" data-spica-match={matches}>{matches ? badge.yes : badge.no}</span></td>}
+              </tr>;
+            })}</tbody>
+          </table>
+        </div> : rows.length ? <ul>{rows.map(row => <li key={row.id}>
+          <SpicaAction part="record-row" selected={row.id === selected?.id} disabled={busy}
+            onClick={() => select(row)}>{String(row.values.title)}</SpicaAction>
         </li>)}</ul> : <p data-spica-part="record-empty">{loading ? 'Loading…' : 'No matching ' + collection.label.toLowerCase() + '.'}</p>}
       </div>
       {(offset > 0 || more) && <div className="spica-app-actions" data-spica-part="record-pagination">
-        <button type="button" data-spica-part="record-previous" disabled={loading || offset === 0} onClick={() => setOffset(value => value - 50)}>Previous page</button>
-        <button type="button" data-spica-part="record-next" disabled={loading || !more} onClick={() => setOffset(value => value + 50)}>Next page</button>
+        <SpicaAction part="record-previous" disabled={loading || offset === 0} onClick={() => setOffset(value => value - 50)}>Previous page</SpicaAction>
+        <SpicaAction part="record-next" disabled={loading || !more} onClick={() => setOffset(value => value + 50)}>Next page</SpicaAction>
       </div>}
     </section>
     <form className="spica-record-editor" data-spica-part="record-editor" onSubmit={(event: FormEvent) => { event.preventDefault(); void save(); }}>
@@ -142,9 +196,9 @@ export function CollectionApp({ collection, storage, fixedFilter, program, refre
         }} />
       </fieldset>
       <div className="spica-app-actions" data-spica-part="record-actions">
-        <button type="submit" data-spica-part="record-save" disabled={!available || busy || !dirty}>Save {collection.singular}</button>
-        {selected && <button type="button" data-spica-part="record-archive" disabled={!available || busy || dirty}
-          onClick={() => void save(!selected.archived)}>{selected.archived ? 'Restore' : 'Archive'}</button>}
+        <SpicaAction type="submit" emphasis part="record-save" disabled={!available || busy || !dirty}>Save {collection.singular}</SpicaAction>
+        {selected && <SpicaAction part="record-archive" disabled={!available || busy || dirty}
+          onClick={() => void save(!selected.archived)}>{selected.archived ? 'Restore' : 'Archive'}</SpicaAction>}
       </div>
       <p role="status" data-spica-part="record-status">{dirty ? 'Unsaved changes' : status}</p>
       {error && <p role="alert" data-spica-part="record-error">{error}</p>}

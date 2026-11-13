@@ -4,28 +4,53 @@ export interface SearchProviderConfig {kind:'bing'|'searxng'|'duckduckgo';endpoi
 export interface ResearchIntent {kind:'scene'|'character'|'technical'|'general';query:string;entities:string[];arc?:number;chapter?:number;adaptation?:string;eventTerms:string[];context:string}
 export interface ResearchPage {url:string;title:string;text:string;retrievedAt:string;contentHash:string;locator:string;links?:{url:string;title:string}[]}
 export interface ResearchCandidate extends ChatSource {id:string;query:string;status:'found'|'reading'|'read'|'failed';score:number;reasons:string[];page?:ResearchPage;error?:string}
-export interface SearchProvider {search(query:string,signal:AbortSignal):Promise<ChatSource[]>;fallbackSearch?(query:string,signal:AbortSignal):Promise<ChatSource[]>;read(url:string,query:string,signal:AbortSignal):Promise<ResearchPage>}
-const STOP=new Set(['find','scene','where','shot','research','please','could','chapter','arc','about','character','characters','the','with','from','that','this','was','for','into','write','make','card','cards','look','online','search','up','distinguish','identify','locate','compare']);
+export interface SearchProvider {kind?:SearchProviderConfig['kind'];search(query:string,signal:AbortSignal):Promise<ChatSource[]>;fallbackSearch?(query:string,signal:AbortSignal):Promise<ChatSource[]>;read(url:string,query:string,signal:AbortSignal):Promise<ResearchPage>}
+const STOP=new Set(['find','scene','where','research','please','could','chapter','arc','about','character','characters','the','with','from','that','this','was','for','into','write','make','card','cards','look','online','search','up','distinguish','identify','locate','compare','in','to','of','by','an','as','it','is','read']);
+const lexicalTerms=(text:string)=>text.normalize('NFKC').toLowerCase().match(/[\p{L}]{2,}/gu)??[];
+const genericSearchTerms = new Set(['actual', 'best', 'good', 'help', 'need', 'practical', 'result', 'results', 'use', 'using', 'want']);
+function searchWord(word: string) {
+  if (word.length > 4 && word.endsWith('ies')) return word.slice(0, -3) + 'y';
+  if (word.length > 3 && word.endsWith('s') && !word.endsWith('ss')) return word.slice(0, -1);
+  return word;
+}
+/** Lexical coverage for choosing a provider and flagging weak pages, never a factual verification. */
+export function matchesSearchQuery(query: string, text: string, title = '') {
+  const terms = [...new Set(lexicalTerms(query).filter(word => !STOP.has(word) && !genericSearchTerms.has(word)).map(searchWord))];
+  const found = new Set(lexicalTerms(text).map(searchWord));
+  const heading = new Set(lexicalTerms(title).map(searchWord));
+  return terms.filter(word => found.has(word)).length >= Math.ceil(terms.length * 0.35) &&
+    terms.filter(word => found.has(word) || heading.has(word)).length >= Math.ceil(terms.length * 0.6);
+}
+// Local relevance can recognize common alternate descriptions without adding them to the public query.
+const similarTerms=[['forest','jungle','woodland'],['shot','struck','hit'],['home','house','residence'],['trip','journey','voyage']];
+function eventMatches(text:string,terms:readonly string[]){
+  const tokens=new Set(lexicalTerms(text));
+  return terms.filter(term=>tokens.has(term)||similarTerms.some(group=>group.includes(term)&&group.some(word=>tokens.has(word))));
+}
 export function sceneIntent(message:string,context=''):ResearchIntent{
-  const text=`${context} ${message}`.replace(/https:\/\/\S+/g,' ');const scene=/\b(scene|incident|chapter|episode|arrow|poison|jungle|novel|arc\s*\d)\b/i.test(text);
+  const text=`${message} ${context}`.replace(/https:\/\/\S+/g,' ');const scene=/\b(scene|incident|chapter|episode|novel|arc\s*\d)\b/i.test(text);
   const arc=Number(/\barc\s*(\d+)/i.exec(text)?.[1])||undefined;const chapter=Number(/\bchapter\s*(\d+)/i.exec(text)?.[1])||undefined;
-  const aliases:{pattern:RegExp;value:string}[]=[{pattern:/re[\s:.-]*zero|rezero|re:ゼロ/i,value:'Re:Zero'},{pattern:/\b(?:natsuki\s+)?subaru\b|スバル/i,value:'Subaru'},{pattern:/\butakata\b/i,value:'Utakata'}];
-  const entities=aliases.filter(a=>a.pattern.test(text)).map(a=>a.value);
-  // Generic capitalized names and quoted titles cover unfamiliar franchises as well.
-  for(const match of message.matchAll(/"([^"]{2,80})"|\b([A-Z][\p{L}\d]+(?:\s+[A-Z][\p{L}\d]+){0,3})/gu)){const name=(match[1]??match[2]??'').trim();if(name&&!STOP.has(name.toLowerCase())&&!entities.some(e=>e.toLowerCase().includes(name.toLowerCase())))entities.push(name);}
+  const entities:string[]=[];
+  for(const match of text.matchAll(/["“]([^"”]{2,80})["”]|(?<![\p{L}\p{N}])([\p{Lu}][\p{L}\p{N}]*(?:[:.-][\p{L}\p{N}]+)*)/gu)){
+    const name=(match[1]??match[2]??'').trim();
+    if(name.length>1&&!STOP.has(name.toLowerCase())&&!entities.some(e=>e.toLowerCase()===name.toLowerCase()))entities.push(name);
+  }
   const primary=message.split(/\b(?:distinguish|different from|rather than|not the)\b/i)[0]??message;
-  const eventTerms=[...(/\b(arrow|archer|bow|shot)\b/i.test(text)?['arrow']:[]),...(/\b(jungle|forest)\b/i.test(text)?['jungle','forest']:[]),...(/\b(pin\w*|tree)\b/i.test(text)?['pinned','tree']:[]),...(/\b(poison\w*|utakata)\b/i.test(primary)?['poison']:[])];
+  const names=new Set(entities.flatMap(lexicalTerms));
+  const eventTerms=scene ? [...new Set(lexicalTerms(primary).filter(word=>!STOP.has(word)&&!names.has(word)&&
+    !['novel','anime','episode','translation','light','web','involving'].includes(word)))].slice(0,8) : [];
   const technical=/\b(tauri|rust|react|typescript|ffmpeg|api|software|code|css|backdrop-filter)\b/i.test(text);
   const kind=scene&&!technical?'scene':/\b(character|profile|dossier|personality)\b/i.test(message)?'character':technical?'technical':'general';
   const key=words(kind==='general'?message:text).filter(t=>!STOP.has(t)&&!/^\d+$/.test(t)).slice(0,12);
-  const query=[...entities.slice(0,5),arc?`Arc ${arc}`:'',chapter?`Chapter ${chapter}`:'',...eventTerms,kind==='technical'?'documentation':kind==='scene'?'web novel chapter':'',...(!entities.length||kind==='technical'?key.slice(0,8):[])].filter(Boolean).join(' ').slice(0,280);
+  const query=[...(kind==='general'?[]:entities.slice(0,5)),arc?`Arc ${arc}`:'',chapter?`Chapter ${chapter}`:'',...eventTerms,
+    ...(kind==='general'||!entities.length||kind==='technical'?key.slice(0,8):[])].filter(Boolean).join(' ').slice(0,240);
   return {kind,query:query||message.slice(0,240),entities,arc,chapter,adaptation:/\banime\b/i.test(message)?'anime':/\blight novel\b/i.test(message)?'light novel':/\bweb novel\b/i.test(text)?'web novel':undefined,eventTerms,context:text};
 }
 export function planQueries(intent:ResearchIntent):string[]{
   const base=intent.query;const alternatives=[base];
   if(intent.kind==='scene'){
     if(intent.arc&&intent.chapter)alternatives.unshift(`${intent.entities[0]?.replace(/[:]/g,'')??''} Arc ${intent.arc} Chapter ${intent.chapter} translation`.trim());
-    alternatives.push(`${intent.entities.slice(0,2).join(' ')} ${intent.eventTerms.filter(t=>!['jungle','poison'].includes(t)).join(' ')} novel scene reference`.trim());
+    if(intent.entities.length)alternatives.push(`${intent.entities.slice(0,2).join(' ')} ${intent.eventTerms.slice(0,5).join(' ')}`.trim());
   }
   return [...new Set(alternatives)].slice(0,3);
 }
@@ -33,12 +58,13 @@ export function rankCandidates(results:ChatSource[],intent:ResearchIntent):Resea
   const seen=new Set<string>();return results.flatMap((s,i)=>{
     let url:URL;try{url=new URL(s.url);}catch{return [];}
     if(url.protocol!=='https:'||url.username||url.password)return [];const canonical=url.origin+url.pathname.replace(/\/$/,'');if(seen.has(canonical))return [];seen.add(canonical);
-    const text=`${s.title} ${s.excerpt??''} ${decodeURIComponent(url.pathname)}`.toLowerCase().replace(/[-_]/g,' ');let score=0;const reasons:string[]=[];
+    let path=url.pathname;try{path=decodeURIComponent(path);}catch{/* Keep the original path if percent encoding is malformed. */}
+    const text=`${s.title} ${s.excerpt??''} ${path}`.toLowerCase().replace(/[-_]/g,' ');let score=0;const reasons:string[]=[];
     const entityMatches=intent.entities.filter(e=>text.replace(/[:\s]/g,'').includes(e.toLowerCase().replace(/[:\s]/g,'')));
     if(entityMatches.length){score+=entityMatches.length*5;reasons.push(`Entity: ${entityMatches.join(', ')}`);}
     const matchArc=/arc\s*(\d+)/i.exec(text);if(intent.arc&&Number(matchArc?.[1])===intent.arc){score+=7;reasons.push(`Arc ${intent.arc}`);}else if(intent.arc&&matchArc)score-=8;
     const matchChapter=/chapter\s*(\d+)/i.exec(text);if(intent.chapter&&Number(matchChapter?.[1])===intent.chapter){score+=8;reasons.push(`Chapter ${intent.chapter}`);}
-    const events=intent.eventTerms.filter(t=>text.includes(t));score+=events.length*3;if(events.length)reasons.push(`Event: ${events.join(', ')}`);
+    const events=eventMatches(text,intent.eventTerms);score+=events.length*3;if(events.length)reasons.push(`Event: ${events.join(', ')}`);
     if(intent.kind==='scene'){
       if(/chapter|translation|novel/.test(text)){score+=3;reasons.push('Chapter or novel reference');}
       if(!entityMatches.length&&!(intent.arc&&Number(matchArc?.[1])===intent.arc&&/translation|novel|chapter/.test(text)))score-=20;
@@ -46,17 +72,16 @@ export function rankCandidates(results:ChatSource[],intent:ResearchIntent):Resea
       if(/dictionary|definition|showtimes|software download/.test(text))score-=30;
       if(intent.adaptation==='anime'&&/web novel/.test(text))reasons.push('Adaptation differs: web novel evidence is not anime verification');
     }else score+=words(intent.query).filter(w=>text.includes(w)).length;
-    if(intent.eventTerms.includes('poison')&&text.includes('poison'))score+=7;
     return score>0?[{...s,id:`candidate-${i}-${url.hostname}`,query:intent.query,status:'found' as const,score,reasons}]:[];
   }).sort((a,b)=>b.score-a.score);
 }
 export function verifyScene(page:ResearchPage,intent:ResearchIntent):{supported:boolean;matches:string[];uncertainty:string}{
-  const text=page.text.toLowerCase();const matches=intent.eventTerms.filter(t=>text.includes(t));
-  const entity=intent.entities.length===0||intent.entities.some(e=>text.includes(e.toLowerCase()));
+  const text=`${page.title}\n${page.text}`.toLowerCase();const matches=eventMatches(text,intent.eventTerms);
+  const entity=intent.entities.length===0||intent.entities.some(e=>text.replace(/[:\s]/g,'').includes(e.toLowerCase().replace(/[:\s]/g,'')));
   const arc=/arc\s*(\d+)/i.exec(`${page.title} ${page.locator}`);const arcValid=!intent.arc||!arc||Number(arc[1])===intent.arc;
   const chapter=/chapter\s*(\d+)/i.exec(`${page.title} ${page.locator} ${page.url}`.replace(/[-_]/g,' '));const chapterValid=!intent.chapter||Number(chapter?.[1])===intent.chapter;
   const supported=entity&&arcValid&&chapterValid&&(!intent.eventTerms.length||matches.length>=Math.min(2,intent.eventTerms.length));
-  return {supported,matches,uncertainty:!arcValid?'Requested arc differs from the retrieved chapter.':!chapterValid?'This page does not establish the requested chapter; follow its chapter links.':!supported?'Found, but the retrieved excerpt does not establish this event.':intent.adaptation==='anime'&&/novel|chapter/i.test(page.title)?'Source supports a novel event; anime equivalence has not been established.':'Check similar events and continuity before attributing an attacker.'};
+  return {supported,matches,uncertainty:!arcValid?'Requested arc differs from the retrieved chapter.':!chapterValid?'This page does not establish the requested chapter; follow its chapter links.':!supported?'Found, but the retrieved excerpt does not establish this event.':intent.adaptation==='anime'&&/novel|chapter/i.test(page.title)?'Source supports a novel event; anime equivalence has not been established.':'Check similar events and continuity before asserting details.'};
 }
 export async function researchTopic(request:string,context:string,provider:SearchProvider,webEnabled:boolean,signal:AbortSignal,onUpdate?:(c:ResearchCandidate[])=>void):Promise<{intent:ResearchIntent;candidates:ResearchCandidate[];context:string}>{
   if(!webEnabled)throw Error('Web Search is OFF. Saved local sources remain available.');
@@ -81,5 +106,5 @@ export async function researchTopic(request:string,context:string,provider:Searc
 }
 export async function nativeSearchProvider(config:SearchProviderConfig,webEnabled:boolean):Promise<SearchProvider>{
   const {searchPublicWeb,readResearchPage}=await import('../engine/creator');
-  return {search:async(query,signal)=>{if(!webEnabled||signal.aborted)throw Error('Web access is disabled or cancelled.');return searchPublicWeb(query,true,config);},...(config.kind==='bing'?{fallbackSearch:async(query:string,signal:AbortSignal)=>{if(!webEnabled||signal.aborted)throw Error('Web access is disabled or cancelled.');return searchPublicWeb(query,true,{kind:'duckduckgo'});}}:{}),read:async(url,query,signal)=>{if(!webEnabled||signal.aborted)throw Error('Web access is disabled or cancelled.');const page=await readResearchPage(url,query,true);return {...page,contentHash:await contentHash(page.text)};}};
+  return {kind:config.kind,search:async(query,signal)=>{if(!webEnabled||signal.aborted)throw Error('Web access is disabled or cancelled.');return searchPublicWeb(query,true,config);},...(config.kind==='bing'?{fallbackSearch:async(query:string,signal:AbortSignal)=>{if(!webEnabled||signal.aborted)throw Error('Web access is disabled or cancelled.');return searchPublicWeb(query,true,{kind:'duckduckgo'});}}:{}),read:async(url,query,signal)=>{if(!webEnabled||signal.aborted)throw Error('Web access is disabled or cancelled.');const page=await readResearchPage(url,query,true);return {...page,contentHash:await contentHash(page.text)};}};
 }

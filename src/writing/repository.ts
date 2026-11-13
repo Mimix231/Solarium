@@ -1,6 +1,6 @@
 import { now, uid } from '../domain/types';
 import { foundationStore, newRecord } from '../foundation/store';
-import { accessibleScopes, assertScope, sameScope, validateBody, type AccessContext, type LibraryScope, type RecordStore } from '../foundation/types';
+import { accessibleScopes, assertScope, sameScope, validateBody, type AccessContext, type LibraryScope, type RecordStore, type RecordWrite } from '../foundation/types';
 import { markdownContent, readWritingContent, validateStructured } from './schema';
 import type { CategoryData, WritingCategory, WritingContent, WritingData, WritingDocument, WritingDraft, WritingKind, WritingRevision, WritingRevisionData, WritingSelection } from './types';
 export class WritingRepository {
@@ -58,7 +58,8 @@ export class WritingRepository {
     await this.store.batch([{record:next,expected:actual.version},...records.filter(r=>r.storyId!==storyId).map(r=>({record:{...r,storyId,version:r.version+1,updatedAt:now()},expected:r.version}))]);return next;
   }
   async revisions(id:string):Promise<WritingRevision[]>{await this.get(id);return (await this.store.list<WritingRevisionData>({collection:'writing_revision',scopes:this.scopes()})).filter(r=>r.data.documentId===id).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));}
-  async save(document:WritingDocument,content:WritingContent,patch:Partial<WritingData>={},partial=false):Promise<WritingDocument>{
+  async save(document:WritingDocument,content:WritingContent,patch:Partial<WritingData>={},partial=false,
+    linkedWrite?:(next:WritingDocument)=>RecordWrite):Promise<WritingDocument>{
     assertScope(document.scope,this.context,true);validateBody(content.markdownProjection);validateStructured(content.structuredJson);
     const actual=(await this.get(document.id)).document;
     if(actual.version!==document.version||!sameScope(actual.scope,document.scope)||(actual.storyId??null)!==(document.storyId??null))throw Error('Revision conflict or document ownership changed. Reload before saving.');
@@ -66,7 +67,8 @@ export class WritingRepository {
     if(patch.categoryId)await this.checkCategory(patch.categoryId,document.scope,document.storyId??null);
     const revisionId=uid(),time=now();const next={...document,version:document.version+1,updatedAt:time,data:{...document.data,...patch,schemaVersion:1 as const,currentRevisionId:revisionId,wordCount:wordCount(content.markdownProjection)}};
     const revision=newRecord('writing_revision',revisionId,document.scope,document.title,{documentId:document.id,parentRevisionId:document.data.currentRevisionId,schemaVersion:1,isPartialDraft:partial,reason:'user_edit',createdAt:time} satisfies WritingRevisionData,document.storyId);
-    await this.store.batch([{record:next,expected:document.version},{record:revision,expected:null,body:JSON.stringify(content)}]);return next;
+    await this.store.batch([{record:next,expected:document.version},{record:revision,expected:null,body:JSON.stringify(content)},
+      ...(linkedWrite?[linkedWrite(next)]:[])]);return next;
   }
   async checkpoint(document:WritingDocument,markdown:string,status:WritingDraft['status']):Promise<void>{
     validateBody(markdown);assertScope(document.scope,this.context,true);

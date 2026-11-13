@@ -71,7 +71,7 @@ const settingsTargets = [
 ];
 type Design = Pick<Graph, 'collection' | 'collections' | 'pages' | 'controls' | 'program'>;
 export function styleTargets({ collection, collections, pages, controls, program }: Design): StyleTarget[] {
-  const settings = !collection || controls.length > 0;
+  const settings = (!collection && !program?.screens.length) || controls.length > 0;
   const fields = [...new Map([...(collections ?? []).flatMap(item => item.fields), ...(collection?.fields ?? [])].map(field => [field.key, field])).values()];
   const hasFilter = fields.some(field => field.type === 'boolean' && field.filter);
   return [
@@ -85,7 +85,13 @@ export function styleTargets({ collection, collections, pages, controls, program
     ] : []),
     ...(program?.screens.length ? [target('screen-nav', 'Screen navigation', 'group'), ...program.screens.flatMap(screen => [
       target('screen-' + screen.id, screen.label + ' screen', 'area'), target('route-' + screen.id, screen.label + ' tab', 'button', true),
+      ...(screen.intro || screen.buttons?.length ? [target('intro-' + screen.id, screen.label + ' introduction', 'group')] : []),
+      ...(screen.buttons ?? []).map(button => target(`button-${screen.id}-${button.id}`, button.label + ' button', 'button')),
     ])] : []),
+    ...(program?.screens.some(screen => screen.view === 'review') ? [target('record-transfer', 'Record transfer and review', 'panel')] : []),
+    ...(program?.screens.some(screen => screen.view === 'review' && screen.mapping) ? [target('csv-column-map', 'CSV column mapping', 'panel')] : []),
+    ...(program?.screens.some(screen => screen.view === 'table') ? [target('record-table', 'Record table', 'panel'), target('record-badge', 'Record status badge', 'text')] : []),
+    ...(program?.screens.some(screen => screen.view === 'game') ? [target('game-viewport', 'Playable 2D scene', 'panel')] : []),
     ...(collection && settings ? [target('record-settings', 'Settings section', 'area'), target('record-settings-summary', 'Settings expander', 'button')] : []),
     ...(settings ? [
       ...settingsTargets,
@@ -110,8 +116,15 @@ export function supportedProperties(part: StyleTarget, state: StyleState): reado
   return properties;
 }
 
-export function normalizeStyleValue(property: StyleProperty, value: unknown): StyleValue {
+export function styleTokenOptions(property: StyleProperty): string[] {
+  const type = styleProperties[property].type;
+  return Object.keys(themeCss).filter(key =>
+    styleProperties[key as StyleProperty].type === type && (type !== 'choice' || key === property)).map(key => '$' + key);
+}
+
+export function normalizeStyleValue(property: StyleProperty, value: unknown, allowToken = false): StyleValue {
   const spec = styleProperties[property];
+  if (allowToken && typeof value === 'string' && value.startsWith('$') && styleTokenOptions(property).includes(value)) return value;
   if (spec.type === 'color' && typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value)) return value.toLowerCase();
   if (spec.type === 'number' && typeof value === 'number' && Number.isInteger(value) && value >= spec.min && value <= spec.max) return value;
   if (spec.type === 'choice' && typeof value === 'string' && spec.choices.includes(value)) return value;
@@ -145,7 +158,7 @@ export function validateAppearance(design: Design, value: unknown) {
     const part = requirePart(parts, id, state);
     for (const [key, value] of Object.entries(styleObject(values))) {
       requireProperty(part, state, key as StyleProperty);
-      normalizeStyleValue(key as StyleProperty, value);
+      normalizeStyleValue(key as StyleProperty, value, id !== 'app');
     }
   };
   if (appearance.theme !== undefined) validateValues('app', 'base', appearance.theme);
@@ -166,7 +179,7 @@ export function applyStyleEdit(graph: Graph, { target: id, state = 'base', prope
   const appearance = graph.appearance ?? {};
   const values = { ...styleValues(appearance, id, state) };
   if (value === null) delete values[property];
-  else values[property] = normalizeStyleValue(property, value);
+  else values[property] = normalizeStyleValue(property, value, id !== 'app');
   if (id === 'app') {
     if (Object.keys(values).length) appearance.theme = values;
     else delete appearance.theme;
@@ -219,9 +232,10 @@ function declarations(values: Values, theme: boolean) {
     const property = key as StyleProperty;
     const name = (theme ? themeCss : blockCss)[property];
     if (!name) return [];
-    const value = normalizeStyleValue(property, input);
-    const css = typeof value === 'number' ? value + 'px' : property === 'font' ? fonts[value] :
-      property === 'fontWeight' ? weights[value] : property === 'border' && !theme ? `inset 0 0 0 1px ${value}` : value;
+    const value = normalizeStyleValue(property, input, !theme);
+    const resolved = typeof value === 'number' ? value + 'px' : value.startsWith('$') ? `var(${themeCss[value.slice(1) as StyleProperty]})` :
+      property === 'font' ? fonts[value] : property === 'fontWeight' ? weights[value] : value;
+    const css = property === 'border' && !theme ? `inset 0 0 0 1px ${resolved}` : resolved;
     return [`${name}:${css}`, ...(theme && property === 'accent' ? ['--accent-ink:' + accentInk(String(value))] : [])];
   }).join(';');
 }
