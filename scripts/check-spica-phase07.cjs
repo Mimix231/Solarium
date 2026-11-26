@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 'use strict';
-const {spawnSync}=require('node:child_process');
+const {spawnSync}=require('./spica-test-process.cjs');
 const fs=require('node:fs');const path=require('node:path');
 const root=path.resolve(__dirname,'..');const out=path.join(root,'.spica-phase07-test');
 fs.mkdirSync(out,{recursive:true});
 const registry=spawnSync(process.execPath,['scripts/generate-spica-runtime-registry.cjs','--check'],{cwd:root,stdio:'inherit'});
 if(registry.status!==0)process.exit(registry.status??1);
 const sources=[
- 'src/spica/intent.ts','src/spica/tool-intelligence.ts',
+ 'src/spica/intent.ts','src/spica/tool-intelligence.ts','src/spica/construction-insights.ts',
  'src/spica/runtime/adapter.ts','src/spica/runtime/registry.ts','src/spica/runtime/executor.ts',
  'src/spica/runtime/composition.ts','src/spica/runtime/discovery.ts',
  'src/spica/graph-v2/types.ts','src/spica/graph-v2/validation.ts','src/spica/graph-v2/serialization.ts',

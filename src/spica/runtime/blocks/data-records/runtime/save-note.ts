@@ -2,6 +2,7 @@ import { defineRuntimeBlock } from '../../../adapter';
 
 const noteType = { kind:'record' as const, fields:{title:{kind:'string' as const},body:{kind:'string' as const}} };
 export default defineRuntimeBlock({
+  exampleConfig:{key:'note_001'},
   id:'spica.runtime.save_note', version:'1', kind:'effect', trust:'built-in', targets:['desktop','web'], permissions:['records.write'],
   inputs:[{id:'note',type:noteType,required:true},{id:'trigger',type:{kind:'event',payload:{kind:'boolean'}},required:true}],
   outputs:[{id:'saved',type:noteType}],

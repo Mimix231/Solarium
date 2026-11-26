@@ -17,7 +17,7 @@ export function inspectSpicaV2Parameters(graph:SpicaGraphV2|undefined,revision:n
   if(!operation)return {tool:'edit_spica_graph',view:'v2',revision,operations:v2EditOperations,context,
     workflow:['read_spica_graph view:v2','inspect_params view:v2 operation:<operation>',
       'validate_spica_edit view:v2','edit_spica_graph view:v2','read_spica_graph view:v2'],
-    next:graph?'inspect_params':'migrate_spica_v2_graph'};
+    next:'inspect_params'};
   const schema=spicaEditOperationSchema('v2',operation);
   if(!schema)return {ok:false,view:'v2',operation,allowedOperations:v2EditOperations};
   const block=listRuntimeBlocks()[0];
@@ -38,6 +38,9 @@ export function inspectSpicaV2Parameters(graph:SpicaGraphV2|undefined,revision:n
     !graph.nodes.some(node=>node.scope===scope.id)&&!graph.scopes.some(item=>item.parent===scope.id));
   const examples:Record<string,unknown>={
     rename:{op:'rename',name:'Updated app'},
+    migrate_graph:{op:'migrate_graph'},
+    rollback_graph:{op:'rollback_graph'},
+    compose_blocks:{op:'compose_blocks',nodes:block?[{id:freshId('block',graph?.nodes.map(n=>n.id)??[]),blockId:block.id,config:block.exampleConfig??{}}]:[],connections:[]},
     add_scope:{op:'add_scope',scope:{id:freshId('panel',context.scopes),parent:'root',label:'Panel'}},
     remove_scope:{op:'remove_scope',id:unusedScope?.id},
     add_block:{op:'add_block',id:freshId('block',graph?.nodes.map(n=>n.id)??[]),blockId:block?.id,version:'1',config:block?.exampleConfig??{},scope:'root'},
@@ -50,12 +53,13 @@ export function inspectSpicaV2Parameters(graph:SpicaGraphV2|undefined,revision:n
   };
   const prerequisites:Record<string,boolean>={
     remove_scope:Boolean(unusedScope),
-    add_node:Boolean(addedNode),remove_node:Boolean(node),set_node_config:false,move_node:Boolean(node),
+    add_node:Boolean(addedNode),remove_node:Boolean(node),set_node_config:Boolean(node),move_node:Boolean(node),
     connect:Boolean(connection),disconnect:Boolean(edge),add_block:Boolean(block),
+    migrate_graph:!graph,rollback_graph:Boolean(graph),compose_blocks:Boolean(graph&&block),
   };
-  const available=Boolean(graph) && (prerequisites[operation]??true);
+  const available=(operation==='migrate_graph'? !graph:Boolean(graph)) && (prerequisites[operation]??true);
   const example=available?{revision,view:'v2',edits:[examples[operation]]}:null;
   return {tool:'edit_spica_graph',view:'v2',operation,revision,available,
-    schema,example,context,next:!graph?'migrate_spica_v2_graph':available?'validate_spica_edit':'search_spica_runtime_blocks',
-    note:'Examples are illustrations only. Inspect the exact block ports/config and actual graph IDs before saving.'};
+    schema,example,context,next:!graph?(operation==='migrate_graph'?'validate_spica_edit':'inspect_params'):available?'validate_spica_edit':'search_spica_runtime_blocks',
+    note:'Examples are starting templates, not promised changes. Edit config to a genuinely new valid value, inspect the real block ports/IDs, then validate before saving.'};
 }

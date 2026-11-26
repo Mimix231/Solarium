@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-const {spawnSync}=require('node:child_process');
+const {spawnSync}=require('./spica-test-process.cjs');
 const fs=require('node:fs');const path=require('node:path');
 const root=path.resolve(__dirname,'..');const out=path.join(root,'.spica-phase06-test');fs.mkdirSync(out,{recursive:true});
 const registry=spawnSync(process.execPath,['scripts/generate-spica-runtime-registry.cjs','--check'],{cwd:root,stdio:'inherit'});

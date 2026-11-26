@@ -2,6 +2,7 @@ import { defineRuntimeBlock } from '../../../adapter';
 
 /** Concrete typed data source, not a generic code-evaluation block. */
 export default defineRuntimeBlock({
+  exampleConfig:{title:'Sample note',body:'Sample content'},
   id: 'spica.runtime.note_record', version: '1', kind: 'pure', trust: 'built-in', targets: ['desktop','web'], permissions: [],
   inputs: [], outputs: [{ id: 'note', type: { kind: 'record', fields: { title: { kind:'string' }, body: { kind:'string' } } } }],
   validateConfig(config) {

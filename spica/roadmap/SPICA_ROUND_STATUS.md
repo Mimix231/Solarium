@@ -61,3 +61,22 @@ This archive adds a **proposed** nine-phase extension. The prior original Phase 
 **Next planned Phase 10:** Persistent Agent Execution & Rolling Context. **Current implemented checkpoint:** Phase 9.5; no Phase 10 implementation is claimed.
 
 Two host UI layouts are planned: `Classic` (default existing 3DS/Wii U-like shell) and `Cosmic` (opt-in concept-inspired shell), selected with a new eye-button independent of palette and workspace mode.
+
+## Phase 10 correction — Canonical graph editor (2026-11-13)
+
+The Phase 10 source from `Solarium[Bak](1).zip` already exposed one editor
+`edit_spica_graph`. This round hardened the V2 implementation without creating
+a second endpoint: shared schema1/V2 validation, registered-node ports/config
+checks, migration-origin preflight parity, fully atomic repository writes,
+operation-specific V2 parameter inspection, updated active runtime guidance,
+and removal of an unused direct-template fallback. See
+`43_PHASE10_SINGLE_GRAPH_EDITOR_CORRECTION.md`. This is **Phase 10**, not 10.1;
+Phase 11 remains unimplemented.
+
+## Phase 10 continued — registered capability inspection and folded Plan (2026-11-13)
+
+Existing Phase 10 code was amended in-place. The latest focused runtime registry has 105 executable blocks (including `record_list` and `record_delete`), both in separate canonical files. Source-level `resolve_spica_capabilities` and inspector query/parameter expansion improve ID discovery without aliasing nonexistent tools. Compose-stage selection is plan-aware, and empty searches no longer count as discovered capabilities. The folded Plan is centered directly above the chat message box and expands into the original detailed panel. Phase 11 has **not** begun. Source-level regression checks cannot certify natural tool choices by a particular GGUF model or unsupported general V2 standalone export; see report 44.
+
+## Phase 10 Round A — Tool contract/execution reliability (November 13, 2026)
+
+Audited 100 global callable declarations (34 SPICA direct calls), added strict source checks for handler/permission/stage/work-log coverage, removed the fatal unverified scoped-operation exception, made absent V2 migration reachable after explicit preflight, retained tools for corrected invocations, and reduced failed graph-edit preflight payloads. Generic Dona addressing was removed. **Round A only**; Round B–G and Phase 11 remain unimplemented. See `47_PHASE10_ROUND_A_EXECUTION_AUDIT_AND_FIXES.md`.

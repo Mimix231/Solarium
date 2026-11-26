@@ -1,6 +1,6 @@
 /** Structural tool declaration: validation must not import the agent runtime. */
 export interface ToolValidationDefinition {type:'function';function:{name:string;description:string;parameters:{type:'object';properties:Record<string,unknown>;required?:readonly string[];additionalProperties?:boolean}}} 
-interface Schema {oneOf?:readonly Schema[];type?:string|readonly string[];properties?:Record<string,Schema>;required?:readonly string[];additionalProperties?:boolean;items?:Schema;enum?:readonly unknown[];minItems?:number;maxItems?:number;minLength?:number;maxLength?:number;minimum?:number;maximum?:number}
+interface Schema {oneOf?:readonly Schema[];type?:string|readonly string[];properties?:Record<string,Schema>;required?:readonly string[];additionalProperties?:boolean;items?:Schema;enum?:readonly unknown[];minItems?:number;maxItems?:number;minLength?:number;maxLength?:number;pattern?:string;minimum?:number;maximum?:number}
 export interface ToolIssue {field:string;message:string}
 export type ToolValidation={ok:true;value:Record<string,unknown>}|{ok:false;error:{code:'INVALID_ARGUMENTS';tool:string;issues:ToolIssue[];message:string}};
 export function validateToolArguments(name:string,raw:string|unknown,definitions:readonly ToolValidationDefinition[]):ToolValidation{
@@ -45,6 +45,7 @@ export function validateToolArguments(name:string,raw:string|unknown,definitions
     if(Array.isArray(value)){if(value.length<(schema.minItems??0)||value.length>(schema.maxItems??1000))issues.push({field:path,message:`Array must contain ${schema.minItems??0}–${schema.maxItems??1000} items.`});value.forEach((v,i)=>schema.items&&validate(v,schema.items,`${path}[${i}]`,depth+1));}
     if(typeof value==='string'){
       if(value.length>(schema.maxLength??2_000_000)||value.length<(schema.minLength??0))issues.push({field:path,message:'Text length is outside the supported range.'});
+      if(schema.pattern)try{if(!new RegExp(schema.pattern).test(value))issues.push({field:path,message:'Text must match '+schema.pattern+'.'});}catch{issues.push({field:path,message:'The registered text pattern is invalid.'});}
       if(/(?:^|\.)(path)$/.test(path)&&(!value||/^(?:[A-Za-z]:|[\\/])|(?:^|[\\/])\.\.(?:[\\/]|$)|:/.test(value)||[...value].some(c=>c.charCodeAt(0)<32)))issues.push({field:path,message:'Use a safe project-relative path inside the linked folder.'});
     }
     if(typeof value==='number'&&(!Number.isFinite(value)||value<(schema.minimum??-Infinity)||value>(schema.maximum??Infinity)))issues.push({field:path,message:'Number is outside the supported range.'});

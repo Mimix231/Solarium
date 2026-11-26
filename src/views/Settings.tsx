@@ -14,7 +14,7 @@ import { catalogToModels } from '../engine/catalog';
 import type { Density, Preferences, ThemeId } from '../domain/types';
 import { importFoundation } from '../foundation/backup';
 import { FictionSettings } from '../components/FictionSettings';
-import { nativeSearchProvider } from '../research/research';
+import { nativeSearchProvider, type SearchProviderConfig } from '../research/research';
 import { SpicaResearchRun } from '../spica/research-run';
 import './settings.css';
 
@@ -99,7 +99,21 @@ export function Settings() {
       <Typography color="text.secondary" fontSize={11}>System reduced-motion preferences are respected automatically.</Typography>
     </Box>
     <Box className="glass panel" hidden={section !== 'web'}>
-      <Typography fontWeight={750} mb={1}>Web research provider</Typography><Typography fontSize={12} color="text.secondary" mb={2}>Search runs only when Web Search is ON. Bing uses DuckDuckGo when its results do not match the research topic. SearXNG needs a public HTTPS instance with JSON output enabled.</Typography><Stack direction="row" gap={1}><TextField select label="Provider" value={preferences.searchProvider?.kind??'bing'} onChange={e=>updatePreferences({searchProvider:{...preferences.searchProvider,kind:e.target.value as 'bing'|'searxng'|'duckduckgo'}})} sx={{minWidth:180}}><MenuItem value="bing">Bing RSS + fallback</MenuItem><MenuItem value="duckduckgo">DuckDuckGo HTML</MenuItem><MenuItem value="searxng">SearXNG</MenuItem></TextField>{preferences.searchProvider?.kind==='searxng'&&<TextField label="SearXNG HTTPS instance URL" value={preferences.searchProvider.endpoint??''} onChange={e=>updatePreferences({searchProvider:{kind:'searxng',endpoint:e.target.value}})} sx={{flex:1}}/>}</Stack>
+      <Typography fontWeight={750} mb={1}>Web research provider</Typography>
+      <Typography fontSize={12} color="text.secondary" mb={2}>Search runs when Web Search is on. With Bing selected, a Spark can try Mwmbl when Bing has weak results. SearXNG needs a public HTTPS instance with JSON output enabled.</Typography>
+      <Stack direction="row" gap={1}>
+        <TextField select label="Provider" value={preferences.searchProvider?.kind??'bing'} onChange={event=>{
+          setConnection('');
+          updatePreferences({searchProvider:{...preferences.searchProvider,kind:event.target.value as SearchProviderConfig['kind']}});
+        }} sx={{minWidth:180}}>
+          <MenuItem value="bing">Bing RSS + fallback</MenuItem>
+          <MenuItem value="mwmbl">Mwmbl</MenuItem>
+          <MenuItem value="duckduckgo">DuckDuckGo HTML</MenuItem>
+          <MenuItem value="searxng">SearXNG</MenuItem>
+        </TextField>
+        {preferences.searchProvider?.kind==='searxng'&&<TextField label="SearXNG HTTPS instance URL" value={preferences.searchProvider.endpoint??''}
+          onChange={event=>updatePreferences({searchProvider:{kind:'searxng',endpoint:event.target.value}})} sx={{flex:1}}/>}
+      </Stack>
       {preferences.searchProvider?.kind === 'searxng' && <Stack gap={1.5} mt={2}>
         <TextField label="Connection test query" value={connectionQuery} onChange={event => setConnectionQuery(event.target.value)}
           helperText={online ? 'This public query checks the selected instance’s JSON search endpoint.' : 'Enable Web Search in chat to run a connection test.'} />

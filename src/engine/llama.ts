@@ -35,6 +35,9 @@ export interface GenerationRequestOptions {
   requireTools?: boolean;
   /** Only request forced tool calling for an explicit executable user task, and only while starting it. */
   toolChoice?: 'auto' | 'required';
+  /** Initial prompt tokens to retain during llama.cpp KV-cache context shifts.
+   * Never use -1 here: pinning the entire prompt can prevent useful shifting. */
+  keepTokens?: number;
 }
 interface DeltaCall { index?: number; id?: string; type?: string; function?: { name?: string; arguments?: string } }
 interface StreamChunk {
@@ -63,6 +66,48 @@ async function readJson(url: string, signal?: AbortSignal): Promise<unknown> {
   if (!response.ok) throw new Error(`Inference server responded ${response.status}.`);
   return response.json() as Promise<unknown>;
 }
+/** Newer llama.cpp servers expose chat-completion input counting, including
+ * the EXACT tools currently offered to the model. Older servers may lack the
+ * route, so callers MUST fall back to the existing template/tokenizer path.
+ * This is a read-only count endpoint; it never starts model inference. */
+export async function countChatInputTokens(
+  model: LocalModel,
+  messages: LlamaMessage[],
+  tools: NonNullable<GenerationRequestOptions['tools']>,
+  signal: AbortSignal,
+  toolChoice: 'auto' | 'required' = 'auto',
+): Promise<number | null> {
+  if ((model.backend ?? 'llama.cpp') !== 'llama.cpp') return null;
+  if (signal.aborted) throw new DOMException('Stopped', 'AbortError');
+
+  try {
+    const response = await fetch(pathFor(model.endpoint, '/v1/chat/completions/input_tokens'), {
+      method: 'POST',
+      signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: model.modelId,
+        messages: mergeSystemPrefix(messages),
+        ...(tools.length ? { tools, tool_choice: toolChoice } : {}),
+      }),
+    });
+    if (!response.ok) return null;
+
+    const data = await response.json() as {
+      input_tokens?: unknown;
+      count?: unknown;
+      usage?: { input_tokens?: unknown };
+    };
+    const counted = data.input_tokens ?? data.usage?.input_tokens ?? data.count;
+    // A zero count cannot be correct for an active construction instruction.
+    return typeof counted === 'number' && Number.isSafeInteger(counted) && counted > 0 ? counted : null;
+  } catch (error) {
+    if (signal.aborted) throw error;
+    // Older inference servers may not implement the optional counting route.
+    return null;
+  }
+}
+
 /** Count the real prompt with the active backend tokenizer when available. */
 export async function countInputTokens(model: LocalModel, messages: LlamaMessage[], signal: AbortSignal): Promise<number | null> {
   const post = async (path: string, body: unknown): Promise<unknown> => {
@@ -124,8 +169,13 @@ export async function streamLlamaTurn(
     body: JSON.stringify({
       model: model.modelId, messages:mergeSystemPrefix(messages), stream: true,
       temperature: model.temperature, max_tokens: options.outputTokens ?? model.maxTokens,
-      // Keep the fitted task/persona/tool prompt when native context shifting evicts output.
-      ...((model.backend??'llama.cpp') === 'llama.cpp' ? { n_keep: -1 } : {}),
+      // Preserve a bounded system-prefix, not the entire prompt. With n_keep=-1
+      // a nearly full prompt can leave llama.cpp no tokens to evict when the KV
+      // cache fills, so max_tokens=-1 still ends with finish_reason=length.
+      ...((model.backend??'llama.cpp') === 'llama.cpp'
+        ? { n_keep: Number.isSafeInteger(options.keepTokens) && (options.keepTokens ?? 0) >= 0
+            ? Math.min(options.keepTokens!, Math.max(0,(capabilities.contextSize??model.contextSize??4096)-128))
+            : Math.min(512,Math.max(64,Math.floor((capabilities.contextSize??model.contextSize??4096)/8))) } : {}),
       ...(model.backend === 'vllm' ? { stream_options: { include_usage: true } } : {}),
       ...(capabilities.tools === 'supported' && options.tools?.length ? { tools: options.tools, tool_choice: options.toolChoice ?? 'auto' } : {}),
     }),

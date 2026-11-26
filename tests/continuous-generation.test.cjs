@@ -145,7 +145,7 @@ test('an engine ending at capacity returns partial output without manufacturing 
   }};
   const result=await streamContinuousAnswer({adapter,model,capabilities,messages,signal:new AbortController().signal,onAnswer(){},onReasoning(){}});
   assert.equal(result.answer,'This is a partial response.');
-  assert.match(result.warning,/context\/output capacity/);
+  assert.match(result.warning,/generation limit/);
   assert.equal(calls,1);
 });
 

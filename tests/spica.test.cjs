@@ -4,7 +4,7 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { starterGraph, changeGraph, compileGraph, validateGraph, collectionUpgrade, stableGraphJson } = require('../.test-dist/spica/graph.js');
 const { SpicaRepository } = require('../.test-dist/spica/repository.js');
-const { isSpicaCreationRequest, isSpicaProgramRequest, isSpicaStyleRequest, isSpicaVerificationOnly, normalizeSpicaProposal, reviewSpicaEdit, selectSpicaTools, spicaEditSignature, spicaTools } = require('../.test-dist/spica/tools.js');
+const { isSpicaCreationRequest, isSpicaProgramRequest, isSpicaStyleRequest, isSpicaVerificationOnly, reviewSpicaEdit, selectSpicaTools, spicaEditSignature, spicaTools } = require('../.test-dist/spica/tools.js');
 const { appearanceCss, STANDALONE_STYLE_SCOPE, styleChanges, styleTargets } = require('../.test-dist/spica/appearance.js');
 const { decideToolPermission } = require('../.test-dist/engine/action-permissions.js');
 const { validateToolArguments } = require('../.test-dist/engine/intelligence/tool-validation.js');
@@ -25,7 +25,7 @@ test('a screen proposal passes the same SPICA contract in the live dispatcher an
   const original = starterGraph('Workspace', 'notes');
   const screen = { id: 'review', label: 'Review', view: 'review', collection: 'notes' };
   const args = { revision: 1, edits: [{ op: 'put_screen', screen }] };
-  const tools = selectSpicaTools(spicaTools, 'read_spica_graph', true, false, false, true);
+  const tools = spicaTools;
   assert.equal(validateToolArguments('edit_spica_graph', { revision: 1, edits: [{ op: 'put_screen', screen: 'review',
     id: 'review', label: 'Review', collection: 'notes' }] }, tools).ok, false);
   assert.equal(validateToolArguments('edit_spica_graph', args, tools).ok, true);
@@ -34,10 +34,16 @@ test('a screen proposal passes the same SPICA contract in the live dispatcher an
     { op: 'put_screen', id: 'review', label: 'Review', screen: 'review', collection: 'incoming' },
     { op: 'grant_capability', capability: 'files.open' },
   ] };
-  assert.equal(validateToolArguments('edit_spica_graph', normalizeSpicaProposal(flat), tools).ok, true);
-  assert.equal(validateToolArguments('edit_spica_graph', normalizeSpicaProposal({
+  assert.equal(validateToolArguments('edit_spica_graph', flat, tools).ok, false, 'Flat model guesses must not be silently normalized');
+  const canonical = { revision: 1, edits: [
+    { op: 'add_collection', collection: { id: 'incoming', label: 'Incoming', singular: 'entry', fields: [{ key: 'title', label: 'Title', type: 'text' }] } },
+    { op: 'put_screen', screen: { ...screen, collection: 'incoming' } },
+    { op: 'grant_capability', capability: 'files.open' },
+  ] };
+  assert.equal(validateToolArguments('edit_spica_graph', canonical, tools).ok, true);
+  assert.equal(validateToolArguments('edit_spica_graph', {
     revision: 1, edits: [{ op: 'put_screen', id: 'conflicting', label: screen.label, screen }],
-  }), tools).ok, false);
+  }, tools).ok, false);
   let saved;
   const read = SpicaRepository.prototype.read, update = SpicaRepository.prototype.update;
   SpicaRepository.prototype.read = async () => ({ data: { revision: 1, graph: original } });
@@ -47,7 +53,7 @@ test('a screen proposal passes the same SPICA contract in the live dispatcher an
     return { data: { revision: 2, graph: saved } };
   };
   try {
-    const result = JSON.parse(await executeAgentTool('edit_spica_graph', flat, {}, [], { projectId: 'typed' },
+    const result = JSON.parse(await executeAgentTool('edit_spica_graph', canonical, {}, [], { projectId: 'typed' },
       [{ id: 'typed', folder: 'linked' }], undefined, { spicaProgram: true, webEnabled: false }));
     assert.equal(result.revision, 2);
     assert.ok(saved.program.screens.some(item => item.id === screen.id));
@@ -115,21 +121,21 @@ test('an explicit chat build stages graph creation, cached setup and native repa
   const names = (last, needsEdit, state = {}) => selectSpicaTools(codingNames.map(name =>
     spicaTools.find(tool => tool.function.name === name) ?? { function: { name } }), last, needsEdit, false, false, true, state)
     .map(tool => tool.function.name);
-  assert.equal(isSpicaCreationRequest('Use SPICA to build a review utility'), true);
-  assert.equal(isSpicaCreationRequest('Build a CSV review utility'), true);
+  assert.equal(isSpicaCreationRequest('Use SPICA to build a review application'), true);
+  assert.equal(isSpicaCreationRequest('Build a CSV review utility'), false, 'A generic source request must not be forced into SPICA');
   assert.equal(isSpicaCreationRequest('Explain how to build a SPICA app'), false);
   assert.equal(isSpicaCreationRequest('Build the current SPICA app'), false);
   assert.equal(isSpicaVerificationOnly('Verify the existing SPICA app'), true);
   assert.equal(isSpicaVerificationOnly('Test and repair the SPICA app'), false);
-  assert.deepEqual(names(null, true, { hasGraph: false }), ['create_spica_app']);
-  assert.deepEqual(names('create_spica_app', true), ['search_spica_warehouse']);
-  assert.deepEqual(names('export_spica_app', false, { needsSetup: true }), ['prepare_spica_app']);
-  assert.deepEqual(names('prepare_spica_app', false), ['verify_spica_app']);
-  assert.deepEqual(names('verify_spica_app', true, { failed: true }), ['read_spica_graph']);
-  assert.deepEqual(names('read_spica_graph', true, { failed: true }), ['edit_spica_graph']);
-  assert.ok(names('edit_spica_graph', false, { canEdit: true }).includes('edit_spica_graph'));
-  assert.deepEqual(names('read_spica_graph', false, { verifyOnly: true }), ['verify_spica_app']);
-  assert.deepEqual(names(null, true, { refreshGraph: true }), ['read_spica_graph']);
+  assert.ok(names(null, true, { hasGraph: false }).includes('spica_next_action'));
+  assert.ok(names('create_spica_app', true).includes('search_spica_warehouse'));
+  for (const action of ['create_spica_app', 'prepare_spica_app', 'verify_spica_app', 'edit_spica_graph']) {
+    assert.ok(!names('read_spica_graph', true).includes(action), 'A write requires successful preflight: ' + action);
+    assert.equal(names('inspect_spica_tool', true, { validatedAction: action })[0], action);
+  }
+  assert.ok(names('verify_spica_app', true, { failed: true }).includes('read_spica_graph'));
+  assert.ok(names('read_spica_graph', true, { failed: true }).includes('validate_spica_edit'));
+  assert.ok(names(null, true, { refreshGraph: true }).includes('read_spica_graph'));
   for (const name of ['create_spica_app', 'prepare_spica_app']) {
     assert.equal(decideToolPermission({ name, mode: 'auto', webEnabled: false, projectAttached: true }), 'ask');
     assert.equal(decideToolPermission({ name, mode: 'yolo', webEnabled: false, projectAttached: false }), 'deny');
@@ -174,7 +180,7 @@ test('a blank SPICA graph composes a typed review, form, button, storage and nat
     { op: 'grant_capability', capability: 'files.open' },
     { op: 'grant_capability', capability: 'files.export' },
   ];
-  const tools = selectSpicaTools(spicaTools, 'read_spica_graph', true, false, false, true);
+  const tools = spicaTools;
   assert.equal(validateToolArguments('edit_spica_graph', { revision: 1, edits }, tools).ok, true);
   const graph = changeGraph(blank, edits);
   const plan = compileGraph(graph);
@@ -321,10 +327,12 @@ test('SPICA rejects stale and concurrent edits, and undo/redo survives reopening
 
 test('SPICA tools are paged and edits, exports and builds require their normal grants', () => {
   const names = (...args) => selectSpicaTools(spicaTools, ...args).map(tool => tool.function.name);
-  assert.deepEqual(names(null, true, false), ['read_spica_graph']);
-  assert.deepEqual(names('read_spica_graph', true, false), ['edit_spica_graph']);
-  assert.equal(names('edit_spica_graph', false, false)[0], 'export_spica_app');
-  assert.equal(names('export_spica_app', false, false)[0], 'verify_spica_app');
+  assert.ok(names(null, true, false).includes('read_spica_graph'));
+  assert.ok(names('read_spica_graph', true, false).includes('validate_spica_edit'));
+  for (const action of ['edit_spica_graph', 'export_spica_app', 'verify_spica_app']) {
+    assert.ok(!names('read_spica_graph', true, false).includes(action));
+    assert.equal(names('check_spica_tool_call', true, false, false, true, { validatedAction: action })[0], action);
+  }
   assert.deepEqual(names('verify_spica_app', false, true), []);
   const call = { revision: 3, edits: [toggle] };
   assert.equal(validateToolArguments('edit_spica_graph', call, spicaTools).ok, true);
@@ -376,18 +384,20 @@ test('SPICA behavior discovery and recipe schemas follow real staged tool turns'
   assert.ok(codingNames.includes('search_spica_warehouse'));
   assert.ok(codingNames.includes('inspect_spica_component'));
   assert.equal(isSpicaProgramRequest('Build a task app using reusable blocks'), true);
-  assert.equal(isSpicaProgramRequest('Make a notebook app'), true);
+  assert.equal(isSpicaProgramRequest('Make a SPICA notebook app'), true);
+  assert.equal(isSpicaProgramRequest('Make a notebook app'), false);
   assert.equal(isSpicaProgramRequest('Explain how reusable blocks work'), false);
   const names = (last, program = true) => selectSpicaTools(spicaTools, last, true, false, false, program).map(tool => tool.function.name);
-  assert.deepEqual(names(null), ['search_spica_warehouse']);
-  assert.deepEqual(names('search_spica_warehouse'), ['inspect_spica_component', 'read_spica_graph']);
-  assert.deepEqual(names('inspect_spica_component'), ['read_spica_graph']);
-  assert.ok(names('read_spica_graph').includes('edit_spica_graph'));
-  const edit = names('read_spica_graph').find(name => name === 'edit_spica_graph');
-  assert.equal(validateToolArguments(edit, { revision: 1, edits: [{ op: 'install_recipe', recipe: 'quick_capture' }] },
-    selectSpicaTools(spicaTools, 'read_spica_graph', true, false, false, true)).ok, true);
-  const settingTool = selectSpicaTools(spicaTools, 'read_spica_graph', true, false, false, false)
-    .find(tool => tool.function.name === 'edit_spica_graph');
+  assert.ok(names(null).includes('search_spica_warehouse'));
+  assert.ok(names('search_spica_warehouse').includes('inspect_spica_component'));
+  assert.ok(names('inspect_spica_component').includes('read_spica_graph'));
+  assert.ok(names('read_spica_graph').includes('validate_spica_edit'));
+  const editScope={view:'schema1',operations:['install_recipe']};
+  const offered=selectSpicaTools(spicaTools, 'check_spica_tool_call', true, false, false, true,
+    {validatedAction:'edit_spica_graph',editScope});
+  assert.equal(validateToolArguments('edit_spica_graph', { revision: 1, edits: [{ op: 'install_recipe', recipe: 'quick_capture' }] }, offered).ok, true);
+  const settingTool = selectSpicaTools(spicaTools, 'check_spica_tool_call', true, false, false, false,
+    {validatedAction:'edit_spica_graph',editScope:{view:'schema1',operations:['add_setting']}}).find(tool => tool.function.name === 'edit_spica_graph');
   assert.equal(validateToolArguments('edit_spica_graph', { revision: 1, edits: [{
     op: 'add_setting', page: 'general', key: 'compact', label: 'Compact', initial: false,
   }] }, [settingTool]).ok, true);
@@ -477,9 +487,12 @@ test('linked appearance requests retain staged reads, edits and real verificatio
   for (const prompt of ['How can I recolor the Save button?', 'Explain a charcoal theme', 'Give me some palette suggestions for Notes', 'Make a task to paint the door',
     'In Code Studio, change the button CSS']) assert.equal(isSpicaStyleRequest(prompt), false);
   const names = (last, needsEdit, verified = false) => selectSpicaTools(spicaTools, last, needsEdit, verified, true).map(tool => tool.function.name);
-  assert.deepEqual(names(null, true), ['read_spica_graph']);
-  assert.deepEqual(names('read_spica_graph', true), ['edit_spica_graph', 'read_spica_graph']);
-  assert.equal(names('edit_spica_graph', false)[0], 'export_spica_app');
-  assert.equal(names('export_spica_app', false)[0], 'verify_spica_app');
+  assert.ok(names(null, true).includes('read_spica_graph'));
+  assert.ok(names('read_spica_graph', true).includes('validate_spica_edit'));
+  assert.ok(!names('read_spica_graph', true).includes('edit_spica_graph'));
+  for (const action of ['edit_spica_graph', 'export_spica_app', 'verify_spica_app']) {
+    assert.equal(selectSpicaTools(spicaTools, 'check_spica_tool_call', true, false, true, false,
+      {validatedAction:action,editScope:{view:'schema1',operations:['set_style']}})[0].function.name,action);
+  }
   assert.deepEqual(names('verify_spica_app', false, true), []);
 });

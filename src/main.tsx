@@ -42,14 +42,16 @@ import './themes/blueberry/blueberry.css';
 import './themes/tangerine/tangerine.css';
 import './themes/kiwi/kiwi.css';
 import './themes/strawberry/strawberry.css';
+// Opt-in interface skin, isolated from the Classic console/channel theme.
+import './ui-themes/cosmic/cosmic.css';
 
 function App() {
   const { ready, hydrate, view, workspace, error, setView, updatePreferences } = useSolarium(useShallow((state) => ({ ready: state.ready, hydrate: state.hydrate, view: state.view, workspace: state.workspace, error: state.error, setView: state.setView, updatePreferences: state.updatePreferences })));
   const { theme, density, reducedMotion } = workspace.preferences;
-  const mui = useMemo(() => createSolariumTheme(theme, density), [theme, density]);
+  const mui = useMemo(() => createSolariumTheme(workspace.preferences.interfaceTheme==='cosmic'?'obsidian':theme, density), [theme, density, workspace.preferences.interfaceTheme]);
   useEffect(() => { void hydrate(); }, [hydrate]);
   useEffect(() => startInstallerTracking(), []);
-  useEffect(() => { document.documentElement.dataset.theme = theme; document.documentElement.dataset.density = density; document.documentElement.dataset.motion = reducedMotion ? 'reduced' : 'normal'; document.documentElement.dataset.workspace = workspace.preferences.workspaceMode ?? 'companion'; }, [theme, density, reducedMotion, workspace.preferences.workspaceMode]);
+  useEffect(() => { document.documentElement.dataset.theme = theme; document.documentElement.dataset.interface = workspace.preferences.interfaceTheme ?? 'classic'; document.documentElement.dataset.density = density; document.documentElement.dataset.motion = reducedMotion ? 'reduced' : 'normal'; document.documentElement.dataset.workspace = workspace.preferences.workspaceMode ?? 'companion'; }, [theme, density, reducedMotion, workspace.preferences.workspaceMode, workspace.preferences.interfaceTheme]);
   return <ThemeProvider theme={mui}><CssBaseline />{!ready ? <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}><CircularProgress /></Box> : <>
     {error && <Alert severity="warning" sx={{ position: 'fixed', bottom: 5, left: 64, zIndex: 2000, maxWidth: 600 }}>{error}</Alert>}
     <RenderErrorBoundary key={view} onRecover={() => updatePreferences({ showActivity: false })} onHome={() => setView('home')}>

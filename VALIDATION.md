@@ -18,3 +18,16 @@ See `docs/NATIVE_STREAM_REASONING_FIX.md` for the diagnosis and realistic limita
 - Full `npm run check`: blocked by absent frontend packages (`npm install` required); not marked passed.
 - Native Rust/Cargo and Windows + actual GGUF integration: unavailable, not verified.
 - The test suite validates the state/record rules and simulated server tool use; it does **not** certify a live LLM can correctly call the installed native tools.
+
+## Dream Construction Engine Phase 03
+
+Run `npm run test:construction:phase03`, `npm run dce:source:types`,
+`npm run dce:source:manifest:check`, `npm run test:construction:phase01`,
+`npm run test:construction:phase02` and both SPICA registry checks.
+To build a disk-backed metadata index, run
+`npm run dce:warehouse:index -- --out .dce-warehouse-index`, then
+`npm run dce:warehouse:index -- --out .dce-warehouse-index --check`.
+The large-catalog simulation is `npm run dce:warehouse:benchmark -- --entries 350000`.
+This measures 350,000 **descriptors**, not 350,000 tested executable modules.
+See `docs/info/DCE_WAREHOUSE_INTELLIGENCE.md` and
+`spica/roadmap/63_DCE_PHASE03_CAPABILITY_INTELLIGENCE_AND_STOP_RECOVERY.md`.

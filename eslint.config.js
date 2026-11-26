@@ -4,10 +4,11 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 export default tseslint.config(
   // VarMover is an unmounted reference editor. Solarium imports only its draft catalog metadata.
-  { ignores: ['runtime/**', 'dist/**', '.test-dist/**', 'src-tauri/target/**', 'zips/**','output/**', 'src/varmover/**'] },
+  { ignores: ['runtime/**', 'dist/**', '.test-dist/**', '.spica-*-test/**', 'src-tauri/target/**', 'zips/**','output/**', 'src/varmover/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   { files:['tests/**/*.cjs','scripts/**/*.cjs'],languageOptions:{globals:globals.node},rules:{'@typescript-eslint/no-require-imports':'off','@typescript-eslint/no-unused-vars':'off'} },
   {files:['scripts/**/*.mjs'],languageOptions:{globals:globals.node}},
-  { files: ['src/**/*.{ts,tsx}', 'vite.config.ts'], languageOptions: { globals: { ...globals.browser, ...globals.node } }, plugins: { 'react-hooks': reactHooks }, rules: { ...reactHooks.configs.recommended.rules } },
+  { files: ['src/**/*.{ts,tsx}', 'vite.config.ts'], languageOptions: { globals: { ...globals.browser, ...globals.node } }, plugins: { 'react-hooks': reactHooks }, rules: { ...reactHooks.configs.recommended.rules,
+    '@typescript-eslint/no-unused-vars':['error',{argsIgnorePattern:'^_'}] } },
 );

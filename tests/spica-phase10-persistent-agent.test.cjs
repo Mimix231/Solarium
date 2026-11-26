@@ -16,6 +16,8 @@ test('inspection and repeated discovery never count as an application change',()
  assert.equal(p.plan.steps[2].state,'pending');
  p.observe('read_spica_graph','completed');
  p.observe('search_spica_runtime_blocks','completed');
+ assert.equal(p.nextStep,'discover','Empty results do not complete discovery');
+ p.observe('resolve_spica_capabilities','completed',{discovered:true});
  assert.equal(p.nextStep,'compose');
  assert.equal(p.plan.verifiedChanges,0);
 });
@@ -55,7 +57,7 @@ test('three budget cycles persist exact plan state through round trips and resum
  let p=plan();
  p.observe('read_spica_graph','completed');
  p.cycle(scheduler.checkpoint(scheduler.allocate(),1900,'server',10));
- p.observe('search_spica_runtime_blocks','completed');
+ p.observe('search_spica_runtime_blocks','completed',{discovered:true});
  let restored=JSON.parse(JSON.stringify(p.plan));
  p=new SpicaTaskOrchestrator(restored);
  p.cycle(scheduler.checkpoint(scheduler.allocate(),2048,'estimate',10));
@@ -114,7 +116,7 @@ test('the composer renders a persistent build plan without adding a new route',(
 // Load the real durable TaskExecution class with an injected in-memory
 // RecordStore; unrelated story and desktop modules are not used by this test.
 function taskStoreHarness() {
- const ts=require('/opt/nvm/versions/node/v22.16.0/lib/node_modules/typescript');
+ const ts=require('typescript');
  const source=fs.readFileSync(path.join(root,'src/engine/intelligence/task.ts'),'utf8');
  const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
  const records=new Map();let idCount=0;
@@ -167,4 +169,26 @@ test('Pause and Cancel are durable states; a cancelled task cannot be inadverten
  assert.equal(cancelled.status,'cancelled');
  const resumed=new TaskExecution({id:'s2',messages:[{role:'user',content:'Resume the task'}]},project,[],store);
  assert.equal(await resumed.resume({id:'s2',messages:[{role:'user',content:'Resume the task'}]}),false);
+});
+
+
+test('collapsed plan lives directly on top of the chat composer; expanded panel retains its own control',()=>{
+ const chat=fs.readFileSync(path.join(root,'src/views/Chat.tsx'),'utf8');
+ const component=fs.readFileSync(path.join(root,'src/components/SpicaTaskPlanView.tsx'),'utf8');
+ const collapsed=chat.indexOf('expanded={false}');
+ const composer=chat.indexOf('<div className="composer glass"');
+ assert.ok(collapsed>0&&collapsed<composer&&composer-collapsed<700,'Collapsed plan is attached to the composer rather than the model-selector row');
+ assert.match(component,/data-spica-plan-collapsed/);
+ assert.match(component,/aria-label=\{compactMode==='hide'/);
+ assert.match(component,/aria-expanded=\{compactMode==='hide'\}/);
+ assert.match(component,/Collapse in=\{expanded\}/);
+});
+
+test('plan discovery is not marked complete by an empty successful lookup',()=>{
+ const p=plan();
+ p.observe('read_spica_graph','completed');
+ p.observe('search_spica_runtime_blocks','completed',{discovered:false});
+ assert.equal(p.nextStep,'discover');
+ p.observe('resolve_spica_capabilities','completed',{discovered:true});
+ assert.equal(p.nextStep,'compose');
 });

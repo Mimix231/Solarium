@@ -53,7 +53,11 @@ async function runConversationInner(options:AgentOptions,sink:ConversationSink,i
       onThinking:state=>{thought=state;options.onThinking?.(state);},
       onWarning:warn,onTerminal:run=>{terminals.push(run);options.onTerminal?.(run);},
       onSource:source=>{sources.set(source.url,source);options.onSource?.(source);},
-      onSavedSources:references=>{savedSources=references.map(r=>({id:r.sourceId,title:r.title}));options.onSavedSources?.(references);},
+      onSavedSources:references=>{
+        const unique=[...new Map(references.map(source=>[source.sourceId,source] as const)).values()];
+        savedSources=unique.map(source=>({id:source.sourceId,title:source.title}));
+        options.onSavedSources?.(unique);
+      },
       onGenerationOutcome:outcome=>{outcomes.push(outcome);options.onGenerationOutcome?.(outcome);},
     });
     return answer;

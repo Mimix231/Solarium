@@ -43,7 +43,7 @@ export function defaultWorkspace(): Workspace {
     schemaVersion: 1, sparks: [explorer, maker], projects: [], activeProjectId: null, sessions: [], models: [], memories: [], assets: [], worlds: [], labCases: [], teamRuns: [],
     selectedSparkId: explorer.id, activeSessionId: null,
     preferences: {
-      theme: 'obsidian', density: 'compact', reducedMotion: false, workspaceMode: 'companion', spicaCycleBudget: 4096,
+      theme: 'obsidian', density: 'compact', reducedMotion: false, workspaceMode: 'companion', interfaceTheme: 'classic', spicaCycleBudget: 4096,
       sidebarOpen: true, showActivity: false, actionMode: 'ask', consoleChannels: [], startupView: 'home',
       toolPermissions: { inspect_project: 'ask', search_project_code: 'ask', apply_project_changes: 'ask', replace_project_text: 'ask', get_current_time: 'ask', calculate: 'ask', search_memories: 'ask', search_web: 'ask', open_web_page: 'ask', list_project_files: 'ask', read_project_file: 'ask', run_project_check: 'ask' },
       llamaExecutable: '', serverPort: 8080, ggufDirectory: '',

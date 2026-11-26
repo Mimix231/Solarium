@@ -28,3 +28,8 @@ src/quality/source-identity.generated.ts
 
 # Generated offline SPICA Phase 01 contract test output
 .spica-phase01-test/
+
+# Dream Construction Engine generated metadata indexes and local regression output
+.dce-warehouse-index/
+.spica-phase*-test/
+qa/

@@ -4,6 +4,7 @@ import type { LibraryScope, RecordStore, StoredRecord } from '../foundation/type
 import { changeGraph, starterGraph, validateGraph, type Graph, type GraphEdit, type Recipe } from './graph';
 import { assertSpicaGraphV2 } from './graph-v2/validation';
 import { applySpicaGraphTransaction } from './graph-v2/transactions';
+import { assertSpicaRuntimeNodeContracts } from './graph-v2/edit-adapter';
 import { migrateLegacyGraph, legacyOriginMatches } from './graph-v2/migration';
 import type { SpicaGraphV2, SpicaGraphV2Edit } from './graph-v2/types';
 import { getBlock } from './runtime/blocks/registry';
@@ -137,6 +138,10 @@ export class SpicaRepository {
       const graph = applySpicaGraphTransaction(graphV2, operation, {
         resolveBlock: (id, version) => Boolean(getBlock(id, version) || getRuntimeBlock(id, version)),
       });
+      // The same executable-node contract validation runs during dry-run and
+      // immediately before durable storage. A direct repository caller must
+      // never persist configurations the runtime would inevitably reject.
+      assertSpicaRuntimeNodeContracts(graph);
       data.v2Undo = [...data.v2Undo!.slice(-19), graphV2];
       data.v2Redo = [];
       data.graphV2 = graph;
@@ -155,6 +160,9 @@ export class SpicaRepository {
     if(!(await legacyOriginMatches(current.data.graph,current.data.graphV2)))throw Error('STALE_V2_ORIGIN: Schema-1 graph changed; do not overwrite it.');
     const { previewSpicaComposition }=await import('./runtime/composition');
     const reviewed=previewSpicaComposition(current.data.graphV2,plan);
+    // The bulk composer is still a graph-writing API, so it must enforce the
+    // same executable-node invariants as the canonical edit_spica_graph tool.
+    assertSpicaRuntimeNodeContracts(reviewed.graph);
     const data=structuredClone(current.data);
     data.v2Undo=[...(data.v2Undo??[]).slice(-19),current.data.graphV2];
     data.v2Redo=[];

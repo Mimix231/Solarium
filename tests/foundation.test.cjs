@@ -57,7 +57,7 @@ test('web search archives JSON and reads only the result the Spark chooses', asy
   assert.equal(calls.length, 2);
 });
 
-test('weak search results fall back without changing the approved query and weak passages do not satisfy research', async () => {
+test('weak search results require an explicit fallback call and weak passages do not satisfy research', async () => {
   const query = 'telescope tracking motor firmware';
   const index = 'https://example.test/search';
   const useful = 'https://example.test/motor-firmware';
@@ -75,7 +75,10 @@ test('weak search results fall back without changing the approved query and weak
   };
   const signal = new AbortController().signal;
   const research = new ConversationResearch(new SpicaResearchRun(async () => provider, () => true), chat, chat.id, query, null, null);
-  const found = await research.search(query, signal);
+  const primary = await research.search(query, signal);
+  assert.equal(primary.relevance,'weak');
+  assert.deepEqual(attempts,[['bing',query]]);
+  const found = await research.search(query, signal, true);
   assert.deepEqual(attempts, [['bing', query], ['duckduckgo', query]]);
   assert.equal(found.provider, 'duckduckgo');
   assert.equal(found.relevance, 'matched');
@@ -145,8 +148,8 @@ test('SPICA research separates snippets, follows observed links, and saves scope
   await assert.rejects(run.save(first, project.id, repo), /Read a source/);
   await assert.rejects(run.follow(first, linked, signal), /returned reference/);
   await run.read(first, signal);
-  assert.deepEqual(run.links(first).map(link => link.url), [linked]);
-  await assert.rejects(run.follow(first, 'https://foreign.test/', signal), /returned reference/);
+  assert.deepEqual(run.links(first).map(link => link.url), ['https://foreign.test/', linked]);
+  await assert.rejects(run.follow(first, 'https://unobserved.test/', signal), /returned reference/);
   assert.equal(await run.follow(first, linked, signal), linked);
   assert.equal(run.compare(first, linked).sameExcerpt, true);
   assert.equal(run.compare(first, linked).linked, true);

@@ -25,7 +25,7 @@ export function previewSpicaComposition(source:SpicaGraphV2, plan:SpicaCompositi
   const next:SpicaGraphV2=structuredClone(source);
   const newNodes:string[]=[],newConnections:string[]=[];
   for(const entry of plan.nodes){
-    if(!entry || !idValid(entry.id) || !idValid(entry.blockId) || entry.version && entry.version!=='1' ||
+    if(!entry || !idValid(entry.id) || (typeof entry.blockId !== 'string' || (!idValid(entry.blockId) && !getRuntimeBlock(entry.blockId,entry.version??'1'))) || entry.version && entry.version!=='1' ||
         (entry.config!==undefined && (entry.config===null || typeof entry.config!=='object' || Array.isArray(entry.config))))
       throw Error('Each node needs a safe id, registered blockId, optional version 1, and plain configuration.');
     if(next.nodes.some(node=>node.id===entry.id))throw Error(`Node ${entry.id} already exists. Choose another ID.`);
@@ -33,7 +33,7 @@ export function previewSpicaComposition(source:SpicaGraphV2, plan:SpicaCompositi
     if(!adapter)throw Error(`Block ${entry.blockId}@${entry.version??'1'} is not executable. Search registered blocks.`);
     const config=entry.config??{};
     adapter.validateConfig(config);
-    const node=makeRuntimeNode(entry.id,entry.blockId,config);
+    const node=makeRuntimeNode(entry.id,adapter.id,config);
     if(entry.label!==undefined){if(typeof entry.label!=='string'||entry.label.length>100)throw Error('Node label must be at most 100 characters.');node.metadata={label:entry.label};}
     next.nodes.push(node);newNodes.push(node.id);
   }

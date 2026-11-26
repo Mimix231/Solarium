@@ -1,3 +1,4 @@
+/* eslint no-control-regex: "off" -- Terminal output contains ANSI escape and control bytes. */
 /**
  * Evidence-only UI protocol for Spica's existing exporter and native verifier.
  * A notice is emitted at the real operation boundary, never inferred from Spark prose.

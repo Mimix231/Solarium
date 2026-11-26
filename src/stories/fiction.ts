@@ -3,16 +3,25 @@ import { rankedEvidence } from '../foundation/relevance';
 import { newRecord } from '../foundation/store';
 import { assertScope, sameScope, type LibraryScope, type StoredRecord, type RecordWrite } from '../foundation/types';
 import type { ClaimData, StoryCharacter, StoryRepository, StoryWorld } from './repository';
+import { hasUntranslatedScript } from './language';
 
 export const profileFields = ['personality', 'appearance', 'voice', 'motives', 'history', 'abilities', 'relationships', 'knowledge', 'constraints'] as const;
 export type ProfileField = typeof profileFields[number];
 export type ProfileText = Partial<Record<ProfileField, string>>;
 export const profileLimit = 50_000;
 export const profileLength = (text: string) => Array.from(text).length;
+export function hasProfileDetail(text: string): boolean {
+  const value=text.toLowerCase().replace(/[^\p{L}\p{N}\s]+/gu,' ').replace(/\s+/g,' ').trim();
+  return Boolean(value && !/^(?:draft|unknown|unspecified|not specified|n a|tbd|none|no confirmed details)$/.test(value) &&
+    !/^(?:(?:none|nothing) (?:is )?(?:explicitly )?(?:documented|detailed|described|mentioned|stated)|not (?:explicitly )?(?:documented|detailed|described|mentioned|stated))\b/.test(value) &&
+    !/^(?:based on|see|from) (?:the )?(?:(?:canon(?:ical)?|official|provided|source|character|cast|story) ){1,5}(?:details|introductions?|notes?|profiles?|reference|sources?)(?: (?:for|in) (?:arc|chapter|episode) \d+(?: chapter \d+)?)?$/.test(value) &&
+    !/\b(?:yet to be defined|to be determined|to be filled in|details are unavailable|no information available|placeholder text)\b/.test(value));
+}
 export interface FictionSelection { categoryId: string; characterIds: string[] }
+export interface FictionDestination { storyId: string; categoryId: string }
 export interface StoryCategoryData { arc?: number; chapter?: number; continuity?: string }
 export type StoryCategory = StoredRecord<StoryCategoryData>;
-export interface ProfileData { categoryId: string; characterId: string }
+export interface ProfileData { categoryId: string; characterId: string; generatedFields?: ProfileField[] }
 export type StoryProfile = StoredRecord<ProfileData>;
 export const fictionCollections = ['story_category', 'story_profile', 'story_profile_revision'] as const;
 export const isStoryIcon = (value: unknown): value is string => typeof value === 'string' && value.length <= 2_000_100 &&
@@ -70,7 +79,16 @@ export class FictionRepository {
     return readProfileText(await this.stories.store.body(saved.id, [saved.scope]));
   }
 
-  async saveProfile(storyId: string, categoryId: string, characterId: string, text: ProfileText, expected: number | null) {
+  async untranslatedGeneratedFields(profile:StoryProfile):Promise<ProfileText> {
+    const fields=await this.read(profile);
+    return Object.fromEntries((profile.data.generatedFields??[]).flatMap(field=>{
+      const text=fields[field];
+      return text&&hasUntranslatedScript(text)?[[field,text]]:[];
+    }));
+  }
+
+  async saveProfile(storyId: string, categoryId: string, characterId: string, text: ProfileText, expected: number | null,
+    generated: readonly ProfileField[] = []) {
     const cast = await this.stories.characters(storyId);
     const character = cast.find(item => item.id === characterId);
     if (!character) throw Error('Choose a character from this story.');
@@ -78,18 +96,32 @@ export class FictionRepository {
     if ((previous?.version ?? null) !== expected) throw Error('This profile changed. Reopen it before saving.');
     const body = JSON.stringify(text);
     readProfileText(body);
-    const data = { categoryId, characterId };
-    const record = previous ? { ...previous, title: character.title, version: previous.version + 1, updatedAt: now() } :
+    const original = previous?await this.stories.store.body(previous.id,[previous.scope]):null;
+    if(previous&&original===null)throw Error('The previous profile body could not be read.');
+    const previousText=original===null?{}:readProfileText(original);
+    const generatedFields=[...new Set([...(previous?.data.generatedFields??[]).filter(field=>previousText[field]===text[field]),...generated])];
+    const data:ProfileData = { categoryId, characterId, ...(generatedFields.length?{generatedFields}:{}) };
+    const record = previous ? { ...previous, title: character.title,data, version: previous.version + 1, updatedAt: now() } :
       newRecord('story_profile', `profile:${categoryId}:${characterId}`, character.scope, character.title, data, storyId);
     const writes: RecordWrite[] = [{ record, body, expected }];
-    if (previous) {
-      const original = await this.stories.store.body(previous.id, [previous.scope]);
-      if (original === null) throw Error('The previous profile body could not be read.');
+    if (previous && original!==null) {
       writes.push({ record: newRecord('story_profile_revision', uid(), previous.scope, previous.title,
-        { ...data, profileId: previous.id, version: previous.version }, storyId), body: original, expected: null });
+        { ...previous.data, profileId: previous.id, version: previous.version }, storyId), body: original, expected: null });
     }
     await this.stories.store.batch(writes);
     return record;
+  }
+
+  async fillProfile(storyId:string, categoryId:string, characterId:string, sections:ProfileText, sourceUpgrades:readonly string[] = [], english=false) {
+    const previous=(await this.profiles(storyId,categoryId)).find(profile=>profile.data.characterId===characterId);
+    const fields=previous?await this.read(previous):{};
+    const generated=profileFields.filter(field=>hasProfileDetail(sections[field]??'')&&
+      (!fields[field]?.trim()||previous?.data.generatedFields?.includes(field)&&
+        (!hasProfileDetail(fields[field]??'')||english&&hasUntranslatedScript(fields[field]??'')||
+          sourceUpgrades.includes(field)&&sections[field]!==fields[field])));
+    if(!generated.length&&previous)return previous;
+    return this.saveProfile(storyId,categoryId,characterId,{...fields,...Object.fromEntries(generated.map(field=>[field,sections[field]]))},
+      previous?.version??null,generated);
   }
 
   async selection(storyId: string, input: FictionSelection) {
@@ -109,7 +141,7 @@ export class FictionRepository {
       const fields = await this.read(profile);
       const snippets = profileFields.flatMap(field => {
         const text = fields[field];
-        if (!text) return [];
+        if (!text || profile.data.generatedFields?.includes(field) && !hasProfileDetail(text)) return [];
         const segments = text.match(/[\s\S]{1,520}(?:\s|$)|[\s\S]{1,520}/gu) ?? [];
         return segments.map((passage, index) => ({ field, passage, index }));
       });
@@ -120,7 +152,7 @@ export class FictionRepository {
       for (const { item } of ranked) {
         if (remaining < 85) break;
         const excerpt = item.passage.slice(0, Math.min(remaining - 24, 440));
-        lines.push(`${item.field} [user profile excerpt]: ${excerpt}`);
+        lines.push(`${item.field} [${profile.data.generatedFields?.includes(item.field)?'saved Spark summary':'user profile excerpt'}]: ${excerpt}`);
         remaining -= excerpt.length + item.field.length + 26;
       }
       return `${profile.title} [${profile.data.characterId}]\n${lines.join('\n')}`;
@@ -158,7 +190,7 @@ export class FictionRepository {
       if (!characterId) throw Error('A profile has no character in this story.');
       const body = JSON.stringify(await this.read(profile));
       writes.push({ record: newRecord('story_profile', `profile:${categoryId}:${characterId}`, scope,
-        profile.title, { categoryId, characterId }, record.id), body, expected: null });
+        profile.title, { ...profile.data,categoryId, characterId }, record.id), body, expected: null });
     }
     await this.stories.store.batch(writes);
     return record;

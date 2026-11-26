@@ -3,7 +3,8 @@ use std::fs;
 use std::io::Read;
 use std::net::{IpAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -47,12 +48,59 @@ fn search_searxng(query:String,endpoint:String)->Result<Vec<WebResult>,String>{
     let json:serde_json::Value=serde_json::from_slice(&bytes).map_err(|_|"SearXNG did not return JSON. Enable JSON output in its configuration.")?;
     Ok(json["results"].as_array().ok_or("SearXNG results missing")?.iter().take(20).filter_map(|r|{let url=r["url"].as_str()?;if public_https(url).is_err(){return None;}Some(WebResult{url:url.into(),title:r["title"].as_str().unwrap_or(url).into(),excerpt:r["content"].as_str().unwrap_or("").chars().take(1200).collect()})}).collect())
 }
+
+fn search_mwmbl(query: String) -> Result<Vec<WebResult>, String> {
+    let query = query.trim();
+    if query.is_empty() || query.len() > 300 {
+        return Err("Search query must contain 1–300 characters.".into());
+    }
+    let mut url = reqwest::Url::parse("https://api.mwmbl.org/api/v2/search/").map_err(|e| e.to_string())?;
+    url.query_pairs_mut().append_pair("q", query);
+    let (url, ips) = public_https(url.as_str())?;
+    let client = client_for(&url, &ips)?;
+    // The anonymous API allows one request per second per IP.
+    static LAST_SEARCH: Mutex<Option<Instant>> = Mutex::new(None);
+    {
+        let mut last = LAST_SEARCH.lock().map_err(|_| "Mwmbl search scheduler is unavailable.")?;
+        if let Some(previous) = *last {
+            std::thread::sleep(Duration::from_secs(1).saturating_sub(previous.elapsed()));
+        }
+        *last = Some(Instant::now());
+    }
+    let mut response = client.get(url).header(reqwest::header::ACCEPT, "application/json")
+        .send().map_err(|e| format!("Mwmbl search unavailable: {e}"))?;
+    if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Err("Mwmbl's anonymous search limit was reached. Try another provider or use a known public URL.".into());
+    }
+    response.error_for_status_ref().map_err(|e| format!("Mwmbl search unavailable: {e}"))?;
+    let mut bytes = Vec::new();
+    response.by_ref().take(500_001).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    if bytes.len() > 500_000 {
+        return Err("Search response exceeds size limit.".into());
+    }
+    parse_mwmbl_results(&bytes)
+}
+
+fn parse_mwmbl_results(bytes: &[u8]) -> Result<Vec<WebResult>, String> {
+    let json: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| "Mwmbl did not return JSON.")?;
+    let results = json["results"].as_array().ok_or("Mwmbl search results missing.")?;
+    Ok(results.iter().take(20).filter_map(|result| {
+        let url = result["url"].as_str()?;
+        let title = result["title"].as_str()?.trim();
+        if title.is_empty() || public_https(url).is_err() { return None; }
+        Some(WebResult {
+            title: title.chars().take(240).collect(),
+            url: url.to_owned(),
+            excerpt: result["content"].as_str().unwrap_or_default().trim().chars().take(1200).collect(),
+        })
+    }).collect())
+}
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
 pub struct ResearchPage {url:String,title:String,text:String,retrieved_at:String,content_hash:String,locator:String,links:Vec<PageLink>}
 #[derive(Serialize)]
 pub struct PageLink {url:String,title:String}
-fn fetch_readable(url:&str)->Result<(String,String,String,Vec<PageLink>),String>{
+fn fetch_readable(url:&str, story_reference:bool)->Result<(String,String,String,Vec<PageLink>),String>{
     use scraper::{Html,Selector};
     let mut current=url.to_owned();
     for _ in 0..5 {
@@ -67,10 +115,28 @@ fn fetch_readable(url:&str)->Result<(String,String,String,Vec<PageLink>),String>
         if mime.contains("text/plain"){return Ok((current.clone(),current,raw.into_owned(),Vec::new()));}
         let document=Html::parse_document(&raw);let title=document.select(&Selector::parse("h1, title").map_err(|e|e.to_string())?).next().map(|e|e.text().collect::<String>()).unwrap_or_else(||current.clone());
         let content_selector=Selector::parse(".entry-content, article, main, body").map_err(|e|e.to_string())?;
-        let preferred=[".entry-content","article","main","body"].into_iter().find_map(|tag|document.select(&Selector::parse(tag).ok()?).next());
-        let mut lines=Vec::new();if let Some(root)=preferred.or_else(||document.select(&content_selector).next()){
+        let story_roots = ["[itemprop=articleBody]", ".chapter-content", ".p-novel__body"];
+        let regular_roots = [".entry-content", "article", "main", "body"];
+        let preferred = story_roots.iter().filter(|_| story_reference).chain(regular_roots.iter())
+            .find_map(|tag| document.select(&Selector::parse(tag).ok()?).next());
+        let mut lines=Vec::new();
+        if story_reference && preferred.as_ref().is_some_and(|root| matches!(root.value().name(), "main" | "body")) {
+            let synopsis = document.select(&Selector::parse(".p-novel__summary, div[itemprop=description], .synopsis").map_err(|e|e.to_string())?)
+                .next().map(|element| element.text().collect::<Vec<_>>().join(" "));
+            let description = synopsis.filter(|text| !text.trim().is_empty()).or_else(|| {
+                let tags = Selector::parse("meta[name=description],meta[property='og:description']").ok()?;
+                document.select(&tags).find_map(|element| element.value().attr("content").map(str::to_owned))
+            });
+            if let Some(description) = description { lines.push(description.trim().to_owned()); }
+        }
+        if let Some(root)=preferred.or_else(||document.select(&content_selector).next()){
             for node in root.select(&Selector::parse("h1,h2,h3,p,li,pre").map_err(|e|e.to_string())?){
-                if node.ancestors().filter_map(scraper::ElementRef::wrap).any(|e|matches!(e.value().name(),"nav"|"footer"|"script"|"style"|"noscript")||e.value().attr("id")==Some("comments")){continue;}
+                if node.ancestors().filter_map(scraper::ElementRef::wrap).any(|e| {
+                    let element = e.value();
+                    matches!(element.name(),"nav"|"footer"|"script"|"style"|"noscript") || element.attr("id")==Some("comments") ||
+                        story_reference && (element.name()=="aside" || element.attr("class").is_some_and(|classes|
+                            classes.split_whitespace().any(|class| ["comment", "impression", "pagination", "postscript"].iter().any(|label| class.contains(*label)))))
+                }){continue;}
                 let text=node.text().collect::<Vec<_>>().join(" ").split_whitespace().collect::<Vec<_>>().join(" ");if !text.is_empty(){lines.push(text);}
             }
         }
@@ -80,11 +146,20 @@ fn fetch_readable(url:&str)->Result<(String,String,String,Vec<PageLink>),String>
     Err("Too many redirects".into())
 }
 #[tauri::command]
-pub async fn read_research_page(url:String,query:String,web_enabled:bool)->Result<ResearchPage,String>{
+pub async fn read_research_page(url:String,query:String,web_enabled:bool,story_reference:Option<bool>)->Result<ResearchPage,String>{
     if !web_enabled{return Err("Web Search is OFF".into());}
     tauri::async_runtime::spawn_blocking(move||{
         use sha2::{Digest,Sha256};
-        let (url,title,body,links)=fetch_readable(&url)?;
+        let story_reference=story_reference.unwrap_or(false);
+        let (url,title,body,links)=fetch_readable(&url,story_reference)?;
+        let text = if story_reference {
+            let length = body.chars().count();
+            if length <= 48_000 { body } else {
+                let first: String = body.chars().take(32_000).collect();
+                let last: String = body.chars().skip(length - 16_000).collect();
+                format!("{first}\n\n[… middle of retrieved page omitted …]\n\n{last}")
+            }
+        } else {
         let terms:Vec<String>=query.to_lowercase().split_whitespace().filter(|t|t.len()>2).map(String::from).collect();
         let mut paragraphs:Vec<(usize,usize,&str)>=body.split("\n\n").enumerate().map(|(i,p)|{let lower=p.to_lowercase();(terms.iter().filter(|t|lower.contains(t.as_str())).count(),i,p)}).collect();
         paragraphs.sort_by(|a,b|b.0.cmp(&a.0));
@@ -98,7 +173,9 @@ pub async fn read_research_page(url:String,query:String,web_enabled:bool)->Resul
             length += excerpt.chars().count();
             selected.push((index, excerpt));
         }
-        selected.sort_by_key(|(i,_)|*i);let text=selected.iter().map(|(i,t)|format!("[paragraph {}] {}",i+1,t)).collect::<Vec<_>>().join("\n\n");
+        selected.sort_by_key(|(i,_)|*i);
+        selected.iter().map(|(i,t)|format!("[paragraph {}] {}",i+1,t)).collect::<Vec<_>>().join("\n\n")
+        };
         let content_hash=format!("{:x}",Sha256::digest(text.as_bytes()));
         let timestamp=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e|e.to_string())?.as_secs();
         Ok(ResearchPage{url,title:title.clone(),text,retrieved_at:format!("unix:{timestamp}"),content_hash,locator:title,links})
@@ -442,18 +519,18 @@ fn search_web_inner(query: String) -> Result<Vec<WebResult>, String> {
     let mut response = client_for(&url, &ips)?.get(url).send().map_err(|e| format!("Search unavailable: {e}"))?.error_for_status().map_err(|e| e.to_string())?;
     let mut raw = Vec::new(); response.by_ref().take(250_000).read_to_end(&mut raw).map_err(|e| e.to_string())?;
     let feed = String::from_utf8_lossy(&raw);
+    if !feed.contains("<rss") { return Err("Bing did not return a search feed.".into()); }
     let mut results = Vec::new();
     for item in feed.split("<item>").skip(1).take(12) {
         let link = element(item, "link");
         if public_https(&link).is_err() { continue; }
         results.push(WebResult { title: element(item, "title"), url: link, excerpt: element(item, "description") });
     }
-    if results.is_empty() { return Err("The search provider returned no usable public results. Try a different query or URL.".to_string()); }
     Ok(results)
 }
 #[tauri::command]
 fn read_web_inner(url: String) -> Result<String, String> {
-    let (_, title, body, _) = fetch_readable(&url)?;
+    let (_, title, body, _) = fetch_readable(&url, false)?;
     Ok(format!("{title}\n{body}"))
 }
 
@@ -463,6 +540,7 @@ pub async fn search_public_web(query: String, web_enabled: bool, provider: Optio
     tauri::async_runtime::spawn_blocking(move || match provider {
         Some(config) if config.kind == "searxng" => search_searxng(query, config.endpoint.ok_or("Configure a SearXNG HTTPS endpoint")?),
         Some(config) if config.kind == "duckduckgo" => search_duckduckgo(query),
+        Some(config) if config.kind == "mwmbl" => search_mwmbl(query),
         _ => search_web_inner(query),
     })
         .await.map_err(|e| format!("Search worker failed: {e}"))?
@@ -590,6 +668,20 @@ mod foundation_tests {
     #[test]
     fn network_guard_rejects_loopback_and_credential_urls_without_fetching(){
         assert!(public_https("https://127.0.0.1/secret").is_err());assert!(public_https("https://user:password@example.com/").is_err());assert!(public_https("file:///etc/passwd").is_err());
+    }
+    #[test]
+    fn mwmbl_results_use_provider_urls_and_skip_invalid_entries() {
+        let results = parse_mwmbl_results(br#"{"results":[
+            {"url":"https://1.1.1.1/reference","title":"Reference","content":"A useful excerpt."},
+            {"url":"http://1.1.1.1/unsecured","title":"Unsecured"},
+            {"url":"https://127.0.0.1/private","title":"Private"},
+            {"url":"https://1.1.1.1/no-title"}
+        ]}"#).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].url, "https://1.1.1.1/reference");
+        assert_eq!(results[0].excerpt, "A useful excerpt.");
+        assert!(parse_mwmbl_results(br#"{"results":[]}"#).unwrap().is_empty());
+        assert!(parse_mwmbl_results(br#"{"unexpected":[]}"#).is_err());
     }
     #[test]
     fn project_scripts_are_readable_and_editable_in_both_module_formats(){

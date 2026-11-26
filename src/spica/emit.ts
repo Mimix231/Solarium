@@ -145,7 +145,7 @@ export function emitWeb(project: SpicaProject): Record<string, string> {
   };
 }
 
-const webBuildVerifier = `// SPICA generated verification: checks real Vite outputs, not a simulated build.
+const webBuildVerifier = String.raw`// SPICA generated verification: checks real Vite outputs, not a simulated build.
 import fs from 'node:fs';
 import path from 'node:path';
 const root = path.resolve('dist-web');

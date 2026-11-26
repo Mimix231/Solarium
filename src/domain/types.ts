@@ -91,6 +91,7 @@ export interface CreatorProject { id: string; name: string; description: string;
 export interface ChatSession {
   storyId?: string | null;
   fiction?: import('../stories/fiction').FictionSelection | null;
+  profileDestination?: import('../stories/fiction').FictionDestination | null;
   parentSessionId?: string; forkMessageId?: string;
   id: string; title: string; sparkId: string; modelId: string | null; projectId?: string | null;
   mode: SparkMode; createdAt: string; updatedAt: string; messages: ChatMessage[];
@@ -109,7 +110,7 @@ export interface Preferences {
   spicaCycleBudget?: 2048 | 4096 | 8192 | 'auto';
   sceneSpacer?: import('../writing/prose').SceneSpacerStyle;
   searchProvider?: import('../research/research').SearchProviderConfig;
-  theme: ThemeId; density: Density; reducedMotion: boolean; workspaceMode?: 'companion' | 'workspace';
+  theme: ThemeId; density: Density; reducedMotion: boolean; workspaceMode?: 'companion' | 'workspace'; interfaceTheme?: 'classic' | 'cosmic';
   sidebarOpen: boolean; showActivity: boolean; actionMode?: ActionMode; consoleChannels?: ConsoleChannel[]; startupView?: 'home' | 'chat';
   toolPermissions: Record<string, 'ask' | 'allow' | 'deny'>;
   llamaExecutable: string; serverPort: number; ggufDirectory: string;

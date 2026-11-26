@@ -2,6 +2,7 @@ import { defineRuntimeBlock } from '../../../adapter';
 
 /** Navigation structure is validated; no arbitrary URL or script is accepted. */
 export default defineRuntimeBlock({
+  exampleConfig:{title:'Notes',items:['All Notes','Recents']},
   id:'spica.runtime.app_navigation',version:'1',kind:'renderer',trust:'built-in',targets:['desktop','web'],permissions:[],
   inputs:[{id:'body',type:{kind:'ui'},required:true}],outputs:[{id:'view',type:{kind:'ui'}}],
   validateConfig(config) {

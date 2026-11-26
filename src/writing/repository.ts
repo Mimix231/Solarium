@@ -3,6 +3,12 @@ import { foundationStore, newRecord } from '../foundation/store';
 import { accessibleScopes, assertScope, sameScope, validateBody, type AccessContext, type LibraryScope, type RecordStore, type RecordWrite } from '../foundation/types';
 import { markdownContent, readWritingContent, validateStructured } from './schema';
 import type { CategoryData, WritingCategory, WritingContent, WritingData, WritingDocument, WritingDraft, WritingKind, WritingRevision, WritingRevisionData, WritingSelection } from './types';
+
+export const writingRevisionChanged = 'solarium-writing-revision';
+function notifyRevision(document: WritingDocument) {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(writingRevisionChanged, { detail: document.id }));
+}
+
 export class WritingRepository {
   constructor(public context:AccessContext,public store:RecordStore=foundationStore){}
   scopes():LibraryScope[]{return accessibleScopes(this.context,true);}
@@ -55,7 +61,7 @@ export class WritingRepository {
     if(document.storyId&&document.storyId!==storyId)throw Error('An existing chapter cannot be silently moved into a different story.');
     const records=(await this.store.list({scopes:[document.scope]})).filter(r=>(r.data as {documentId?:string}).documentId===document.id);
     const next={...actual,storyId,version:actual.version+1,updatedAt:now(),data:{...actual.data,categoryId:document.storyId===storyId?actual.data.categoryId:null,legacyBlockId:legacyBlockId??actual.data.legacyBlockId,messageBindings:[...new Set([...(actual.data.messageBindings??[]),...(actual.data.originMessageId?[actual.data.originMessageId]:[]),messageId])]}};
-    await this.store.batch([{record:next,expected:actual.version},...records.filter(r=>r.storyId!==storyId).map(r=>({record:{...r,storyId,version:r.version+1,updatedAt:now()},expected:r.version}))]);return next;
+    await this.store.batch([{record:next,expected:actual.version},...records.filter(r=>r.storyId!==storyId).map(r=>({record:{...r,storyId,version:r.version+1,updatedAt:now()},expected:r.version}))]);notifyRevision(next);return next;
   }
   async revisions(id:string):Promise<WritingRevision[]>{await this.get(id);return (await this.store.list<WritingRevisionData>({collection:'writing_revision',scopes:this.scopes()})).filter(r=>r.data.documentId===id).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));}
   async save(document:WritingDocument,content:WritingContent,patch:Partial<WritingData>={},partial=false,
@@ -68,7 +74,7 @@ export class WritingRepository {
     const revisionId=uid(),time=now();const next={...document,version:document.version+1,updatedAt:time,data:{...document.data,...patch,schemaVersion:1 as const,currentRevisionId:revisionId,wordCount:wordCount(content.markdownProjection)}};
     const revision=newRecord('writing_revision',revisionId,document.scope,document.title,{documentId:document.id,parentRevisionId:document.data.currentRevisionId,schemaVersion:1,isPartialDraft:partial,reason:'user_edit',createdAt:time} satisfies WritingRevisionData,document.storyId);
     await this.store.batch([{record:next,expected:document.version},{record:revision,expected:null,body:JSON.stringify(content)},
-      ...(linkedWrite?[linkedWrite(next)]:[])]);return next;
+      ...(linkedWrite?[linkedWrite(next)]:[])]);notifyRevision(next);return next;
   }
   async checkpoint(document:WritingDocument,markdown:string,status:WritingDraft['status']):Promise<void>{
     validateBody(markdown);assertScope(document.scope,this.context,true);

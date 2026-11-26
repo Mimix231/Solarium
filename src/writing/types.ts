@@ -1,4 +1,5 @@
 import type { LibraryScope, StoredRecord } from '../foundation/types';
+import type { CanonPoint } from '../stories/canon';
 export const writingKinds = ['chapter','scene','short_story','outline','screenplay','dialogue','article','essay','report','note','lore_document','other'] as const;
 export type WritingKind = typeof writingKinds[number];
 export interface WritingData {
@@ -6,7 +7,7 @@ export interface WritingData {
   status: 'generating'|'draft'|'review'|'final'|'archived'; tags: string[];
   originConversationId: string | null; originMessageId: string | null; legacyBlockId?: string; messageBindings?: string[];
   createdAt: string; wordCount: number; sourceIds: string[]; characterIds: string[];
-  metadata: {chapterNumber?:number;sceneOrder?:number;povCharacterId?:string;tense?:string;language?:string;targetWordCount?:number;targetCharacters?:number;writingTaskId?:string};
+  metadata: {chapterNumber?:number;sceneOrder?:number;povCharacterId?:string;tense?:string;language?:string;targetWordCount?:number;targetCharacters?:number;writingTaskId?:string;dialogueLayout?:'speaker'|'prose';canonPoint?:CanonPoint};
 }
 export type WritingDocument = StoredRecord<WritingData>;
 export interface WritingRevisionData {documentId:string;parentRevisionId:string|null;schemaVersion:1;isPartialDraft:boolean;reason:'generated'|'user_edit'|'spark_revision'|'import';createdAt:string}

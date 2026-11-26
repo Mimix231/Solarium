@@ -11,3 +11,136 @@
   background: radial-gradient(circle, var(--accent) 0 1.5px, transparent 2px) left center / .85rem 100% repeat-x;
 }
 .inline-writing-block[data-scene-spacer="space"] hr { height: 2.4rem; margin: .6rem auto; border: 0; }
+
+.inline-writing-block { overflow: visible; border-radius: 18px; background: color-mix(in srgb, var(--surface) 72%, transparent); }
+.chapter-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .4rem 1rem; padding: .85rem 1.1rem; border-radius: 18px 18px 0 0; }
+.chapter-heading .chapter-title, .chapter-reader .chapter-reader-title { font: 650 clamp(1.05rem, 2.2vw, 1.4rem) / 1.22 Georgia, 'Times New Roman', serif; overflow-wrap: anywhere; }
+.chapter-heading-name { flex: 1; min-width: min(12rem, 100%); }
+.chapter-menu { position: relative; }
+.chapter-menu summary { padding: .45rem .55rem; color: var(--accent); }
+.chapter-menu > div { position: absolute; top: 100%; right: 0; display: grid; width: max-content; z-index: 3; background: var(--background, #141a27); border: 1px solid var(--border); border-radius: 10px; padding: .45rem; box-shadow: 0 12px 24px #0004; }
+.inline-writing-block .inline-writing-prose { max-height: min(58vh, 650px); padding: clamp(1.1rem, 3vw, 2.5rem); background: color-mix(in srgb, var(--background, #141a27) 70%, transparent); }
+.chapter-prose { width: min(100%, 68ch); margin-inline: auto; color: var(--text-primary, inherit); font: 400 clamp(1rem, 1.6vw, 1.13rem) / 1.85 Georgia, 'Times New Roman', serif; overflow-wrap: anywhere; }
+.chapter-prose p { margin: 0 0 .95em; }
+.chapter-prose a { color: var(--accent); }
+.chapter-prose strong { color: color-mix(in srgb, var(--accent) 66%, currentColor); }
+.chapter-prose blockquote { border-inline-start: 2px solid var(--border); margin-inline: 0; padding-inline-start: 1.1rem; }
+.chapter-prose pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.chapter-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .2rem 1rem; color: var(--text-secondary, inherit); padding: .68rem 1.1rem; border-top: 1px solid var(--border); font-size: .73rem; }
+.chapter-reader .MuiDialog-paper { height: min(90dvh, 1040px); width: min(1050px, calc(100vw - 2rem)); margin: 1rem; border-radius: 18px; border: 1px solid var(--border); background: var(--background, #141a27); }
+.chapter-reader-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: .7rem; padding: 1rem clamp(.8rem, 3vw, 1.8rem); background: var(--surface); border-bottom: 1px solid var(--border); }
+.chapter-reader-title { flex: 1; }
+.chapter-reader-body { min-height: 0; flex: 1; overflow: auto; padding: clamp(1.1rem, 4vw, 3.3rem); scrollbar-gutter: stable; }
+.chapter-reader-body .chapter-prose { font-size: clamp(1.06rem, 2vw, 1.24rem); }
+.chapter-reader-body hr { width: min(7rem, 40%); margin: 2rem auto; border: 0; border-top: 1px solid var(--border); }
+.chapter-reader-body[data-scene-spacer="dots"] hr { width: 2.55rem; height: .5rem; border: 0; background: radial-gradient(circle, var(--accent) 0 1.5px, transparent 2px) left center / .85rem 100% repeat-x; }
+.chapter-reader-body[data-scene-spacer="space"] hr { height: 2.4rem; margin: .6rem auto; border: 0; }
+.chapter-reader-body:focus-visible, .inline-writing-prose:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+
+.fiction-profile-draft {
+  margin: .75rem 0;
+  padding: .9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: linear-gradient(130deg, color-mix(in srgb, var(--accent) 8%, var(--surface)), var(--surface));
+}
+.fiction-profile-draft header { display: flex; align-items: center; gap: .7rem; }
+.fiction-profile-draft header svg { color: var(--accent); }
+.fiction-profile-draft h3 { margin: .15rem 0 0; font-size: .98rem; }
+.fiction-profile-draft header p, .fiction-profile-draft-cast { margin: 0; font-size: .72rem; color: var(--text-secondary, inherit); }
+.fiction-profile-draft .fiction-profile-draft-cast { margin-top: .5rem; }
+.fiction-profile-draft dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .6rem 1rem; margin: .7rem 0 0; }
+.fiction-profile-draft dl div { min-width: 0; }
+.fiction-profile-draft dt { font-weight: 650; font-size: .72rem; text-transform: capitalize; }
+.fiction-profile-draft dd { margin: .12rem 0 0; font-size: .8rem; line-height: 1.52; overflow-wrap: anywhere; }
+
+.chapter-continuation {
+  position: fixed;
+  z-index: 1350;
+  inset: auto 1.5rem 7.5rem auto;
+  display: flex;
+  align-items: flex-start;
+  gap: .9rem;
+  box-sizing: border-box;
+  width: min(35rem, calc(100vw - 3rem));
+  padding: 1.15rem;
+  color: var(--text-primary, #eff4ff);
+  background: radial-gradient(ellipse at 6% 0%, color-mix(in srgb, var(--accent) 17%, transparent), transparent 66%),
+    color-mix(in srgb, var(--surface, #181f32) 94%, #0b1026);
+  border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--border));
+  border-radius: 18px;
+  box-shadow: 0 16px 60px #070c2299, inset 0 1px 0 #fff1;
+  pointer-events: none;
+  overflow-wrap: anywhere;
+}
+.fiction-story-brief {
+  padding: .7rem .9rem;
+  border: 1px solid var(--border);
+  border-radius: .7rem;
+}
+.fiction-story-brief > summary { cursor: pointer; font-weight: 650; }
+.chapter-continuation-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 2.5rem;
+  height: 2.5rem;
+  border-radius: 14px;
+  color: var(--accent, #a5e5dd);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  animation: chapter-interlude-glow 2.3s ease-in-out infinite alternate;
+}
+.chapter-continuation[data-stage="ready"] .chapter-continuation-icon { animation: none; }
+.chapter-continuation-content { flex: 1; min-width: 0; }
+.chapter-continuation-content h2 { margin: 0 0 .22rem; font-size: .98rem; font-weight: 700; }
+.chapter-continuation-content p { margin: 0; font-size: .78rem; line-height: 1.52; }
+.chapter-continuation-steps {
+  display: flex;
+  flex-wrap: wrap;
+  list-style: none;
+  gap: .4rem .75rem;
+  margin: .8rem 0 .65rem;
+  padding: 0;
+}
+.chapter-continuation-steps li { display: inline-flex; align-items: center; gap: .3rem; color: var(--text-secondary, #c0c6d6); font-size: .69rem; }
+.chapter-continuation-steps li[data-passed="true"], .chapter-continuation-steps li[aria-current] { color: var(--accent, #a5e5dd); }
+.chapter-step-mark { width: .9rem; height: .9rem; display: grid; place-items: center; border: 1px solid currentColor; border-radius: 50%; }
+.chapter-step-mark svg { font-size: .72rem; }
+.chapter-continuation-steps li[aria-current] .chapter-step-mark { animation: chapter-interlude-glow 1.2s ease-in-out infinite alternate; }
+.chapter-continuation-context { display: flex; flex-wrap: wrap; gap: .35rem .8rem; margin-top: .45rem; color: var(--text-secondary, #c0c6d6); font-size: .69rem; }
+.chapter-continuation-content .chapter-continuation-memory { margin-top: .4rem; color: var(--text-secondary, #c0c6d6); }
+.chapter-continuation-beat { margin-top: .65rem; padding: .45rem .6rem; border-left: 2px solid var(--accent); background: #fff1; border-radius: 0 7px 7px 0; }
+.chapter-continuation-beat strong { display: block; margin-bottom: .12rem; font-size: .7rem; }
+@keyframes chapter-interlude-glow { from { box-shadow: 0 0 0 transparent; } to { box-shadow: 0 0 13px color-mix(in srgb, var(--accent) 35%, transparent); } }
+@media (max-width: 580px) {
+  .chapter-continuation { inset: auto .75rem 6.5rem; width: auto; gap: .6rem; padding: .8rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chapter-continuation, .chapter-continuation * { animation: none !important; transition: none !important; }
+}
+
+/* Round E: meaningful, evidence-backed action batches inside the Work Log. */
+.spica-work-activities{display:grid;gap:6px;margin:4px 0 10px}
+.spica-work-activity{border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden}
+.spica-work-activity>summary{display:flex;align-items:center;gap:10px;padding:9px 11px;cursor:pointer;list-style:none}
+.spica-work-activity>summary strong{font-size:11px;font-weight:700;min-width:0;flex:1}
+.spica-work-activity>summary small{opacity:.75}
+.spica-work-activity-detail{border-top:1px solid var(--border);padding:6px 12px;font-size:11px}
+.spica-work-activity-detail p{margin:6px 0;overflow-wrap:anywhere}
+.spica-work-tool-list{display:grid;grid-template-columns:minmax(0,1fr);min-width:0;width:100%}
+.spica-work-tool{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:start;column-gap:8px;row-gap:5px;margin:7px 0;min-width:0;max-width:100%;width:100%}
+.spica-work-tool-label{min-width:0;overflow-wrap:break-word;word-break:normal;line-height:1.55;white-space:normal}
+.spica-work-tool-status{grid-column:1;min-width:0}
+.spica-work-tool-result{grid-column:3;min-width:0;max-width:100%;margin:0}
+.spica-work-tool-result[open]{grid-column:2 / -1;width:100%}
+.spica-work-tool-result>summary{white-space:nowrap;cursor:pointer}
+.spica-work-activity-detail,.spica-work-history,.spica-work-activities{min-width:0;max-width:100%}
+.spica-work-tool pre,.spica-work-activity-detail pre{white-space:pre-wrap;overflow-wrap:anywhere;word-break:normal;max-width:100%;max-height:220px;overflow:auto}
+.spica-work-checkpoint{color:var(--accent)}
+@media(prefers-reduced-motion:reduce){.spica-work-activity *{transition:none!important}}
+
+.spica-work-history>summary,.spica-work-raw>summary{font-size:11px;cursor:pointer;padding:6px 2px;color:var(--text-secondary,inherit)}
+.spica-work-raw{margin-top:7px;border-top:1px solid var(--border)}
+
+/* Show the most recent failed operation diagnostic without opening each row. */
+.work-log-failure-reason{display:block;min-width:0;max-width:33%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.75;font-size:10px;flex:0 1 auto}
+@media(max-width:630px){.work-log-failure-reason{max-width:24%}}

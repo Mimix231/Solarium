@@ -18,9 +18,11 @@ export class MetadataStream<T> {
     const end = this.body.indexOf(close);
     if (end >= 0) { const tail = this.body.slice(end + close.length); this.body = this.body.slice(0, end); this.ended = true; this.inside = false; if (tail) this.output(tail); }
   }
-  finish(): T | null {
-    if (this.pending) this.output(this.pending); this.pending = '';
+  finish(atCapacity = false): T | null {
+    if (this.pending && !atCapacity) this.output(this.pending);
+    this.pending = '';
     if (!this.found) return null;
+    if (!this.ended && atCapacity) return null;
     if (!this.ended) throw Error(`${this.name} metadata was incomplete. The prose remains recoverable.`);
     return JSON.parse(this.body.trim()) as T;
   }

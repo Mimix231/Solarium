@@ -20,13 +20,13 @@ test('SPICA has one physical, category-based block source library',()=>{
     }
   };
   for(const category of categories){const p=path.join(tree,category,'runtime');if(fs.existsSync(p))visit(p);}
-  assert.equal(found.length,103,'all 103 individually executable V2 definitions must be in the unified tree');
-  assert.equal(new Set(found.map(p=>path.relative(tree,p))).size,103);
+  assert.ok(found.length>=105,'The unified tree must contain all registered executable definitions, including transactional collection blocks');
+  assert.equal(new Set(found.map(p=>path.relative(tree,p))).size,found.length);
   assert.ok(fs.existsSync(path.join(tree,'ui/runtime/components/ui-markdown-editor.ts')));
   const definitions=found.map(file=>fs.readFileSync(file,'utf8'));
   assert.ok(definitions.every(code=>code.includes('export default defineRuntimeBlock({')));
   const runtimeManifest=source('src/spica/runtime/registry.generated.ts');
-  assert.equal((runtimeManifest.match(/^import adapter\d+ from '\.\/blocks\//gm)||[]).length,103);
+  assert.equal((runtimeManifest.match(/^import adapter\d+ from '\.\/blocks\//gm)||[]).length,found.length);
   assert.doesNotMatch(runtimeManifest,/['"]\.\.\/blocks\//);
   const legacyManifest=source('src/spica/runtime/blocks/registry.generated.ts');
   assert.equal((legacyManifest.match(/"implementation"\s*:\s*\{/g)||[]).length,26);
@@ -41,7 +41,7 @@ test('unknown block IDs are actionable inspection errors, not terminal SPICA tas
   assert.match(agent,/lastExecutedTool = 'invalid_spica_tool'/);
   assert.match(agent,/detail\.nextTool/);
   assert.match(agent,/validatedSpicaTool = null/);
-  assert.match(tools,/last === 'invalid_spica_tool' \? \['inspect_solarium_tool','spica_next_action', 'inspect_spica_runtime_block'/);
+  assert.match(tools,/last === 'invalid_spica_tool' \? \['check_spica_tool_call','validate_spica_edit','inspect_spica_tool','read_spica_graph'/,'invalid calls must offer exact preflight, contract inspection and a current graph read; never advertise an unchecked editor');
   assert.match(agent,/if \(spica && resultStatus === 'denied'\) taskBlocked = true/,'denied permission must remain authoritative');
   assert.doesNotMatch(agent,/SPICA action stopped after a failed or denied tool call/);
 });

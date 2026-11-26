@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 'use strict';
-const path=require('node:path');const fs=require('node:fs');const {spawnSync}=require('node:child_process');
+const path=require('node:path');const fs=require('node:fs');const {spawnSync}=require('./spica-test-process.cjs');
 const root=path.resolve(__dirname,'..');const out=path.join(root,'.spica-phase05-test');fs.mkdirSync(out,{recursive:true});
 const sources=['src/spica/catalog/manifest-v2.ts','src/spica/catalog/manifests.ts','src/spica/inspect-params.ts',
-  'src/spica/graph.ts','src/spica/program.ts','src/spica/appearance.ts','src/spica/game.ts'];
+  'src/spica/graph.ts','src/spica/program.ts','src/spica/appearance.ts','src/spica/game.ts','src/spica/tool-aliases.ts','src/spica/construction-insights.ts'];
 const result=spawnSync('tsc',['--strict','--skipLibCheck','--noUnusedLocals','--noUnusedParameters','--noUncheckedIndexedAccess',
   '--target','es2022','--module','commonjs','--moduleResolution','node','--lib','es2022,dom',
   '--outDir','.spica-phase05-test','--rootDir','src',...sources],{cwd:root,stdio:'inherit'});

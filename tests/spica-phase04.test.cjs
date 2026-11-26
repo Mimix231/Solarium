@@ -142,10 +142,11 @@ test('Spark screen field IDs and query must match the exact published contract',
     '../engine/intelligence/tool-validation':validatorModule.exports,
     './edit-schemas':editSchemas.exports,
     './graph-v2/transactions':{applySpicaGraphTransaction:()=>({})},
-    './graph-v2/edit-adapter':{expandSpicaV2Edits:edits=>edits},
+    './graph-v2/edit-adapter':{expandSpicaV2Edits:edits=>edits,assertSpicaRuntimeNodeContracts:()=>{}},
     './runtime/blocks/registry':{getBlock:()=>undefined},
     './inspect-params-v2':{inspectSpicaV2Parameters:()=>({})},
 
+    './inspect-tool-view':require('./inspect-tool-view-source.cjs'),
     '../engine/creator':{inspectProjectEnvironment:async()=>({rootEntryCount:0})},
     './repository':{SpicaRepository:class{}},
     './graph':{stableGraphJson:()=>'',changeGraph:()=>({}),collectionUpgrade:()=>[],GraphEditError:Error},
@@ -165,6 +166,8 @@ test('Spark screen field IDs and query must match the exact published contract',
     './runtime/executor':{executeSpicaGraphV2:async()=>({state:'failed'})},
   };
   vm.runInNewContext(transpile('src/spica/tools.ts'),{module:mod,exports:mod.exports,require:id=>{
+    if(id==='./tool-aliases')return require(path.join(path.join(root,'.spica-phase04-test'),'spica/tool-aliases.js'));
+    if(id==='./construction-insights')return require(path.join(path.join(root,'.spica-phase04-test'),'spica/construction-insights.js'));
     if(Object.hasOwn(mocks,id))return mocks[id];throw Error('Unmocked dependency: '+id);
   },TextEncoder,AbortController,DOMException,structuredClone,console}, {filename:'src/spica/tools.ts'});
   const tools=mod.exports;
@@ -206,9 +209,10 @@ test('Spark run_spica_v2_graph returns real execution evidence, rejects stale re
     '../engine/intelligence/tool-validation':validatorModule.exports,
     './edit-schemas':editSchemas.exports,
     './graph-v2/transactions':{applySpicaGraphTransaction:()=>({})},
-    './graph-v2/edit-adapter':{expandSpicaV2Edits:edits=>edits},
+    './graph-v2/edit-adapter':{expandSpicaV2Edits:edits=>edits,assertSpicaRuntimeNodeContracts:()=>{}},
     './runtime/blocks/registry':{getBlock:()=>undefined},
     './inspect-params-v2':{inspectSpicaV2Parameters:()=>({})},
+    './inspect-tool-view':require('./inspect-tool-view-source.cjs'),
     '../engine/creator':{inspectProjectEnvironment:async()=>({rootEntryCount:0})},
     './repository':{SpicaRepository:FakeRepository},
     './graph':{stableGraphJson:()=>'',changeGraph:()=>({}),collectionUpgrade:()=>[],GraphEditError:Error},
@@ -228,6 +232,8 @@ test('Spark run_spica_v2_graph returns real execution evidence, rejects stale re
     './runtime/executor':require(path.join(base,'runtime/executor.js')),
   };
   vm.runInNewContext(transpile('src/spica/tools.ts'),{module,exports:module.exports,require:id=>{
+    if(id==='./tool-aliases')return require(path.join(path.join(root,'.spica-phase04-test'),'spica/tool-aliases.js'));
+    if(id==='./construction-insights')return require(path.join(path.join(root,'.spica-phase04-test'),'spica/construction-insights.js'));
     if(Object.hasOwn(mocks,id))return mocks[id];throw Error('Unmocked dependency: '+id);
   },TextEncoder,AbortController,DOMException,structuredClone,console}, {filename:'src/spica/tools.ts'});
   const tools=module.exports;const project={id:'project'};const execution={webEnabled:false,signal:new AbortController().signal};

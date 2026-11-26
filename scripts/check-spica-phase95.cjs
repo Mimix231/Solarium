@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-const {spawnSync}=require('node:child_process');
+const {spawnSync}=require('./spica-test-process.cjs');
 const path=require('node:path');const fs=require('node:fs');
 const root=path.resolve(__dirname,'..');
 function exec(cmd,args){const result=spawnSync(cmd,args,{cwd:root,stdio:'inherit'});if(result.status!==0)process.exit(result.status??1);}
@@ -10,6 +10,7 @@ const out=path.join(root,'.spica-phase95-test');fs.mkdirSync(out,{recursive:true
 exec('tsc',['--strict','--noUnusedLocals','--noUnusedParameters','--noUncheckedIndexedAccess',
  '--skipLibCheck','--module','commonjs','--moduleResolution','node','--target','es2022','--lib','es2022,dom',
  '--outDir','.spica-phase95-test','--rootDir','src',
+ 'src/spica/tool-aliases.ts','src/spica/construction-insights.ts',
  'src/spica/edit-schemas.ts','src/spica/graph-v2/transactions.ts',
  'src/spica/graph-v2/edit-adapter.ts','src/spica/inspect-params-v2.ts',
  'src/engine/intelligence/tool-validation.ts','src/spica/graph.ts','src/spica/runtime/discovery.ts']);

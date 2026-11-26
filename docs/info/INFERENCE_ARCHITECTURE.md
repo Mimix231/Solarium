@@ -69,7 +69,7 @@ Local templates receive one merged leading system prefix; prompt token counting 
 `intelligence/work-memory.ts` pins verified folder/catalogue/manifest facts, settled model decisions, rejected routes and the next action alongside verification. Optional `work` notes ride on genuine tool calls; they never generate a separate reasoning request. `task_execution` saves this state and restores it on explicit Resume. Repeated unchanged discovery brings file creation back into the working set. Empty roots always retain `apply_project_changes`, including after tool selection. Unknown tool names are explicit failed selections with usable alternatives. Catalogue commands cannot become arbitrary shell strings; current IDs appear in their offered schema and are checked again before native execution.
 
 Story identity/knowledge context is a separate retained system reference, not disposable search material. Planned scenes rebuild it after each accepted scene. A scene may append structured `solarium-memory` metadata in that same native response. The incremental parser keeps metadata outside prose; only naturally completed, saved prose with exact supporting passages can establish events. A malformed memory never destroys accepted prose. No reasoning text is parsed into memories, no synthetic user turns are added, and character profiles never replace Spark identity. `tests/continuity.test.cjs` covers persistence/resume, 4K writer availability, discovery errors, metadata streaming, scoped knowledge and retracted prose.
-The native 26B regression exposed prompt eviction during context shifting: the server logged `n_keep = 1`, so it discarded the task, Spark and tool prompt during the same uncapped response. The llama.cpp HTTP request now sends `n_keep: -1` to retain the already fitted prompt; vLLM does not receive this llama.cpp-specific setting. Output remains `max_tokens: -1`, with one request per real turn and no reasoning quotas. This retains input, not every generated thought forever. Focused transport regression lives in `tests/continuity.test.cjs`. Reference: [official llama.cpp server documentation](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md#post-completion), `n_keep`.
+The native 26B regression exposed prompt eviction during context shifting: the server logged `n_keep = 1`, so it discarded the task, Spark and tool prompt during the same uncapped response. Historically Solarium sent `n_keep: -1` to retain the fitted prompt. The November 22 inference-recovery repair supersedes that: the fitter now guarantees streaming decision headroom, and the llama.cpp request sends a bounded *numeric* `n_keep` retaining the fitted task prompt only while leaving an evictable KV region. vLLM does not receive this llama.cpp-specific setting. Output remains `max_tokens: -1`, with one request per real turn and no reasoning quotas. This retains input, not every generated thought forever. Focused transport regression lives in `tests/continuity.test.cjs`. Reference: [official llama.cpp server documentation](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md#post-completion), `n_keep`.
 Large completed/failed write proposals are archived before the next tool turn and replaced with a labelled path/index excerpt even below the old 3,500-character threshold. This keeps a real failed proposal from filling a 4K input and preventing its repair. A failed native write refreshes actual folder facts; an empty string is never silently converted to new-file `expected=null`. Native CAS, scopes and approvals remain authoritative.
 Small contexts (up to 8K input capacity) offer complete file-write batches of at most two files, rather than asking a model to hold an entire scaffold inside a sliding generation window. This is a real filesystem operation boundary, not an output/reasoning quota. A verified empty root advertises `expected:null` for its new files. Two discovery operations without changed evidence select the writer alone; read-only tasks can validate completion without a write. Offered schemas are validated before permission/execution, with globally registered tools remaining reachable through paging for normal projects.
 The model can select `create_video_editor_project` for an empty, compatible Tauri/React video-editor request. This creates the actual bundled source through native compare-and-swap writes, reports each confirmed batch, preserves partial success on failure, and refuses any nonempty directory. The permission review receives the complete staged source. The starter contains a real frontend `invoke('greet')`, registered Rust command and Rust bridge test. Installation and all manifest checks remain separate model-selected operations. An explicitly different frontend stack keeps the ordinary source-writing route.
@@ -121,7 +121,7 @@ The normal conversation controller also checkpoints actual source fences into sc
 
 ## Local coding profiles and lifecycle
 
-Automatic GGUF loading reads actual layer/head metadata and measured free GPU memory with runtime/KV headroom. This is an estimate; actual server loading remains required. Manual per-model allocation is retained. An unchanged resident model/context reuses its allocation. Both managed llama paths enable Jinja templates and one parallel slot. HTTP output remains uncapped (max_tokens: -1, n_keep: -1). Input context and GPU memory are separate from output length.
+Automatic GGUF loading reads actual layer/head metadata and measured free GPU memory with runtime/KV headroom. This is an estimate; actual server loading remains required. Manual per-model allocation is retained. An unchanged resident model/context reuses its allocation. Both managed llama paths enable Jinja templates and one parallel slot. HTTP output remains requested as uncapped (`max_tokens: -1`); the fitted prompt uses an explicit bounded numeric `n_keep` with room for context shifting. Input context and GPU memory are separate from output length.
 
 Compatibility checks ask the selected model to request a native read-only probe, execute it in this process, then supply the genuine result to its next inference turn. Transcripts, template/native identity and timings persist. Compatibility is distinct from coding quality: coding trials use the same Spark/conversation/task path and independent reference tests. Failed, cancelled and later manually corrected trials remain separate.
 
@@ -184,3 +184,263 @@ The durable SPICA plan is stored alongside the existing task record. A plan is o
 `list_spica_toolchain` can return stage-filtered, paginated **exact registered parameter schemas** (`stage`, `limit`, `offset`, `includeSchemas`) so small local models can inspect the next necessary tool contracts in one bounded operation. These are shared with `ToolCallValidator` and the real dispatcher: arbitrary undeclared parameters remain invalid. The one canonical block directory remains `src/spica/runtime/blocks/`.
 
 The release gate is more than automated unit tests: end-to-end testing with a real GGUF, full frontend TypeScript/Vite compilation, and native Windows/Tauri verification must be completed on the target machine. Phase 11 must not be considered started by the Phase 10 source changes.
+
+## Phase 10 executable-ID discovery and stage selection (2026-11-13)
+
+Small GGUF models may invent callable names (e.g. `MarkdownEditorBlock`) or confuse a registered `spica.runtime.*` **block ID** with a callable tool name. The Phase 10 inspection update exposes query-based, bounded, read-only `resolve_spica_capabilities`, `inspect_spica_tool`, `inspect_spica_runtime_block`, `inspect_spica_wiring`, `inspect_solarium_tool`, and `inspect_spica_identifier` contracts. Results provide only IDs backed by the actual executable registry; guessed aliases are not registered or silently executed. `selectSpicaTools` considers the persisted `SpicaTaskOrchestrator.nextStep` and prioritizes validation/composition once the saved plan reaches Compose, while retaining strict check-before-write, permission and revision gates. Empty read-only discovery does **not** complete a plan step; structured `ok:false` inspections are recorded as failed operations. The native inference rule remains unchanged: **one backend generate stream per genuine assistant/tool turn, no fake 4,096-token response continuation and no extra model loading**. See `spica/roadmap/44_PHASE10_REGISTERED_CAPABILITIES_AND_COLLAPSIBLE_PLAN.md` and `npm run test:spica:phase10:reliability`.
+
+## SPICA Phase 10 Round A — scoped contract and progress boundaries (2026-11-13)
+
+The stage-selected `edit_spica_graph` schema is derived only from a *verified*
+registered operation, never directly from model-authored operation names. An
+unknown edit descriptor yields a compact structured diagnostic and retains the
+same user task. Invalid or repetitive proposals cannot hide the whole tool by
+name, because a corrected proposal must remain eligible for the same tool.
+Tool preflight reports only the selected operation's required parameters; it
+does not fill a small GGUF context with the entire editor union on error.
+
+SPICA's progress tracker resets inspection history only after authoritative
+project revision evidence proves a changed graph; execution, research and
+preflight success do not substitute for an app edit. A model ending its natural
+turn without confirmed work persists the task and its exact diagnostic; it
+cannot be force-restarted with fabricated continuation messages. Round B will
+introduce independent task decomposition at natural operation boundaries.
+
+## Phase 10 Round B — independent, evidence-backed Thought Blocks (2026-11-14)
+
+For active SPICA construction tasks, one **Thought Block** represents a single natural
+model inference/tool-action turn. Its configured 4,096-token default is a soft **input**
+working target for that turn; it does **not** interrupt generation after 4,096 output
+or reasoning tokens. `streamContinuousAnswer()` still makes exactly one backend
+`generate()` call for each natural turn, llama.cpp retains `max_tokens: -1`, and
+permissions remain on the ordinary execution gateway. Model weights are reused.
+
+`SparkThoughtJournal` in `src/engine/intelligence/spark-thought.ts` records the
+current action objective, offered callable names, graph revision, actual model
+reasoning **only when the model emits it**, prompt/output usage (with server vs.
+estimate origin), proposed tool calls, and each observed outcome. The complete
+emitted reasoning text is saved to the existing scoped `ContextArchive` before
+any proposed tool is executed; the `task_execution.spicaPlan.thoughts` checkpoint
+contains a short display excerpt and the archive ID. Absence of an exposed
+reasoning channel must not be replaced with fabricated text.
+
+The Thought Block and its proposed calls are durably persisted in the existing
+`task_execution` record **before** any graph tool runs. Failure to save is a
+hard blocker; do not execute an unsaved proposal. Every observed tool result is
+persisted before the next action. A new Thought Block begins from retained
+Spark/project instructions, the current user goal, authoritative project/task
+state, and labelled results of the immediately preceding action. It **does not
+replay** earlier assistant reasoning or tool-message history. On Resume, an
+interrupted thought is paused with diagnostic evidence; pending writes are not
+re-executed automatically. A no-tool model EOS pauses an incomplete task rather
+than claiming completion or issuing a fake continuation.
+
+Do not reintroduce a raw reasoning-cycle/reset mechanism or place untrusted tool
+outputs in the user's mouth. The per-thought records are decision/action
+checkpoints, not new user messages and not attempts to retrieve private model
+chain-of-thought. The archived reasoning is the exact text actually streamed
+by the model. `SpicaTaskPlanView` renders recent thoughts; older complete evidence
+remains in the scoped archive, subject to normal retention policies.
+
+Run `npm run test:spica:phase10:roundB` and the existing Phase 1–10 suites and
+registry checks after modifying this path. Real GGUF/tool-template, frontend
+TypeScript/Vite, and Windows/Tauri tests still require the appropriate runtime.
+
+## Phase 10 Round E — 8,192-token SPICA input overflow repair (2026-11-15)
+
+The unscoped `edit_spica_graph` / `validate_spica_edit` contract serializes to
+roughly 18,407 characters (over 9,200 tokens by Solarium's conservative schema
+estimate). **A single unscoped tool is larger than some loaded model contexts.**
+`selectSpicaTools()` now always supplies operation-specific, registry-backed
+editor contracts to the model. When no operation has been inspected yet,
+`initialSpicaEditScope()` selects a bounded *real* set: `migrate_graph` if V2
+is absent, `add_block`/`connect`/`compose_blocks` where V2 exists, or
+schema-1 `put_screen`/`set_field_property`/`add_record_field`. The complete
+canonical union remains available through `inspect_params` / registered tool
+inspection and is still the authoritative executor/preflight grammar.
+After a verified edit or inspection, the exact scoped operation replaces the
+initial contract. No tool, permission or graph operation is invented.
+
+`prepareGeneration()` retains the preferred tool if it fits, but when **that
+single tool cannot fit**, it may choose a smaller tool already selected and
+registered for the current turn; it never synthesizes or truncates a callable
+schema. The agent continues to verify selected calls and permissions as before.
+
+The Spark's core identity, user-written DNA, explicit personality instructions,
+latest user request and user-authored project instructions remain protected.
+Its memory notes, retrieved Spark World snippets and voice examples are emitted
+as separately labelled optional reference sections in `runAgent()`, so input
+fitting can remove these first without deleting their saved originals. The
+complete output of `composeSparkInstructions()` remains unchanged for other
+consumers. The 4,096 working target is soft and can borrow the real loaded
+context when protected instructions do not fit that target. A request whose
+**protected** content alone exceeds the model's actual maximum remains genuinely
+unrepresentable in that one inference; never hide this by claiming success.
+
+No changes were made to llama.cpp `max_tokens: -1`, `n_ctx`, output streaming,
+model reloads, user approval, or the ordinary single-stream inference path.
+Verification: `npm run test:spica:phase10:contextfix` and all phase suites.
+
+## Construction continuity and actionable evidence (2026-11-17)
+
+The 4,096-token working target still applies only to input assembly between
+natural tool turns. Each Thought Block uses one native backend stream with
+unlimited llama.cpp output. No saved-token counter interrupts inference or
+injects a synthetic continuation. The model's actual context and resources
+remain finite.
+
+`SparkThoughtJournal` preserves bounded, actual inspected ports/configuration,
+source reads/searches and the exact successful preflight proposal. The next
+request receives up to three previous evidence references and a checkpoint,
+plus the immediately actionable result. A still-approved preflight proposal
+survives intervening read-only calls. It is untrusted data, never an automatic
+write or a replayed model thought. The agent explicitly submits the proposed
+call through the same schema, revision and permission checks. Oversized reads
+are labelled partial; their original result remains in the scoped archive.
+
+SPICA construction also exposes existing native project tools. Once the Spark
+chooses a source tool, the construction coordinator keeps the source route
+available across later reads and checks rather than returning to block
+discovery after each read. This selection is not a permission grant. Verified
+directory facts, command IDs and unchanged-read diagnostics accompany the
+SPICA task context. A model-authored `plan_project_app` activates the existing
+feature/file verification ledger; graph construction can still proceed without
+a source plan. App names do not automatically select starter recipes.
+
+`withLocalWork` propagates the original abort reason. Pause stays resumable;
+Cancel stays cancelled. Resume examines the latest task for the conversation
+and cannot skip a cancelled/completed latest goal to revive an older request.
+Pending operations are never replayed by this handoff.
+
+Focused regressions: `tests/spica-construction-progress.test.cjs`,
+`tests/local-coding-core.test.cjs`, and `tests/continuity.test.cjs`, in addition
+to the Phase 01–10, contract, registry, frontend and native acceptance checks.
+
+## Fanfiction chapter authoring (2026-11-20)
+
+New fanfiction plans aim for longer complete scenes. A draft operation uses one
+`streamContinuousAnswer()` call with the same loaded model and uncapped
+llama.cpp output. If the backend reports a real capacity stop or an assessment
+finds the action unfinished, the writer can checkpoint the same scene. It retains
+the original goal, last complete sentence, verified draft passages and next beat
+as document data. The next operation is scoped to the unfinished action. There
+is no timer or token quota that interrupts a live generation.
+Truncated scene metadata from a reported capacity stop stays outside the prose.
+The grounded review can recover continuity from complete passages when the native
+stream did not reach the closing metadata tag.
+
+The scene assessment and exact-passage correction are separate natural
+document operations. They return observable evidence and revision instructions.
+The continuation overlay reads durable progress and the public next beat. User
+Stop, transport errors, unknown termination and failed checkpoints cannot
+automatically start another stream. Short scenes contribute once their action
+has happened. Further scenes may be planned before the conclusion. The chapter completes
+after its last valid scene and a current saved revision passing the length
+check. Old saved tasks retain their original scheduling and document ID.
+
+Online reads and fiction profile saves are ordinary authorized model tool calls.
+They prepare evidence for the drafting operations. Scoped sources, original
+goals, the selected cast and the scene outcome checkpoints keep continuity
+across the chapter. Spark reference memories remain optional inputs. The
+4,096 working target still governs input assembly only, with no output slicing
+or replayed model reasoning. `tests/fanfiction-chapter.test.cjs` covers the
+82k save/readback, bounded scene development, speaker labels, exact-scope profile
+evidence, same-scene capacity recovery and exact live correction. Real model
+prose and native UI are checked separately.
+
+When a named fiction profile has read evidence, its public summaries can
+stream as a naturally finished document operation. The registered profile
+tool validates and saves the resulting fields using the current permissions.
+Chat resolves a typed group and category before the Spark is asked to write.
+An authorized profile save never chooses a different owner or category from
+the model's text.
+
+English fiction can prepare an English summary of a foreign source through its
+own native generation operation on the same Spark. The original source stays
+available for exact citations. English character previews and profile writes
+check generated fields for untranslated text. A later English summary can
+replace a generated foreign field through a new revision.
+
+When a planning or review operation reaches real backend capacity, the authoring
+runner preserves its result and can prepare a smaller request for that work.
+The overlay shows this transition. A complete scene plan still has to pass the
+original plan checks. Each new operation keeps the original user request,
+uses one native stream and leaves output uncapped on llama.cpp. If the smaller
+operation also runs out of context, the chapter remains saved for Resume.
+The chapter keeps its writing block open until the saved revision satisfies
+the length target and the final scene is accepted. The continuation overlay
+also covers rechecking interrupted editorial work and extends a short ending
+inside its current scene. Intentional Stop still leaves a saved draft.
+
+## Dream Construction Engine Phase 01: model streaming remains unchanged (2026-11-22)
+
+`runAgent()` now computes `classifyConstructionIntent()` before it chooses action tools. Ordinary source-project implementation requests use the existing `selectActionTools()` and native project-tool execution; explicit SPICA graph requests retain SPICA tool selection; chat, story, and requested code artifacts retain their reply paths. This routing changes the **tool work set**, not model generation. `streamContinuousAnswer()` still sends one native generation request per actual model turn and retains all existing llama.cpp transport, context-shift and output-token policies. No 2,048-token continuation loop, duplicate inference planner, or hidden generated tool call was introduced.
+
+When a source project and real task record exist, `ConstructionOrchestrator` observes only authoritative native tool outcomes. Its `ConstructionCheckpointStore` saves the event in the existing task_execution record before emitting it to UI listeners. Project-root, session and task identity remain tied across Resume. File receipts derive from confirmed source writes and native source revisions; verification and completion remain owned by the existing `VerificationLedger` and `complete_project_task`. A model stopping without this evidence pauses the task rather than inventing work.
+
+Phase 01 intentionally does not provide the later portable-code warehouse, cinematic Workbench, executable-preview sandbox or autonomous repair pipeline. See `spica/roadmap/59_DREAM_CONSTRUCTION_PHASE01_ARCHITECTURAL_MIGRATION.md`.
+
+## Phase 03 reasoning-only source construction stops (2026-11-22)
+
+A model may stop after emitting reasoning and **no** final content or tool call, including when its selected chat template is not correctly tool-aware or it leaves a reasoning tag open. In that case the native inference stream is already over. Solarium must **never** fabricate a tool result, an answer, or a user-authored continuation. The November 22 recovery update first permits up to two **independent construction action decisions** in the same existing agent loop, using the real original user request, persisted construction state and the currently offered tool contracts. It does not replay private reasoning or restart a still-running stream. If no real action/answer emerges, source construction records a durable `pauseReason` and renders `describeConstructionStop()` as an explicit paused-task response; Resume remains available. The model's reasoning/channel termination and real tool-call capability still require local GGUF/backend validation. Regression: `tests/dream-construction-phase03.test.cjs`.
+
+## Post-Phase 03: Native context shifting and independent construction decisions (November 22, 2026)
+
+- **One native inference stream per model decision.** `streamContinuousAnswer()` requests `max_tokens: -1` for llama.cpp, with no 2048-token response slicing or fabricated assistant/user history. Actual llama.cpp support for context shifting is runtime/model dependent.
+- **Bounded retention with real headroom.** `prepareGeneration()` attempts to reserve `streamingDecisionHeadroom(n_ctx)` (1/8 of context, minimum 128, maximum 1024) plus 96 template/output tokens for llama.cpp. The engine retains the *fitted* prompt through numeric `n_keep`, not an unconditional `-1` on a nearly saturated context. Untrusted optional material is pruned before authoritative user/task data. It rejects genuinely impossible contexts.
+- **Truthful generation limits.** `finish_reason=length` does not establish whether the server hit `max_tokens`, context capacity or a separate server limit. Outcomes now record the requested generation count, retained prompt size, server-reported completion tokens, and context-shift evidence. Never treat partial tool JSON as executable.
+- **No silent terminal pause on the first incomplete construction decision.** On an incomplete source-build turn with no final answer and no complete call, `constructionInferenceRecovery()` can request up to two new, *independent* model decisions inside the existing agent loop, using real checkpoint evidence and actually offered tools. There is no raw-reasoning replay, fake user instruction, second model, or hidden execution bypass. Only a genuine model tool call can perform a native edit, after validation and permission review.
+- **Boundaries stay real.** Cancellation, content filtering, absence of tools, repeated nonproductive turns, unsupported context shifting, and underlying model/chat-template problems can still stop an attempt. The user receives an accurate paused/blocked task with its evidence and can Resume; an infinite guarantee would be misleading. Frontend/Tauri/GGUF integration is a separate release gate.
+
+Regression tests: `tests/construction-inference-recovery.test.cjs`, `tests/dce-inference-streaming.test.cjs`, and the existing continuous generation/context-window suites.
+
+## Dream Construction Engine — 4K context rollover for models without context shifting (2026-11-22)
+
+A llama.cpp process may launch with `--context-shift` and still explicitly report
+`context shift=unsupported` for the loaded model/template. With `n_ctx=4096`,
+`max_tokens=-1` is **not** an unlimited response: when the cache cannot shift,
+`finish_reason=length` can occur after just a few hundred generated tokens if
+nearly all context was consumed by the input. `n_keep` cannot enable a feature
+that the active inference backend does not support.
+
+For source-code construction tasks on small-context models:
+
+- `buildConstructionDecisionContext()` constructs the next natural model turn
+  from the **original, unabridged goal**, newest user instruction, Spark identity,
+  current registered tool name, real construction checkpoint, verification
+  ledger, and the latest **executed** tool result (bounded as untrusted data).
+  Prior unfinished model reasoning and speculative progress are never replayed
+  or promoted into verified fact. All full original data remains saved.
+- With an **unsupported** context shift, `prepareGeneration()` reserves about
+  40% of the actual context for the response, and the stage selector offers
+  one real callable contract in 4K/8K source-construction turns. These are
+  input-side planning decisions, not mid-generation output segmentation.
+- `streamContinuousAnswer()` requests a finite output window on explicitly
+  non-shifting llama.cpp servers, bounded by the measured remaining context.
+  The native stream is still one backend request for one complete decision.
+  When shifting is genuinely supported/unknown, llama.cpp retains the original
+  `max_tokens=-1` policy, with a short preserved prefix on supported models.
+- If a model repeatedly uses its entire finite budget for reasoning without
+  returning an answer or valid tool call, Solarium checkpoints the unfinished
+  task and reports the backend limit. No amount of summarization guarantees
+  continuation of an unsupported KV cache or a model's hidden reasoning.
+- Earlier assistant/tool exchanges can be reconstituted by **verified** tool
+  state across turns. No unverified source write or partial tool-call JSON is
+  executed. The existing project permissions, original user request, task
+  persistence, and model-loading behavior remain authoritative.
+
+Regression coverage: `tests/dce-context-rollover.test.cjs`,
+`tests/dce-inference-streaming.test.cjs`, and
+`tests/construction-inference-recovery.test.cjs`. A real local GGUF/llama.cpp
+4K and larger-context Windows/Tauri acceptance test is still mandatory.
+
+
+## DCE Phase 03 — Tool-aware 4K input repair (November 22, 2026)
+
+When source construction reaches planning after a genuine native `inspect_project`, its next request must retain that **actual initial inspection observation**, even though it was not an LLM tool message. The mandatory construction packet is now small and authoritative: original user goal (unabridged), latest request, Spark persona, user-authored project instructions, current stage, confirmation ledger, and advertised registered tool identities. Detailed metadata and previous tool outputs are distinct **optional** system messages and can be paged away only from the temporary inference request. All saved originals and task checkpoints remain intact.
+
+On a `contextShift=unsupported`, `n_ctx=4096` backend, the desired 40% response runway is an input-fitting preference, not a hard blocker. After paging optional evidence, completed older tool exchanges, and secondary schemas, the fitter can reduce that runway while still preserving a meaningful >=512-token *first action* window. A truly oversized mandatory persona+request+single tool remains a transparent blocked input, not a fabricated model decision. This does not make one 4K model response infinitely long, and it does not impose a new mid-stream cutoff.
+
+Newer llama.cpp servers may expose `POST /v1/chat/completions/input_tokens`. When supported, Solarium counts the same actual tool declarations, `tool_choice`, and merged system prompt that will be submitted to `/v1/chat/completions`, and uses the positive numeric count *without a second manual tool-schema charge*. On older servers, a 404, bad shape, zero count or unavailable endpoint returns to the existing chat-template tokenizer plus conservative tool-schema estimate. A zero token count returned by that older tokenizer is also treated as invalid and replaced by a conservative estimate. Counting is read-only and never invokes the model to think. Cancellation is respected; no special model reload or tool execution is introduced.
+
+Regression fixtures include the observed ~3262-token prompt and 4096 capacity, 80 varied inspection sizes, one native request with a real tool call, accurate schema counting and older-server fallback. Tests: `npm run test:inference:inputfix`. The desktop frontend dependency build and a live 4K GGUF acceptance session are separate release gates.

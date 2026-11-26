@@ -54,7 +54,7 @@ test('reasoning-only capacity end is reported honestly, never sent back as a new
   assert.equal(requests, 1);
   assert.equal(reasoning, 'I am reviewing the source.');
   assert.equal(result.answer, '');
-  assert.match(result.warning, /reached its context\/output capacity during reasoning/);
+  assert.match(result.warning, /ended this reasoning turn at a generation limit/);
 });
 
 test('agent preserves a reasoning-only outcome without falsely claiming an answer', async () => {

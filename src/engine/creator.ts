@@ -37,9 +37,9 @@ export const readPublicWebpage = (url: string, webEnabled=false) => {
   if(!webEnabled) return Promise.reject(Error('Web Search is OFF.'));
   return invokeDesktop<string>('read_public_webpage', { url,webEnabled });
 };
-export const readResearchPage = (url:string,query:string,webEnabled=false) => {
+export const readResearchPage = (url:string,query:string,webEnabled=false,storyReference=false) => {
   if(!webEnabled) return Promise.reject(Error('Web Search is OFF.'));
-  return invokeDesktop<import('../research/research').ResearchPage>('read_research_page',{url,query,webEnabled}).then(page=>({...page,retrievedAt:page.retrievedAt.startsWith('unix:')?new Date(Number(page.retrievedAt.slice(5))*1000).toISOString():page.retrievedAt}));
+  return invokeDesktop<import('../research/research').ResearchPage>('read_research_page',{url,query,webEnabled,storyReference}).then(page=>({...page,retrievedAt:page.retrievedAt.startsWith('unix:')?new Date(Number(page.retrievedAt.slice(5))*1000).toISOString():page.retrievedAt}));
 };
 
 const imageTypes = ['image/png','image/jpeg','image/webp'];

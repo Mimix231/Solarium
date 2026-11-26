@@ -38,7 +38,7 @@ test('toolchain is derived from registered schemas with precise required args an
   const detail=inspectSpicaTool(tools,'edit_spica_graph',state);
   assert.equal(detail.schema,tools[0].function.parameters,'must use the same exact registered schema, not a parallel invented contract');
   assert.equal(detail.revision,12);assert.deepEqual(detail.required,['revision','edits']);
-  assert.deepEqual(spicaToolPrerequisites('compose_spica_v2_graph',state),['A Graph V2 is required: migrate_spica_v2_graph.']);
+  assert.deepEqual(spicaToolPrerequisites('compose_spica_v2_graph',state),['Graph migration required: edit_spica_graph with view:v2, edits:[{op:migrate_graph}].']);
   const unknown=inspectSpicaTool(tools,'nonexistent',state);assert.equal(unknown.ok,false);
 });
 
@@ -89,7 +89,7 @@ test('Spark action stage offers exact introspection and preflight without callin
   assert.doesNotMatch(code,/normalizeSpicaProposal/);
   const agent=src('src/engine/agent.ts');
   assert.match(agent,/check_spica_tool_call/);
-  assert.match(agent,/stableGraphJson\(args\.arguments\)/);
+  assert.match(agent,/stableGraphJson\(canonicalArguments\)/);
   assert.match(agent,/Missing matching preflight/);
   assert.doesNotMatch(agent,/buildSupportedSpicaTemplate|runSupportedSpicaChange/);
   assert.doesNotMatch(agent,/normalizeSpicaProposal/);

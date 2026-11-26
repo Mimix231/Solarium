@@ -151,6 +151,8 @@ function toolModule(file,mocks){
   const js=ts.transpileModule(read(file),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
   const module={exports:{}};
   vm.runInNewContext(js,{module,exports:module.exports,require:id=>{
+    if(id==='./tool-aliases')return require(path.join(path.join(root,'.spica-phase03-test'),'spica/tool-aliases.js'));
+    if(id==='./construction-insights')return require(path.join(path.join(root,'.spica-phase03-test'),'spica/construction-insights.js'));
     if(Object.hasOwn(mocks,id))return mocks[id];throw Error('Unmocked dependency: '+id);
   },TextEncoder,TextDecoder,AbortController,DOMException,structuredClone,crypto:globalThis.crypto,console}, {filename:file});
   return module.exports;
@@ -163,10 +165,11 @@ function toolMocks(){
     '../engine/intelligence/tool-validation':validator,
     './edit-schemas':editSchemas,
     './graph-v2/transactions':{applySpicaGraphTransaction:()=>({})},
-    './graph-v2/edit-adapter':{expandSpicaV2Edits:edits=>edits},
+    './graph-v2/edit-adapter':{expandSpicaV2Edits:edits=>edits,assertSpicaRuntimeNodeContracts:()=>{}},
     './runtime/blocks/registry':{getBlock:()=>undefined},
     './inspect-params-v2':{inspectSpicaV2Parameters:()=>({})},
 
+    './inspect-tool-view':require('./inspect-tool-view-source.cjs'),
     '../engine/creator':{inspectProjectEnvironment:async()=>({rootEntryCount:0})},
     './repository':{SpicaRepository:class{}},
     './research-tools':{spicaResearchTools:[]},
@@ -191,13 +194,17 @@ test('natural-language routing selects real Spica tools for the exact failed Spa
   const request='Dona, I want you to build a fully functional application using SPICA\'s internal block warehouse. Application: SPICA Notes Demo';
   assert.equal(tools.isSpicaCreationRequest(request),true);
   assert.equal(tools.isSpicaProgramRequest(request),true);
-  assert.equal(tools.spicaRequestedRecipe(request),'notes');
+  assert.equal(tools.spicaRequestedRecipe(request),null,'An app name must not select a starter recipe');
+  assert.equal(tools.spicaRequestedRecipe('Build a SPICA notes app using the notes starter recipe'),'notes');
   assert.equal(tools.isSpicaCreationRequest('What if SPICA could build a notes app?'),false);
   assert.equal(tools.isSpicaCreationRequest('Please explain how SPICA works.'),false);
   assert.equal(tools.isSpicaCreationRequest('Build the current exported SPICA app'),false);
   const allowed=tools.spicaTools;
-  assert.deepEqual(Array.from(tools.selectSpicaTools(allowed,null,true,false,false,true,{hasGraph:false}),t=>t.function.name),['spica_next_action','inspect_spica_tool','check_spica_tool_call','inspect_spica_identifier']);
-  assert.deepEqual(Array.from(tools.selectSpicaTools(allowed,null,true,false,false,true,{hasGraph:true,v2Intent:true,hasV2:false}),t=>t.function.name),['spica_next_action','inspect_spica_tool','check_spica_tool_call','read_spica_graph','inspect_spica_identifier']);
+  const initial=Array.from(tools.selectSpicaTools(allowed,null,true,false,false,true,{hasGraph:false}),t=>t.function.name);
+  const pendingMigration=Array.from(tools.selectSpicaTools(allowed,null,true,false,false,true,{hasGraph:true,v2Intent:true,hasV2:false}),t=>t.function.name);
+  assert.ok(initial.some(name=>['spica_next_action','check_spica_tool_call','inspect_params'].includes(name)),'A missing graph must expose an authorized creation prerequisite');
+  assert.ok(pendingMigration.includes('validate_spica_edit'),'A V2 edit must expose its migration preflight');
+  assert.ok(!initial.includes('edit_spica_graph')&&!pendingMigration.includes('edit_spica_graph'),'No write without matching preflight');
   assert.equal(allowed.find(t=>t.function.name==='create_spica_app').function.parameters.properties.recipe.enum.includes('notes'),true);
 });
 test('non-tool-capable models cannot run an implicit starter-app fallback',()=>{
@@ -211,4 +218,45 @@ test('Phase 3 preserves the shared permission registry and Workbench guard',()=>
   assert.match(read('src/engine/agent.ts'),/spicaRequestedRecipe/);
   assert.match(read('src/components/SpicaWorkbench.tsx'),/sourceSnapshot != null && sourceSnapshot\.revision/);
   assert.match(read('src/views/Chat.tsx'),/['"]create_spica_app['"]/);
+});
+
+test('durable V2 repository rejects invalid registered-block configuration with no partial persistence',async()=>{
+  const compiledRepoPath=path.join(compiled,'repository.js');
+  const Module=require('node:module');
+  const existing=require.cache[compiledRepoPath];
+  delete require.cache[compiledRepoPath];
+  const prior=Module.prototype.require;
+  let stored=null;
+  const store={
+    list:async()=>stored?[stored]:[],
+    batch:async operations=>{for(const op of operations){assert.equal(op.expected,stored?.version??null);stored=op.record;}},
+  };
+  Module.prototype.require=function(id){
+    if(this.filename===compiledRepoPath){
+      if(id==='../foundation/store')return {foundationStore:store,newRecord:(kind,id,scope,title,data)=>({collection:kind,id,scope,title,data,version:1})};
+      if(id==='../domain/types')return {uid:()=> 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'};
+    }
+    return prior.apply(this,arguments);
+  };
+  let SpicaRepository;
+  try {SpicaRepository=require(compiledRepoPath).SpicaRepository;}
+  finally {Module.prototype.require=prior;}
+  try {
+    const repo=new SpicaRepository('registered-contract',store);
+    const created=await repo.create('Notes','notes');
+    const migrated=await repo.migrateV2(created.data.revision);
+    const {makeRuntimeNode}=require(path.join(compiled,'runtime/executor.js'));
+    const valid=makeRuntimeNode('source','spica.runtime.text_value',{value:'okay'});
+    const saved=await repo.updateV2(migrated.data.revision,[{op:'add_node',node:valid}]);
+    assert.equal(saved.data.graphV2.nodes.some(node=>node.id==='source'),true);
+    const before=stableGraphJson(saved.data.graphV2);
+    await assert.rejects(repo.updateV2(saved.data.revision,[{op:'set_node_config',id:'source',config:{value:42}}]),/INVALID_BLOCK_CONFIG/);
+    const after=await repo.read();
+    assert.equal(after.data.revision,saved.data.revision);
+    assert.equal(stableGraphJson(after.data.graphV2),before);
+    assert.equal(after.data.graph.name,'Notes');
+  } finally {
+    delete require.cache[compiledRepoPath];
+    if(existing)require.cache[compiledRepoPath]=existing;
+  }
 });

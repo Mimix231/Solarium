@@ -21,10 +21,11 @@ const definitions=(record=null)=>{
     '../engine/intelligence/tool-validation':validatorModule.exports,
     './edit-schemas':editSchemas.exports,
     './graph-v2/transactions':{applySpicaGraphTransaction:()=>({})},
-    './graph-v2/edit-adapter':{expandSpicaV2Edits:edits=>edits},
+    './graph-v2/edit-adapter':{expandSpicaV2Edits:edits=>edits,assertSpicaRuntimeNodeContracts:()=>{}},
     './runtime/blocks/registry':{getBlock:()=>undefined},
     './inspect-params-v2':{inspectSpicaV2Parameters:()=>({})},
 
+    './inspect-tool-view':require('./inspect-tool-view-source.cjs'),
     '../engine/creator':{inspectProjectEnvironment:async()=>({rootEntryCount:0})},
     './repository':{SpicaRepository:class {
       async read(){return state.record;}
@@ -52,6 +53,8 @@ const definitions=(record=null)=>{
   };
   const mod={exports:{}};
   vm.runInNewContext(transpile('src/spica/tools.ts'),{module:mod,exports:mod.exports,require:id=>{
+    if(id==='./tool-aliases')return require(path.join(path.join(root,'.spica-phase05-test'),'spica/tool-aliases.js'));
+    if(id==='./construction-insights')return require(path.join(path.join(root,'.spica-phase05-test'),'spica/construction-insights.js'));
     if(Object.hasOwn(mocks,id))return mocks[id];throw Error('Unmocked dependency: '+id);
   },TextEncoder,AbortController,DOMException,structuredClone,console}, {filename:'src/spica/tools.ts'});
   const validator={exports:{}};
@@ -133,9 +136,9 @@ test('tool selector reveals contracts and offers dry-run before saving',()=>{
   assert.ok(selection('validate_spica_edit').includes('edit_spica_graph'));
   assert.ok(!selection('edit_spica_graph').includes('export_spica_app'));
   assert.ok(!selection(null).includes('edit_spica_graph'));
-  assert.ok(selection('read_spica_graph').includes('inspect_spica_tool'));
-  assert.ok(selection('read_spica_graph').includes('check_spica_tool_call'));
-  assert.ok(selection('check_spica_tool_call').includes('spica_next_action'));
+  assert.ok(!selection('read_spica_graph').includes('inspect_spica_tool'),'Do not reread the same general inspector in every schema-1 edit turn');
+  assert.ok(selection('read_spica_graph').includes('inspect_params'),'Expose the actual operation-specific editing schema');
+  assert.ok(selection('check_spica_tool_call').includes('inspect_params'),'A non-authorized preflight cannot open a mutation; inspect actual edit parameters again');
   const edit=tools.spicaTools.find(t=>t.function.name==='edit_spica_graph');
   const validation=tools.spicaTools.find(t=>t.function.name==='validate_spica_edit');
   assert.deepEqual(JSON.stringify(tools.spicaToolContract(edit,true).function.parameters),JSON.stringify(tools.spicaToolContract(validation,true).function.parameters));

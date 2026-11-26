@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-const {spawnSync}=require('node:child_process');
+const {spawnSync}=require('./spica-test-process.cjs');
 const fs=require('node:fs');const path=require('node:path');
 const root=path.resolve(__dirname,'..');
 function check(bin,args){const result=spawnSync(bin,args,{cwd:root,stdio:'inherit'});if(result.status!==0)process.exit(result.status??1);}
@@ -12,8 +12,7 @@ check('tsc',['--strict','--noUnusedLocals','--noUnusedParameters','--noUnchecked
  'src/engine/intelligence/agent-budget.ts']);
 // Context window imports the desktop inference type graph. Transpile its runtime
 // code separately; the pure planner above is checked with strict tsc flags.
-const {execFileSync}=require('node:child_process');
-const ts=require(path.resolve(path.dirname(require('node:fs').realpathSync(execFileSync('which',['tsc'],{encoding:'utf8'}).trim())),'..'));
+const ts=require('typescript');
 const input=fs.readFileSync(path.join(root,'src/engine/context-window.ts'),'utf8');
 const js=ts.transpileModule(input,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 fs.mkdirSync(path.join(out,'engine'),{recursive:true});

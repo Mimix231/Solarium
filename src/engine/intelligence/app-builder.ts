@@ -4,7 +4,9 @@ import { duplicatedCode, type SourceText } from './code-duplication';
 export const APP_AUTHORING_GUIDE = 'Coding has no short-answer or 4,096-character ceiling. Implement the complete requested application, using as much original source as its functionality needs. Keep modules, interfaces, persistence, user flows, errors and tests coherent. A starter or two helper functions is not a finished app. Build in complete feature/file operations; preserve progress and continue with the remaining work after real tool results. Never inflate length with repeated functions, copied files, filler, TODO implementations or invented successes. For chat source use separate named file fences; saved code is distinct from executed project files.';
 
 export function needsAppPlan(goal: string): boolean {
-  return /\b(build|create|develop|implement|make)\b/i.test(goal) && /\b(app(?:lication)?|website|dashboard|IDE|editor|studio|builder)\b/i.test(goal) && !/\b(only|just)\s+(?:a\s+)?(?:plan|example|snippet|explanation)\b|\b(skeleton|scaffold|phase\s*1)\b/i.test(goal);
+  return /\b(build|create|develop|implement|make)\b/i.test(goal) &&
+    /\b(app(?:lication)?|website|dashboard|IDE|editor|studio|builder|game|platformer|simulator|rpg)\b/i.test(goal) &&
+    !/\b(only|just)\s+(?:a\s+)?(?:plan|example|snippet|explanation)\b|\b(skeleton|scaffold|phase\s*1)\b/i.test(goal);
 }
 export interface AppStepInput { id: string; title: string; files: string[]; depends_on: string[]; acceptance: string[] }
 export interface AppStep extends AppStepInput { state: 'pending' | 'verified'; sources?: { path: string; sha256: string }[]; checks?: string[] }
@@ -36,7 +38,11 @@ export class AppBuilder {
     const ids = new Set(combined.map(s => s.id));
     if (ids.size !== combined.length) throw Error('Step IDs must be unique; do not repeat an implemented work package.');
     for (const step of steps) {
-      if (!/^[a-z][a-z0-9-]{0,59}$/.test(step.id) || !step.title.trim() || step.title.length > 300 || !step.files.length || step.files.length > 32 || step.files.some(p => !relative(p)) || new Set(step.files).size !== step.files.length || !step.acceptance.length || step.acceptance.some(s => !s.trim() || s.length > 600) || step.depends_on.some(id => id === step.id || !ids.has(id))) throw Error('Each work package needs a unique ID, scoped authored files, observable acceptance criteria and valid dependencies.');
+      if(!/^[a-z][a-z0-9-]{0,59}$/.test(step.id))throw Error(`Step ID ${JSON.stringify(step.id)} must match ^[a-z][a-z0-9-]{0,59}$: lowercase letters, digits and hyphens only.`);
+      if(!step.title.trim()||step.title.length>300)throw Error(`Step ${step.id} requires a 1–300 character title.`);
+      if(!step.files.length||step.files.length>32||step.files.some(p=>!relative(p))||new Set(step.files).size!==step.files.length)throw Error(`Step ${step.id} requires 1–32 distinct project-relative source files, / separators, no traversal, dependency or build folders.`);
+      if(!step.acceptance.length||step.acceptance.some(s=>!s.trim()||s.length>600))throw Error(`Step ${step.id} requires observable acceptance criteria, each 1–600 characters.`);
+      if(step.depends_on.some(id=>id===step.id||!ids.has(id)))throw Error(`Step ${step.id} depends_on must name other step IDs in this plan.`);
     }
     const visiting = new Set<string>(), visited = new Set<string>();
     const visit = (id: string) => { if (visiting.has(id)) throw Error('Application dependencies contain a cycle.'); if (visited.has(id)) return; visiting.add(id); for (const dep of combined.find(s => s.id === id)!.depends_on) visit(dep); visiting.delete(id); visited.add(id); };

@@ -199,7 +199,7 @@ function validatePreferences(data: unknown): Preferences {
     serverPort: number(p.serverPort, 8080, 1024, 65535),
     ggufDirectory: text(p.ggufDirectory, 2048),
     toolPermissions: allowed,
-    searchProvider: {kind: option(object(p.searchProvider).kind,['bing','searxng','duckduckgo'] as const,'bing'),endpoint:text(object(p.searchProvider).endpoint,1000)},
+    searchProvider: {kind: option(object(p.searchProvider).kind,['bing','searxng','duckduckgo','mwmbl'] as const,'bing'),endpoint:text(object(p.searchProvider).endpoint,1000)},
     sceneSpacer: option(p.sceneSpacer, sceneSpacerStyles, 'rule'),
     startupView: option(p.startupView, ['home','chat'] as const, 'home'),
     consoleChannels: (Array.isArray(p.consoleChannels) ? p.consoleChannels : []).slice(0, 80).map((value: unknown) => {

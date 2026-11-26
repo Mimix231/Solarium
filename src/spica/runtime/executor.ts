@@ -17,6 +17,10 @@ export interface SpicaRunOptions {
   grants: ReadonlySet<SpicaRuntimePermission>;
   broker?: SpicaRuntimeGrantBroker;
   store?: SpicaRuntimeStore;
+  /** UI session state persists only when explicitly supplied by a host. */
+  interactionState?: Map<string,string>;
+  /** Events are supplied by an explicit host/user interaction, not inferred from chat text. */
+  events?: Readonly<Record<string,string>>;
   signal?: AbortSignal;
   maxOperations?: number;
   maxFeedbackRounds?: number;
@@ -94,6 +98,11 @@ export async function executeSpicaGraphV2(source:SpicaGraphV2, options:SpicaRunO
   const maxRounds=Math.min(Math.max(options.maxFeedbackRounds??32,1),100);
   const counts=new Map<string,number>();
   const pureCache=new Map<string,{signature:string;result:Record<string,unknown>}>();
+  const sessionState=options.interactionState??new Map<string,string>();
+  const stagedState=new Map<string,string>();
+  const safeInteractionKey=(key:string)=>{
+    if(!/^[a-z][a-z0-9_]{0,63}$/.test(key) || ['constructor','prototype','__proto__'].includes(key)) throw new SpicaExecutionError('INVALID_INTERACTION','Invalid interaction state/event key.');
+  };
   try {
     cancelled(options.signal);
     assertSpicaGraphV2(graph,{requireComplete:true,resolveBlock:(id,version)=>Boolean(getRuntimeBlock(id,version))});
@@ -139,7 +148,21 @@ export async function executeSpicaGraphV2(source:SpicaGraphV2, options:SpicaRunO
         emit(node.id,adapter.id,'started');
         const context={runId,nodeId:node.id,target:options.target,signal:options.signal??new AbortController().signal,
           storage:{read:(collection:string,key:string)=>{if(!adapter.permissions.includes('records.read'))throw new SpicaExecutionError('PERMISSION_DENIED',`${adapter.id} cannot read records.`);return tx!.read(collection,key);},
-            put:(collection:string,key:string,value:unknown)=>{if(!adapter.permissions.includes('records.write'))throw new SpicaExecutionError('PERMISSION_DENIED',`${adapter.id} cannot write records.`);return tx!.put(collection,key,value);}},
+            put:(collection:string,key:string,value:unknown)=>{if(!adapter.permissions.includes('records.write'))throw new SpicaExecutionError('PERMISSION_DENIED',`${adapter.id} cannot write records.`);return tx!.put(collection,key,value);},
+            list:(collection:string,limit:number)=>{if(!adapter.permissions.includes('records.read'))throw new SpicaExecutionError('PERMISSION_DENIED',`${adapter.id} cannot list records.`);if(!tx!.list)throw new SpicaExecutionError('UNSUPPORTED_STORAGE','Transaction host does not expose list.');return tx!.list(collection,limit);},
+            delete:(collection:string,key:string)=>{if(!adapter.permissions.includes('records.write'))throw new SpicaExecutionError('PERMISSION_DENIED',`${adapter.id} cannot delete records.`);if(!tx!.delete)throw new SpicaExecutionError('UNSUPPORTED_STORAGE','Transaction host does not expose delete.');return tx!.delete(collection,key);}},
+          interaction:{
+            read:(key:string)=>{safeInteractionKey(key);return stagedState.get(key)??sessionState.get(key);},
+            write:(key:string,value:string)=>{safeInteractionKey(key);
+              if(typeof value!=='string'||value.length>32000)throw new SpicaExecutionError('INVALID_INTERACTION','Interaction text exceeds 32K.');
+              if(stagedState.size>128&&!stagedState.has(key))throw new SpicaExecutionError('INTERACTION_BUDGET','Too many interaction state entries.');
+              stagedState.set(key,value);
+            },
+            event:(key:string)=>{safeInteractionKey(key);const value=options.events&&Object.hasOwn(options.events,key)?options.events[key]:undefined;
+              if(value!==undefined&&(typeof value!=='string'||value.length>32000))throw new SpicaExecutionError('INVALID_INTERACTION','Invalid interaction event payload.');
+              return value;
+            },
+          },
           requirePermission:(permission:SpicaRuntimePermission)=>{
             if(!adapter.permissions.includes(permission))throw new SpicaExecutionError('PERMISSION_DENIED',`${adapter.id} did not declare ${permission}.`);
             checkRuntimeBlockPermission(adapter,options.target,options.grants,options.broker);
@@ -181,9 +204,10 @@ export async function executeSpicaGraphV2(source:SpicaGraphV2, options:SpicaRunO
       for(const [id,value] of nextFeedback)feedbackDelivered.set(id,value);
       if(!feedbackDelivered.size)break;
       if(round>=maxRounds)throw new SpicaExecutionError('FEEDBACK_LIMIT',`Feedback exceeded ${maxRounds} rounds.`);
-    }while(true);
+    }while(feedbackDelivered.size>0);
     cancelled(options.signal);
     await tx.commit();committed=true;
+    for (const [key,value] of stagedState)sessionState.set(key,value);
     if(omitted)emit('legacy', 'spica.legacy','skipped',`Excluded ${omitted} isolated read-only legacy projection nodes.`);
     return {runId,state:'passed',target:options.target,operations,trace,outputs,storage,committed};
   }catch(error){

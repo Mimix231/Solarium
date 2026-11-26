@@ -58,6 +58,10 @@ The **original baseline text above** describes the planning snapshot. Phase 01, 
 
 Phase 07 adds 89 individually registered V2 executable blocks, plus contract-first Spark introspection and exact preflight. This does **not** mean 350,000 executable blocks or universal V2 native export are present. A failed SPICA action stops instead of invoking a feature-specific fallback.
 
+## Construction continuity (2026-11-17)
+
+- [Construction continuity and functional composition](57_PHASE10_CONSTRUCTION_CONTINUITY.md)
+
 ## Phase 08 (2026-11-12)
 
 - [21 — Phase 08 Implementation Report](21_PHASE08_IMPLEMENTATION_REPORT.md)
@@ -78,3 +82,5 @@ Phase 08 addresses the callable-tool/block-ID confusion, provides paginated insp
 ## Updated roadmap: Phases 10–18 (planning only)
 
 Start with [28 — Master Phases 10–18](28_MASTER_PHASES_10_TO_18.md). The [dual UI theme specification](29_DUAL_UI_THEME_AND_EYE_SWITCHER.md) describes an eye-button switch between Classic (existing/default) and Cosmic (concept-inspired), independent of color palettes. One phase per round; Phase 10 is persistent agent execution and rolling context. Original planned Glitch, games, and ecosystem work is retained in later phases. Implementation not started by this documentation package.
+
+**Phase 10 Round A:** [execution audit and corrections](47_PHASE10_ROUND_A_EXECUTION_AUDIT_AND_FIXES.md) and [machine-readable registry inventory](46_PHASE10_ROUND_A_REGISTRY_AUDIT.json). The 100-tool audit and scoped-edit corrections are implemented, while independent Thought Blocks remain for Round B.

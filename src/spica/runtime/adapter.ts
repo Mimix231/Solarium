@@ -11,6 +11,9 @@ export type SpicaRuntimeKind = 'pure' | 'effect' | 'renderer' | 'event-source';
 export interface SpicaStorageTransaction {
   read(collection: string, key: string): Promise<unknown>;
   put(collection: string, key: string, value: unknown): Promise<void>;
+  /** Optional host extension; list and delete never bypass transaction permissions. */
+  list?(collection: string, limit: number): Promise<Array<{key:string;value:unknown}>>;
+  delete?(collection: string, key: string): Promise<void>;
   commit(): Promise<void>;
   rollback(): Promise<void>;
 }
@@ -22,8 +25,15 @@ export interface SpicaRuntimeBlockContext {
   readonly nodeId: string;
   readonly target: SpicaRuntimeTarget;
   readonly signal: AbortSignal;
-  readonly storage: Pick<SpicaStorageTransaction, 'read' | 'put'>;
+  readonly storage: Pick<SpicaStorageTransaction, 'read' | 'put' | 'list' | 'delete'>;
   requirePermission(permission: SpicaRuntimePermission): void;
+  /** Run-scoped interaction events and transactional session-only text state.
+   * Neither store writes nor external effects are authorized by this API. */
+  readonly interaction: {
+    read(key: string): string | undefined;
+    write(key: string, value: string): void;
+    event(id: string): string | undefined;
+  };
 }
 export interface SpicaBlockAdapter {
   readonly id: string;
@@ -36,6 +46,8 @@ export interface SpicaBlockAdapter {
   readonly category?: string;
   readonly description?: string;
   readonly exampleConfig?: Readonly<Record<string, unknown>>;
+  /** Inspectable config contract. Runtime validateConfig remains authoritative. */
+  readonly configSchema?: Readonly<{type:'object';properties:Readonly<Record<string,unknown>>;required?:readonly string[];additionalProperties:false}>;
   readonly inputs: readonly SpicaTypedPort[];
   readonly outputs: readonly SpicaTypedPort[];
   /** These functions must not execute arbitrary generated code or install dependencies. */
@@ -54,6 +66,11 @@ export function defineRuntimeBlock<T extends SpicaBlockAdapter>(adapter: T): T {
     if (ports.length > 64 || ports.some(p => !/^[a-z][a-z0-9_]*$/.test(p.id)) || new Set(ports.map(p => p.id)).size !== ports.length) {
       throw Error(`Invalid runtime ports: ${adapter.id}`);
     }
+  }
+  if(adapter.configSchema) {
+    if(adapter.configSchema.type!=='object'||adapter.configSchema.additionalProperties!==false ||
+      !adapter.configSchema.properties || (adapter.configSchema.required??[]).some(k=>!Object.hasOwn(adapter.configSchema!.properties,k)))
+      throw Error(`Invalid inspectable config schema: ${adapter.id}`);
   }
   if (adapter.kind === 'pure' && adapter.permissions.length) throw Error('Pure blocks must have no effects or permission grants.');
   return Object.freeze(adapter);

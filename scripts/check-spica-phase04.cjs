@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-const { spawnSync } = require('node:child_process');
+const { spawnSync } = require('./spica-test-process.cjs');
 const fs=require('node:fs');const path=require('node:path');
 const root=path.resolve(__dirname,'..');const out=path.join(root,'.spica-phase04-test');
 fs.mkdirSync(out,{recursive:true});
@@ -25,6 +25,7 @@ const sourceFiles = [
   'src/spica/runtime/value.ts','src/spica/runtime/trace.ts','src/spica/runtime/registry.ts','src/spica/runtime/executor.ts',
   ...findUnifiedRuntimeSources(),
   'src/spica/graph-v2/types.ts','src/spica/graph-v2/validation.ts','src/spica/graph-v2/serialization.ts',
+  'src/spica/tool-aliases.ts','src/spica/construction-insights.ts',
   'src/spica/graph.ts','src/spica/program.ts','src/spica/appearance.ts','src/spica/game.ts',
 ];
 const args=['--strict','--skipLibCheck','--noUnusedLocals','--noUnusedParameters','--noUncheckedIndexedAccess','--target','es2022','--module','commonjs','--moduleResolution','node','--lib','es2022,dom','--outDir','.spica-phase04-test','--rootDir','src',...sourceFiles];

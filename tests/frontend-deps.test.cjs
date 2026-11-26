@@ -10,7 +10,7 @@ test('all new chat rendering and document dependencies are in the package manife
     'react-markdown', 'remark-gfm', 'remark-math', 'rehype-katex',
     'rehype-highlight', 'highlight.js', 'katex', 'pdfjs-dist', 'mammoth',
   ]) assert.equal(typeof manifest.dependencies[dep], 'string', dep);
-  for(const hook of ['predev','prebuild','precheck']) assert.match(manifest.scripts[hook], /^node scripts\/check-frontend-dependencies\.cjs(?: && |$)/, hook+' must check dependencies before starting');
+  for(const hook of ['predev','prebuild','precheck']) assert.match(manifest.scripts[hook], /(?:^| && )node scripts\/check-frontend-dependencies\.cjs(?: && |$)/, hook+' must check dependencies before starting');
 });
 
 test('PDF source uses the typed package import and matching worker asset', () => {

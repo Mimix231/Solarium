@@ -25,10 +25,11 @@ export class StoryMemoryStream {
     const end=this.metadata.indexOf(MEMORY_CLOSE);if(end<0)return;
     const trailing=this.metadata.slice(end+MEMORY_CLOSE.length);this.metadata=this.metadata.slice(0,end);this.ended=true;this.inside=false;if(trailing)this.output(trailing);
   }
-  finish(): StoryMemoryInput[] {
-    if (this.pending) this.output(this.pending);
+  finish(atCapacity = false): StoryMemoryInput[] {
+    if (this.pending && !atCapacity) this.output(this.pending);
     this.pending = '';
     if (!this.found) return [];
+    if (!this.ended && atCapacity) return [];
     if (!this.ended) throw Error('The scene memory metadata was incomplete. Prose remains saved; no memory was inferred.');
     const value: unknown = JSON.parse(this.metadata.trim());
     if (!Array.isArray(value) || value.length > 12) throw Error('Invalid scene memory metadata.');
@@ -58,7 +59,8 @@ export async function rememberStoryEvents(stories: StoryRepository, writing: Wri
   for (const { input, knowledge, beliefs } of proposed) {
     const duplicate = existing.find(e => e.data.documentId === document.id && e.data.quote === input.quote && e.data.summary === input.summary);
     if (duplicate) { saved.push(duplicate); continue; }
-    const event = await stories.event(document.storyId, input.summary.slice(0, 100), { order: Math.max(0, ...existing.map(e => e.data.order)) + 1, characters: Object.keys(knowledge), knowledge,...(Object.keys(beliefs).length?{beliefs}:{}), kind: 'story_established', sourceLinks: [], summary: input.summary, documentId: document.id, revisionId: document.data.currentRevisionId, quote: input.quote });
+    const point = document.data.metadata.canonPoint;
+    const event = await stories.event(document.storyId, input.summary.slice(0, 100), { order: Math.max(0, ...existing.map(e => e.data.order)) + 1, characters: Object.keys(knowledge), knowledge,...(Object.keys(beliefs).length?{beliefs}:{}), kind: 'story_established', sourceLinks: [], summary: input.summary, documentId: document.id, revisionId: document.data.currentRevisionId, quote: input.quote, ...point });
     existing.push(event); saved.push(event);
   }
   return saved;

@@ -26,7 +26,7 @@ function fixture(t) {
     `async execute(){${body}}});\n`;
   const run = (...args) => spawnSync(process.execPath,
     [path.join(root, 'scripts/clean-spica-misplaced-runtime-blocks.cjs'), ...args],
-    { cwd: root, encoding: 'utf8' });
+    { cwd: root, encoding: 'utf8', env:{...process.env,NODE_PATH:path.dirname(require.resolve('typescript/package.json'))+'/..'} });
   return { root, canonical, stale, write, source, run };
 }
 

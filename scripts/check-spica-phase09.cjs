@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-const {spawnSync}=require('node:child_process');
+const {spawnSync}=require('./spica-test-process.cjs');
 const cwd=require('node:path').resolve(__dirname,'..');
 for (const args of [
  ['scripts/generate-spica-registry.cjs','--check'],

@@ -1,0 +1,246 @@
+@import url("./cosmic.work.css");
+@import url("./cosmic.banner.css");
+/* Cosmic is a separate interface, based on the five Solarium/SPICA workbench
+   concepts in docs/design/cosmic. It is NOT the Classic console-channel layout.
+   All selectors are scoped to the user's independent interface-theme setting. */
+:root[data-interface='cosmic'] {
+  color-scheme:dark;
+  --app-bg:#070e23;
+  --surface:rgba(14,25,51,.80);
+  --surface-strong:#101d3c;
+  --surface-hover:rgba(62,219,243,.12);
+  --line:rgba(89,196,251,.22);
+  --accent:#48eff1;
+  --ink-muted:#a9b6d9;
+  --glow:rgba(101,66,241,.25);
+  --radius:16px;
+  --blur:18px;
+  --title-surface:rgba(5,13,32,.88);
+  --rail-surface:rgba(6,14,35,.9);
+  --side-surface:rgba(9,20,45,.78);
+  --side-width:252px;
+  --rail-width:64px;
+  --shadow:0 18px 58px rgba(0,0,0,.40),inset 0 1px rgba(110,247,255,.10);
+}
+:root[data-interface='cosmic'] .app-shell {
+  background:radial-gradient(ellipse at 72% -30%,rgba(98,62,206,.47),transparent 58%),
+    radial-gradient(ellipse at 18% 74%,rgba(31,132,216,.18),transparent 35%),
+    linear-gradient(155deg,#071123 0%,#101336 55%,#090d20 100%);
+}
+:root[data-interface='cosmic'] .app-shell::before {
+  z-index:0;
+  background:
+    radial-gradient(1px 1px at 9% 15%,#ccffff 96%,transparent),
+    radial-gradient(1px 1px at 29% 33%,#c3adff 96%,transparent),
+    radial-gradient(1px 1px at 51% 8%,#c9f6ff 96%,transparent),
+    radial-gradient(1px 1px at 86% 22%,#b9abff 96%,transparent),
+    radial-gradient(ellipse at 51% 100%,rgba(104,60,206,.18),transparent 55%),
+    linear-gradient(0deg,rgba(3,6,20,.22),transparent 40%);
+  opacity:.76;
+  pointer-events:none;
+}
+:root[data-interface='cosmic'] .title-bar,
+:root[data-interface='cosmic'] .layout-body {position:relative;z-index:1;}
+:root[data-interface='cosmic'] .title-bar {
+  height:58px;min-height:58px;
+  border-bottom:1px solid rgba(77,221,247,.38);
+  box-shadow:0 2px 36px rgba(28,173,227,.12);
+}
+:root[data-interface='cosmic'] .brand-symbol {
+  color:#5ffff2;background:none;font-size:28px;
+  filter:drop-shadow(0 0 9px rgba(75,242,247,.85));
+}
+:root[data-interface='cosmic'] .build-badge {
+  color:#72ffe9;border-color:rgba(78,241,244,.36);
+  background:rgba(46,171,197,.12);
+}
+:root[data-interface='cosmic'] .nav-rail {
+  border-right:1px solid rgba(87,217,255,.25);
+  box-shadow:inset -1px 0 rgba(122,80,234,.19);
+}
+:root[data-interface='cosmic'] .nav-rail .rail-button {width:42px;height:42px;color:#9cb9e1;border-radius:12px;}
+:root[data-interface='cosmic'] .nav-rail .rail-active,
+:root[data-interface='cosmic'] .nav-rail .rail-button:hover {
+  color:#85ffff;border:1px solid rgba(70,244,247,.55);
+  background:linear-gradient(125deg,rgba(44,204,226,.28),rgba(73,42,176,.24));
+  box-shadow:inset 0 1px rgba(166,255,255,.20),0 0 21px rgba(51,220,251,.27);
+}
+:root[data-interface='cosmic'] .conversation-sidebar {
+  border-right:1px solid rgba(99,126,237,.35);
+}
+:root[data-interface='cosmic'] .conversation-sidebar .new-chat,
+:root[data-interface='cosmic'] .conversation-sidebar .chat-row.selected {
+  border-color:rgba(86,239,255,.25) !important;
+  background:linear-gradient(115deg,rgba(32,156,188,.17),rgba(86,48,174,.15)) !important;
+}
+:root[data-interface='cosmic'] .app-shell .glass,
+:root[data-interface='cosmic'] .app-shell .MuiCard-root,
+:root[data-interface='cosmic'] .cosmic-telemetry-panel {
+  background:linear-gradient(155deg,rgba(21,35,71,.90),rgba(9,19,44,.83));
+  border:1px solid rgba(89,190,238,.28);
+  box-shadow:inset 0 1px rgba(177,235,255,.10),0 14px 40px rgba(4,7,27,.36);
+  backdrop-filter:blur(18px);
+}
+:root[data-interface='cosmic'] [data-cosmic-toggle] {
+  color:#7df7ff;background:rgba(41,206,219,.16);
+  border:1px solid rgba(87,236,255,.46);
+  box-shadow:0 0 16px rgba(77,241,245,.2);
+}
+:root[data-interface='cosmic'] .chat-header {
+  border-bottom-color:rgba(113,184,255,.24);
+  background:linear-gradient(90deg,rgba(20,34,75,.55),rgba(12,17,49,.48));
+}
+:root[data-interface='cosmic'] .chat-primary,
+:root[data-interface='cosmic'] .composer-wrap {min-width:0;}
+:root[data-interface='cosmic'] .composer {
+  background:linear-gradient(100deg,rgba(8,94,114,.32),rgba(23,27,71,.84),rgba(74,42,143,.25)) !important;
+  border:1px solid rgba(92,254,255,.73) !important;
+  box-shadow:inset 0 1px rgba(161,255,255,.25),0 0 28px rgba(40,199,232,.25),0 15px 28px rgba(0,0,0,.20) !important;
+  border-radius:21px !important;
+}
+:root[data-interface='cosmic'] .send-button {
+  color:#92ffff !important;background:linear-gradient(135deg,rgba(32,165,187,.35),rgba(87,63,200,.42)) !important;
+  box-shadow:0 0 15px rgba(25,231,232,.33);
+}
+:root[data-interface='cosmic'] .prompt-chip,
+:root[data-interface='cosmic'] .MuiButton-contained {
+  border:1px solid rgba(75,243,239,.35);
+  background:linear-gradient(130deg,rgba(25,175,180,.35),rgba(72,60,172,.35));
+  color:#d8faff;
+}
+:root[data-interface='cosmic'] .app-shell .MuiButton-root:hover:not(:disabled) {box-shadow:0 0 17px rgba(62,239,255,.25);}
+:root[data-interface='cosmic'] .message-row.assistant .message-content {
+  border-radius:15px;background:rgba(11,22,48,.36);
+}
+:root[data-interface='cosmic'] .cosmic-chat-layout {
+  display:grid;grid-template-columns:minmax(0,1fr);
+  height:100%;min-height:0;
+}
+:root[data-interface='cosmic'] .cosmic-chat-layout.cosmic-has-telemetry {
+  grid-template-columns:minmax(0,1fr) minmax(210px,265px);
+}
+:root[data-interface='cosmic'] .cosmic-chat-layout.cosmic-plan-visible {
+  grid-template-columns:minmax(252px,295px) minmax(0,1fr) minmax(210px,265px);
+}
+:root[data-interface='cosmic'] .cosmic-plan-rail {
+  min-width:0;min-height:0;overflow:auto;padding:12px 7px 12px 12px;
+  border-right:1px solid rgba(73,214,237,.22);
+}
+:root[data-interface='cosmic'] .cosmic-plan-rail [aria-label='SPICA build plan'] {
+  border:1px solid rgba(53,233,241,.5);
+  background:linear-gradient(152deg,rgba(17,44,74,.91),rgba(13,17,49,.93));
+  box-shadow:0 0 22px rgba(63,238,246,.16),inset 0 1px rgba(190,241,255,.12);
+}
+:root[data-interface='cosmic'] .spica-action-batch {
+  border:1px solid rgba(81,184,255,.24);border-radius:11px;padding:9px;
+  background:linear-gradient(120deg,rgba(24,54,83,.55),rgba(33,17,74,.33));
+}
+:root[data-interface='cosmic'] .spica-action-batch.checkpointed {border-color:rgba(59,227,184,.54);}
+:root[data-interface='cosmic'] .spica-action-batch.active {border-color:rgba(85,239,255,.56);box-shadow:0 0 13px rgba(23,196,240,.12);}
+:root[data-interface='cosmic'] .spica-onion-checkpoint {
+  margin-top:6px;padding:7px;border-radius:8px;
+  border:1px solid rgba(128,88,228,.40);background:rgba(104,53,189,.14);
+}
+:root[data-interface='cosmic'] .cosmic-telemetry {
+  min-width:0;overflow:auto;padding:12px 10px 20px;
+  border-left:1px solid rgba(125,95,235,.26);
+  display:flex;flex-direction:column;gap:10px;
+}
+:root[data-interface='cosmic'] .cosmic-telemetry-panel {padding:12px;border-radius:15px;min-width:0;}
+:root[data-interface='cosmic'] .cosmic-telemetry-panel header {
+  display:flex;align-items:center;gap:7px;margin-bottom:10px;color:#f0f9ff;font-size:12px;
+}
+:root[data-interface='cosmic'] .cosmic-telemetry-panel header svg {font-size:18px;color:#53eaf8;filter:drop-shadow(0 0 5px rgba(66,229,247,.5));}
+:root[data-interface='cosmic'] .cosmic-telemetry-panel dl {display:grid;gap:6px;margin:12px 0;}
+:root[data-interface='cosmic'] .cosmic-telemetry-panel dl div {display:flex;justify-content:space-between;gap:10px;}
+:root[data-interface='cosmic'] .cosmic-telemetry-panel dt {color:#a3b8d7;font-size:10px;}
+:root[data-interface='cosmic'] .cosmic-telemetry-panel dd {margin:0;color:#d7fbfa;font-size:10px;font-weight:700;}
+:root[data-interface='cosmic'] .cosmic-telemetry-step {display:flex;align-items:center;gap:7px;padding:7px 0;border-top:1px solid rgba(146,173,255,.12);font-size:10px;}
+:root[data-interface='cosmic'] .cosmic-telemetry-step small {margin-left:auto;color:#a2b7df;font-size:9px;}
+:root[data-interface='cosmic'] .cosmic-led {border-radius:50%;width:8px;height:8px;border:1px solid #6e82a8;flex:none;}
+:root[data-interface='cosmic'] .cosmic-led.completed {background:#58e6bd;box-shadow:0 0 10px rgba(77,243,174,.6);border-color:#58e6bd;}
+:root[data-interface='cosmic'] .cosmic-led.active {background:#4ed8ff;box-shadow:0 0 10px rgba(71,198,246,.65);border-color:#4ed8ff;}
+:root[data-interface='cosmic'] .cosmic-checkpoint {padding:10px;border-radius:9px;background:rgba(29,139,164,.12);border:1px solid rgba(67,228,249,.2);font-size:10px;}
+:root[data-interface='cosmic'] .cosmic-telemetry-panel .MuiLinearProgress-root,
+:root[data-interface='cosmic'] [aria-label='SPICA build plan'] .MuiLinearProgress-root {
+  background:rgba(99,83,163,.37);height:5px;border-radius:8px;margin:7px 0;
+}
+:root[data-interface='cosmic'] .cosmic-telemetry-panel .MuiLinearProgress-bar,
+:root[data-interface='cosmic'] [aria-label='SPICA build plan'] .MuiLinearProgress-bar {
+  background:linear-gradient(90deg,#227eeb,#43f8e6);
+  box-shadow:0 0 10px rgba(81,250,253,.5);
+}
+@media(max-width:1350px){
+  :root[data-interface='cosmic'] .cosmic-chat-layout.cosmic-plan-visible {grid-template-columns:minmax(225px,275px) minmax(0,1fr);}
+  :root[data-interface='cosmic'] .cosmic-chat-layout.cosmic-has-telemetry:not(.cosmic-plan-visible) {grid-template-columns:minmax(0,1fr) minmax(190px,230px);}
+  :root[data-interface='cosmic'] .cosmic-chat-layout.cosmic-plan-visible .cosmic-telemetry {display:none;}
+}
+@media(max-width:970px){
+  :root[data-interface='cosmic'] .cosmic-chat-layout.cosmic-has-telemetry,
+  :root[data-interface='cosmic'] .cosmic-chat-layout.cosmic-plan-visible {display:flex;flex-direction:column;}
+  :root[data-interface='cosmic'] .cosmic-plan-rail {flex:0 1 auto;max-height:36vh;overflow:auto;border-right:0;border-bottom:1px solid rgba(73,214,237,.25);}
+  :root[data-interface='cosmic'] .cosmic-telemetry {display:none;}
+  :root[data-interface='cosmic'] .chat-primary {flex:1;min-height:0;}
+}
+:root[data-motion='reduced'][data-interface='cosmic'] * {animation:none!important;transition:none!important;}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-interface='cosmic'] * {animation:none!important;transition:none!important;}
+}
+/* The centered SPICA Workbench is a real app surface, not a separate channel UI.
+   These overrides are limited to the opt-in Cosmic interface. */
+:root[data-interface='cosmic'] .spica-workbench-dialog .MuiBackdrop-root {
+  background:rgba(2,5,20,.78);
+  backdrop-filter:blur(13px) saturate(1.12);
+}
+:root[data-interface='cosmic'] .MuiDialog-paper.spica-workbench {
+  --spica-cyan:#56fff1;
+  --spica-violet:#b49aff;
+  --spica-edge:rgba(96,232,254,.32);
+  width:min(1620px,calc(100vw - 36px));height:min(92dvh,1040px);
+  border:1px solid rgba(77,247,255,.57);
+  border-radius:23px;
+  background:radial-gradient(ellipse at 75% 0,rgba(93,46,195,.42),transparent 54%),
+    radial-gradient(ellipse at 9% 92%,rgba(20,172,205,.22),transparent 44%),
+    linear-gradient(140deg,rgba(16,29,65,.99),rgba(7,13,36,.99));
+  box-shadow:0 32px 130px rgba(0,0,0,.82),0 0 48px rgba(38,241,253,.18),
+    inset 0 1px rgba(182,252,255,.25);
+}
+:root[data-interface='cosmic'] .spica-workbench-header {
+  border-bottom:1px solid rgba(77,232,250,.40);
+  background:linear-gradient(100deg,rgba(26,109,153,.25),rgba(77,32,163,.24));
+}
+:root[data-interface='cosmic'] .spica-workbench-mark {
+  color:#d8fdff;
+  background:linear-gradient(135deg,rgba(42,212,217,.48),rgba(119,56,226,.48));
+  border:1px solid rgba(106,253,255,.68);
+  box-shadow:0 0 24px rgba(70,238,250,.37),inset 0 1px rgba(226,255,255,.26);
+}
+:root[data-interface='cosmic'] .spica-workbench-evidence,
+:root[data-interface='cosmic'] .spica-live-preview-pane,
+:root[data-interface='cosmic'] .spica-panel {
+  border-color:rgba(107,189,249,.34);
+  background:linear-gradient(158deg,rgba(25,45,91,.83),rgba(10,18,49,.91));
+  box-shadow:inset 0 1px rgba(177,235,255,.10),0 13px 34px rgba(0,0,0,.18);
+}
+:root[data-interface='cosmic'] .spica-workbench-tabs,
+:root[data-interface='cosmic'] .spica-workbench-footer {
+  border-color:rgba(91,227,251,.32);
+  background:linear-gradient(90deg,rgba(14,33,77,.84),rgba(33,17,70,.86));
+}
+:root[data-interface='cosmic'] .spica-workbench-tabs .MuiButton-contained {
+  background:linear-gradient(118deg,#1179ac,#653bcd);
+  box-shadow:0 0 20px rgba(42,233,249,.35);
+}
+:root[data-interface='cosmic'] .spica-terminal-shell {
+  border:1px solid rgba(50,206,246,.44);
+  background:rgba(4,11,29,.92);
+  box-shadow:inset 0 0 28px rgba(4,106,174,.12);
+}
+:root[data-interface='cosmic'] .spica-build-event[data-status='passed'] {
+  background:rgba(27,204,171,.09);
+  border-color:rgba(45,222,179,.21);
+}
+:root[data-interface='cosmic'] .spica-build-event[data-status='running'] {
+  background:rgba(26,145,244,.16);
+  border-color:rgba(74,197,255,.22);
+}

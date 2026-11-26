@@ -83,7 +83,7 @@ export function SpicaResearch({ projectId }: { projectId: string }) {
     </div>
     <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
       <Chip size="small" label={`${snapshot.searchesLeft} searches left · ${snapshot.readsLeft} page reads left`} />
-      <Chip size="small" label={provider === 'bing' ? 'Bing RSS' : provider === 'searxng' ? 'SearXNG' : 'DuckDuckGo'} />
+      <Chip size="small" label={{bing:'Bing RSS',searxng:'SearXNG',duckduckgo:'DuckDuckGo',mwmbl:'Mwmbl'}[provider]} />
       <Button size="small" disabled={!!busy} onClick={() => {
         const next = newRun();
         setRun(next);

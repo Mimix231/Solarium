@@ -18,16 +18,28 @@ const empty={rootEntryCount:0,fileCount:0,commands:[],checks:[],dependenciesInst
 test('uncapped llama.cpp streams retain the fitted prompt; vLLM receives no unsupported retention option',async()=>{
   const {streamLlamaTurn}=require('../.test-dist/engine/llama.js');const previous=global.fetch,requests=[];
   global.fetch=async(url,init)=>{requests.push(JSON.parse(init.body));return new Response('data: '+JSON.stringify({choices:[{delta:{reasoning_content:'genuine reasoning'},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[{delta:{content:'answer'},finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n');};
-  try{for(const backend of ['llama.cpp','vllm','ollama']){let thought='',answer='';await streamLlamaTurn({backend,modelId:'fixture',endpoint:'http://localhost:8080',temperature:.7,maxTokens:128},[{role:'system',content:'Retain the goal and chosen stack.'},{role:'user',content:'Create the project.'}],{tools:'supported'},{reasoning:d=>thought+=d,answer:d=>answer+=d},new AbortController().signal,{outputTokens:-1});assert.equal(thought,'genuine reasoning');assert.equal(answer,'answer');}assert.equal(requests.length,3);assert.equal(requests[0].max_tokens,-1);assert.equal(requests[0].n_keep,-1);assert.equal(requests[1].n_keep,undefined);assert.equal(requests[2].n_keep,undefined);}finally{global.fetch=previous;}
+  try{for(const backend of ['llama.cpp','vllm','ollama']){let thought='',answer='';await streamLlamaTurn({backend,modelId:'fixture',endpoint:'http://localhost:8080',temperature:.7,maxTokens:128},[{role:'system',content:'Retain the goal and chosen stack.'},{role:'user',content:'Create the project.'}],{tools:'supported'},{reasoning:d=>thought+=d,answer:d=>answer+=d},new AbortController().signal,{outputTokens:-1});assert.equal(thought,'genuine reasoning');assert.equal(answer,'answer');}assert.equal(requests.length,3);assert.equal(requests[0].max_tokens,-1);assert.ok(Number.isSafeInteger(requests[0].n_keep) && requests[0].n_keep>=0);assert.equal(requests[1].n_keep,undefined);assert.equal(requests[2].n_keep,undefined);}finally{global.fetch=previous;}
 });
 test('a resumed task restores its actual goal, decisions and unresolved verification together',async()=>{
   const {TaskExecution}=require('../.test-dist/engine/intelligence/task.js');const {VerificationLedger}=require('../.test-dist/engine/intelligence/commands.js');
   const store=new Store(),session={id:'s',messages:[{role:'user',content:'Build a Tauri video editor.'}]},project={id:'p'};
   const task=new TaskExecution(session,project,[],store),ledger=new VerificationLedger(),memory=new WorkMemory();memory.note({decisions:[{key:'frontend',value:'SvelteKit'}],next_action:'Create files.'});
-  task.checkpoint(ledger.state,memory.data);await task.persist();await task.finish('cancelled');
+  task.checkpoint(ledger.state,memory.data);await task.persist();await task.finish('paused');
   const resumed=new TaskExecution({...session,messages:[...session.messages,{role:'user',content:'Continue'}]},project,[],store);
   assert.equal(await resumed.resume({...session,messages:[{role:'user',content:'Continue'}]}),true);assert.equal(resumed.data.requestedOutcome,'Build a Tauri video editor.');assert.equal(resumed.data.workMemory.decisions[0].value,'SvelteKit');assert.equal(resumed.data.workMemory.nextAction,'Create files.');assert.equal(resumed.data.state,'working');await resumed.persist();
 });
+test('Resume never selects an older goal behind the latest cancelled or completed task',async()=>{
+ const {TaskExecution}=require('../.test-dist/engine/intelligence/task.js');
+ for(const state of ['cancelled','completed']){
+  const records=[{id:'old',updatedAt:'2026-11-16T09:00:00Z',version:2,data:{sessionId:'s',state:'paused',requestedOutcome:'Older unrelated request'}},
+   {id:'latest',updatedAt:'2026-11-17T09:00:00Z',version:2,data:{sessionId:'s',state,requestedOutcome:'Latest user goal'}}];
+  const session={id:'s',messages:[{role:'user',content:'Resume'}]};
+  const task=new TaskExecution(session,{id:'p'},[],{list:async()=>records});
+  assert.equal(await task.resume(session),false);
+  assert.equal(task.data.requestedOutcome,'Resume');
+ }
+});
+
 test('settled decisions survive reload and repeated discovery changes the next offered strategy',async()=>{
   const memory=new WorkMemory();memory.environment=empty;
   memory.note({decisions:[{key:'frontend',value:'SvelteKit + TypeScript'}],next_action:'Create project files.'});
@@ -88,6 +100,10 @@ test('character memory persists knowledge, stays in its story and drops retracte
   const input={summary:'Mara hid the key while Ilya was absent.',quote:'Mara hid the brass key beneath the floor.',knowledge:[{character:mara.id,state:'knows'},{character:ilya.id,state:'unknown'}]};
   await rememberStoryEvents(stories,writing,doc,[input]);await rememberStoryEvents(stories,writing,doc,[input]);assert.equal((await stories.events(world.id)).length,1);
   const restored=new StoryRepository(access,store),context=await restored.contextPack(world.id,'Write the next chapter.');assert.match(context,/Speaks plainly/);assert.match(context,/Ilya=unknown/);assert.match(context,/Mara=knows/);
+  const opening=await restored.contextPack(world.id,'Write the source opening.',true,null,{arc:1,chapter:1},[mara.id]);
+  assert.match(opening,/Speaks plainly/);
+  assert.doesNotMatch(opening,/Ilya|hid the key/);
+  assert.equal((await restored.activeEvents(world.id,{arc:1,chapter:1})).length,0);
   await assert.rejects(rememberStoryEvents(stories,writing,doc,[{...input,quote:'A future event that never happened.'}]),/exact passage/);
   const foreign=new StoryRepository({sessionId:'other',projectId:'q'},store);await assert.rejects(foreign.contextPack(world.id,'Mara'),/outside/);
   doc=await writing.save(doc,markdownContent('Mara hid the **brass** key beneath the floor. Ilya was asleep elsewhere.'));assert.equal((await restored.activeEvents(world.id)).length,1);

@@ -1,0 +1,64 @@
+/* Round E coded Cosmic work surfaces. All controls remain the real Solarium
+ * components, not a flattened concept picture. Scoped to opt-in Cosmic. */
+:root[data-interface='cosmic'] {
+  --cosmic-cyan:#53f8ef;
+  --cosmic-blue:#48bbfc;
+  --cosmic-violet:#ad81ff;
+  --cosmic-text:#edf4ff;
+  --cosmic-edge:rgba(97,217,255,.34);
+  --cosmic-glass:linear-gradient(142deg,rgba(20,39,81,.94),rgba(16,20,52,.91));
+  --cosmic-focus:0 0 0 2px rgba(82,240,246,.5),0 0 20px rgba(72,229,246,.23);
+}
+:root[data-interface='cosmic'] .work-log{
+  position:relative;border:1px solid var(--cosmic-edge);border-radius:15px;
+  background:var(--cosmic-glass);padding:10px 13px;
+  box-shadow:inset 0 1px rgba(202,245,255,.12),0 14px 32px rgba(2,6,24,.29);
+}
+:root[data-interface='cosmic'] .work-log-heading{
+  color:var(--cosmic-text);font-weight:750;font-size:12px;min-height:31px;
+}
+:root[data-interface='cosmic'] .work-log-heading>span:first-child{color:var(--cosmic-cyan)}
+:root[data-interface='cosmic'] .work-log-rows{max-height:440px;scrollbar-color:rgba(125,104,240,.63) transparent}
+:root[data-interface='cosmic'] .spica-work-activity{
+  border:1px solid rgba(122,157,255,.25);
+  background:linear-gradient(110deg,rgba(10,30,66,.75),rgba(32,20,70,.40));
+  border-radius:12px;
+}
+:root[data-interface='cosmic'] .spica-work-activity[open]{
+  border-color:rgba(89,235,248,.53);
+  box-shadow:inset 0 1px rgba(137,241,250,.12),0 0 16px rgba(51,216,255,.13);
+}
+:root[data-interface='cosmic'] .spica-work-activity>summary strong{color:#e9f8ff;font-size:12px}
+:root[data-interface='cosmic'] .spica-work-activity>summary>span:first-child{color:#61ffdf;font-size:17px}
+:root[data-interface='cosmic'] .spica-work-activity>summary small{color:#a7c5e9}
+:root[data-interface='cosmic'] .spica-work-activity-detail{border-color:rgba(112,160,255,.2);color:#d4e9ff}
+:root[data-interface='cosmic'] .spica-work-tool{padding:6px 7px;border-radius:9px;background:rgba(12,27,59,.5)}
+:root[data-interface='cosmic'] .spica-work-tool>span:first-child{color:#62f9c7}
+:root[data-interface='cosmic'] .spica-work-tool details>summary{color:#70ebfa;cursor:pointer}
+:root[data-interface='cosmic'] .spica-work-checkpoint{color:#76f7d9}
+:root[data-interface='cosmic'] .cosmic-plan-rail [aria-label='SPICA build plan']{
+  padding:15px;border-radius:17px;
+  background:linear-gradient(170deg,rgba(18,48,82,.95),rgba(11,17,48,.97));
+}
+:root[data-interface='cosmic'] [data-spica-plan-collapsed] .MuiButton-root{
+  background:linear-gradient(110deg,rgba(14,48,77,.95),rgba(56,32,113,.91));
+  border-color:rgba(81,239,247,.65);color:#d6fdff;
+  box-shadow:0 0 18px rgba(51,240,244,.22),inset 0 1px rgba(214,255,255,.18);
+}
+:root[data-interface='cosmic'] .cosmic-telemetry-panel{
+  border-color:rgba(116,135,251,.32);
+  background:linear-gradient(135deg,rgba(23,40,77,.90),rgba(26,23,65,.83));
+}
+:root[data-interface='cosmic'] .cosmic-telemetry-panel header{font-weight:760;letter-spacing:.01em}
+:root[data-interface='cosmic'] .app-shell :is(button,a,[tabindex]):focus-visible{
+  outline:2px solid var(--cosmic-cyan);outline-offset:2px;
+}
+:root[data-interface='cosmic'] .composer:focus-within{box-shadow:var(--cosmic-focus)!important}
+@media (max-width:1200px){
+  :root[data-interface='cosmic'] .work-log-rows{max-height:320px}
+  :root[data-interface='cosmic'] .cosmic-plan-rail [aria-label='SPICA build plan']{padding:11px}
+}
+@media(prefers-reduced-motion:reduce){
+  :root[data-interface='cosmic'] .spica-work-activity,
+  :root[data-interface='cosmic'] .work-log{animation:none;transition:none}
+}

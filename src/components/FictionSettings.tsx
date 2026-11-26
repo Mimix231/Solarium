@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Alert, Avatar, Box, Button, Chip, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import { useLibraryContext } from '../foundation/ui-context';
-import { StoryRepository, type StoryCharacter, type StoryData, type StoryWorld } from '../stories/repository';
+import { StoryRepository, storyBriefLimit, type StoryCharacter, type StoryData, type StoryWorld } from '../stories/repository';
 import { FictionRepository, isStoryIcon, profileFields, profileLength, profileLimit, type ProfileField, type ProfileText,
   type StoryCategory, type StoryCategoryData, type StoryProfile } from '../stories/fiction';
 
@@ -112,6 +112,10 @@ export function FictionSettings() {
             <Button onClick={() => editWorld(world)}>Edit group</Button>
             {category && <Button onClick={() => editCategory(category)}>Edit category</Button>}
           </Stack>
+          {world.data.storyBrief?.trim() ? <details className="fiction-story-brief">
+            <summary>Story brief</summary>
+            <Typography variant="body2" sx={{ whiteSpace:'pre-wrap', overflowWrap:'anywhere', mt:1 }}>{world.data.storyBrief}</Typography>
+          </details> : <Button sx={{alignSelf:'flex-start'}} onClick={() => editWorld(world)}>Add story brief</Button>}
           {category ? <>
             <Stack direction="row" gap={1} flexWrap="wrap">
               {profiles.filter(item => item.data.categoryId === category.id).map(item => <Chip key={item.id} label={cast.find(character => character.id === item.data.characterId)?.title ?? item.title}
@@ -145,11 +149,16 @@ function GroupForm({ world, hasOwner, onCancel, onSave, onError }: {
   const [title, setTitle] = useState(world?.title ?? '');
   const [data, setData] = useState<Partial<StoryData>>({ originKind: world?.data.originKind ?? 'fanfiction',
     icon: world?.data.icon, franchiseName: world?.data.franchiseName ?? '', canonAnchor: world?.data.canonAnchor ?? '',
-    divergenceNote: world?.data.divergenceNote ?? '', chapterTarget: world?.data.chapterTarget });
+    divergenceNote: world?.data.divergenceNote ?? '', storyBrief:world?.data.storyBrief??'', chapterTarget: world?.data.chapterTarget,
+    dialogueLayout: world?.data.dialogueLayout ?? 'speaker', narration: world?.data.narration ?? {pov:'third person',tense:'past',tone:''} });
   const [personal, setPersonal] = useState(!hasOwner);
   return <FictionForm title={world ? 'Edit group' : 'New group'} label="Save group" ready={Boolean(title.trim())}
     onCancel={onCancel} onError={onError} onSave={() => onSave(title, data, personal)}>
     <TextField label="Group name" value={title} onChange={event => setTitle(event.target.value)} />
+    <TextField multiline minRows={4} maxRows={12} label="Story brief" value={data.storyBrief}
+      inputProps={{maxLength:storyBriefLimit}}
+      helperText="Describe the premise, setting, and what drives the story. The Spark uses this brief when writing chapters in the group."
+      onChange={event=>setData(old=>({...old,storyBrief:event.target.value}))}/>
     <Stack direction="row" spacing={1} alignItems="center"><Avatar src={data.icon}>{title.slice(0, 2)}</Avatar>
       <Button component="label">Choose group icon<input type="file" hidden accept="image/png,image/jpeg,image/webp" onChange={event => {
         void localIcon(event).then(icon => { if (icon) setData(old => ({ ...old, icon })); }).catch(onError);
@@ -162,7 +171,13 @@ function GroupForm({ world, hasOwner, onCancel, onSave, onError }: {
     <TextField label="Franchise or source title" value={data.franchiseName} onChange={event => setData(old => ({ ...old, franchiseName: event.target.value }))} />
     <TextField label="Canon edition or continuity" value={data.canonAnchor} onChange={event => setData(old => ({ ...old, canonAnchor: event.target.value }))} />
     <TextField multiline label="Author’s continuity and AU choices" value={data.divergenceNote} onChange={event => setData(old => ({ ...old, divergenceNote: event.target.value }))} />
-    <TextField type="number" label="Default chapter target (characters)" value={data.chapterTarget ?? ''} helperText="Optional. A length in the chat request takes precedence."
+    <TextField multiline minRows={2} label="Narrative style notes" value={data.narration?.tone ?? ''} inputProps={{ maxLength: 800 }}
+      helperText="Describe the viewpoint, pacing and tone you want for this AU."
+      onChange={event => setData(old => ({ ...old, narration: { ...old.narration!, tone: event.target.value } }))} />
+    <TextField select label="Dialogue layout" value={data.dialogueLayout} onChange={event => setData(old => ({ ...old, dialogueLayout: event.target.value as StoryData['dialogueLayout'] }))}>
+      <MenuItem value="speaker">Character: dialogue</MenuItem><MenuItem value="prose">Traditional prose</MenuItem>
+    </TextField>
+    <TextField type="number" label="Default chapter target (characters)" value={data.chapterTarget ?? ''} helperText="Fanfiction defaults to 82,000. A length in chat takes precedence."
       onChange={event => { const value = event.target.value; setData(old => ({ ...old, chapterTarget: value ? Number(value) : undefined })); }} />
     {!world && hasOwner && <TextField select label="Save to" value={personal ? 'personal' : 'owner'} onChange={event => setPersonal(event.target.value === 'personal')}>
       <MenuItem value="owner">Current chat or project</MenuItem><MenuItem value="personal">Personal library</MenuItem>

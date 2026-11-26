@@ -1,7 +1,7 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('fs'),path=require('path'),vm=require('vm');
-const ts=require(require('child_process').execFileSync('npm',['root','-g'],{encoding:'utf8'}).trim()+'/typescript');
+const ts=require('typescript');
 const root=path.resolve(__dirname,'..');
 const source=p=>fs.readFileSync(path.join(root,p),'utf8');
 function load(p,mocks){

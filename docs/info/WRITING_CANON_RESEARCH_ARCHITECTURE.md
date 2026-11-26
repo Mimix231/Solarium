@@ -67,3 +67,112 @@ Settings groups use Story Worlds. Categories select an arc and edition. Each cat
 The chapter planner reserves its conclusion and can insert further development before it when accepted prose is short. A proposed ending can complete the task only after natural generation and the saved prose reaching the requested length. Chapter scene boundaries use semantic Markdown rules. Settings → Fiction controls their presentation in the reading block. Numbered scene labels from generation are omitted from saved prose.
 
 New long narrative plans group connected actions into longer scenes. Each scene schedules two complete developments, each with its own observable outcome. A naturally finished response must quote the passage where the action happened before the controller checkpoints that development. The next development starts from that exact checkpoint inside the same scene. The scene advances only after both developments and the scene's share of the requested length pass. The committed prose revision and the task's scene index update atomically. A stopped or rejected development remains recoverable without creating a completed scene or a story memory.
+
+## Fanfiction chapters and the chapter reader
+
+Fanfiction chapter requests use a default minimum of 82,000 characters. A length
+in chat, an explicit request without a target, or the world's configured length
+can change it. The writer plans advancing scenes and a reserved conclusion.
+Each scene needs its observable outcome and a supporting passage. A shorter
+scene with a completed action can be saved. Later scenes receive the exact prose ending, recent outcomes, earlier
+consequences and the saved cast. Further action develops before the conclusion
+when cumulative prose is short. Chapter completion uses a readback of the saved
+revision and the original length requirement. Existing tasks keep their saved
+scene or development schedule.
+
+After a reported capacity stop, the writer saves the real draft. It archives
+an interrupted clause and uses it as a hint when continuing from the last
+complete sentence. If the planned action remains open, the chapter task saves
+the relevant draft passages and a specific next beat with the same scene index.
+A natural stop before the action ends can use the same checkpoint. The scene
+spacer is inserted only after an accepted scene. The continuation overlay shows
+actual save and cast progress, continuity notes and the next beat. Native Stop
+keeps the last checkpoint available for explicit Resume.
+
+The Spark checks actual prose against active profiles and user instructions.
+It can recover missing outcome metadata by selecting a numbered passage. Voice,
+private knowledge and out-of-context behavior may trigger a live correction.
+Only the addressed original passages can be replaced, and revised passages are
+checked again before acceptance. The original output is retained in the local
+archive. A review is a model assessment and can miss subtle voice or context.
+An exact copied opening can be removed when new prose follows it. Small
+remaining repetitions can use the same passage correction.
+
+`save_fiction_profiles` stores original summaries in the active Story World.
+Appearance, personality, voice, abilities, history, motives, relationships,
+knowledge and AU constraints have independent fields. A cited field needs an
+exact passage from an enabled scoped source that matches the active continuity.
+Uncited summaries are labelled AU drafts. Existing fields and user locks take
+precedence. Character cards show those origins and lock only fields the user
+changes. The Fiction settings include narrative style notes and dialogue layout.
+The drafting prompt uses those choices, the cast's traits and private knowledge,
+and relevant source passages to guide original fiction.
+
+The web preparation stage reads the actual selected page and saves the readable
+source. Explicit source arc, chapter and edition resolve independently of the
+fanfiction's chapter number. Exact chapter, premise and cast references have
+different roles. Web ON can follow a verified page's actual chapter links.
+The native story reader saves a bounded readable snapshot. Chapter excerpts
+keep evidence from late in the page alongside the opening and relevant details.
+Later chapters reuse enabled pages attached to the story and prior chapter
+tasks when their continuity boundaries match. Web OFF permits this local
+recall. Profile claims may have different versions by arc, chapter and edition.
+The draft receives the applicable version and human world rules separately
+from what each character knows. The Spark can prepare profiles with the saved
+evidence. Failed readings or profile saves remain visible in the Work Log.
+At a specified opening, unlocated draft events stay out of active recall.
+An explicit cast list scopes character retrieval and the continuation display.
+The planning, drafting, and review requests retain a concise excerpt of the
+read chapter with its exact source point when that evidence is available.
+An authorized profile save can retain explicit disclosure restrictions and
+stated limits on a character's knowledge verbatim, with the original user
+message ID. Those restrictions remain distinct from facts in a web excerpt.
+
+A fiction-chat mention can prepare a card during discussion or planning.
+The Spark identifies the mentioned fictional character. Available source
+evidence feeds a naturally finished profile-drafting stream, so the sections
+can appear live even when a backend buffers tool arguments. The preview is
+provisional until the registered scoped save succeeds. Personality, appearance,
+history and abilities use separate summaries. Empty placeholders do not enter
+active recall. Authorized new detail can fill an old generated placeholder.
+User-locked text remains authoritative. Ambiguous standalone names can be
+answered without creating a world. The character dialog can open the saved
+profile from a different arc or edition.
+
+In chat, `[Group > Category]` resolves the exact existing fiction destination.
+It can select a personal library category without creating a chat copy.
+Following mentions use the selected destination until the user changes it.
+The completed save writes real category profile records with revisions and
+preserves fields authored by the user. A chapter can read the selected
+category while retaining its own document owner and saved scene history.
+Named lists become individual cast candidates. A profile save validates each
+name and rejects a list supplied as the identity of one card.
+
+Each Fiction group can store its author’s story brief. Planning, drafting and
+review use the brief with the selected continuity point and character
+profiles. Important character fields retain their named attribution. The
+review can check family and history against those records and can identify
+direct appearance conflicts for an exact passage repair. A chapter’s tone
+leaves room for the characters to respond to individual situations.
+
+Search results are checked against the current public query before they gain
+selectable IDs. The scoped audit retains what the provider actually returned.
+A weak or failed Bing response can offer an explicit Mwmbl fallback for the same topic
+in chat. A weak result may also suggest a shorter public query with the same
+subject. The Spark must call the search tool explicitly for either option.
+The public search terms and observed results stay with the archived research
+record. General pages need relevant terms in a coherent excerpt before they can
+become evidence. New general research topics recall saved material by the
+current request. Only matching observed links, followed
+references and URLs supplied by the user can be read.
+Fiction research offers the unread supplied references first. The Spark calls
+the registered page reader for each source, and attempted URLs leave the list.
+
+The inline writing block offers a larger reader with scene navigation, speaker
+labels, separated narration, rich editing and export. The reading surface uses the current durable
+revision or a compatible recovery draft. `Name: dialogue` formatting only
+uses speakers identified by the printed label or nearby speech attribution.
+Dialogue can stand on its own even when the speaker is unclear. The user's
+scene spacer applies to both readers. Recoverable stops continue in the
+active chapter with the visible overlay. An explicit chat request can
+continue a deliberately stopped chapter from its saved document.

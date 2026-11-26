@@ -1,11 +1,16 @@
 import type { Capabilities, GenerationMetrics, InferenceBackend, LocalModel } from '../domain/types';
-import { countInputTokens, inspectModel, streamLlamaTurn, type GenerationRequestOptions, type LlamaCallbacks, type LlamaMessage } from './llama';
+import { countChatInputTokens, countInputTokens, inspectModel, streamLlamaTurn, type GenerationRequestOptions, type LlamaCallbacks, type LlamaMessage } from './llama';
 
 /** Both backends implement the OpenAI-compatible chat API; their capabilities still differ. */
 export interface InferenceAdapter {
   readonly kind: InferenceBackend;
   inspect(model: LocalModel, signal?: AbortSignal): Promise<{ ids: string[]; capabilities: Capabilities }>;
   countTokens(model: LocalModel, messages: LlamaMessage[], signal: AbortSignal): Promise<number | null>;
+  /** Optional tool-aware count; null means the backend cannot verify it. */
+  countChatTokens?(
+    model: LocalModel, messages: LlamaMessage[], tools: NonNullable<GenerationRequestOptions['tools']>,
+    signal: AbortSignal, toolChoice?: 'auto' | 'required',
+  ): Promise<number | null>;
   generate(model: LocalModel, messages: LlamaMessage[], capabilities: Capabilities, callbacks: LlamaCallbacks, signal: AbortSignal, options?: GenerationRequestOptions): ReturnType<typeof streamLlamaTurn>;
 }
 function adapter(kind: InferenceBackend): InferenceAdapter {
@@ -13,6 +18,11 @@ function adapter(kind: InferenceBackend): InferenceAdapter {
     kind,
     inspect: (model, signal) => inspectModel(model, signal),
     countTokens: (model, messages, signal) => countInputTokens(model, messages, signal),
+    ...(kind === 'llama.cpp' ? {
+      countChatTokens: (model: LocalModel, messages: LlamaMessage[], tools: NonNullable<GenerationRequestOptions['tools']>,
+        signal: AbortSignal, toolChoice?: 'auto' | 'required') =>
+        countChatInputTokens(model, messages, tools, signal, toolChoice),
+    } : {}),
     generate: (model, messages, capabilities, callbacks, signal, options) => streamLlamaTurn(model, messages, capabilities, callbacks, signal, options),
   };
 }

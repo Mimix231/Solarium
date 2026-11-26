@@ -7,6 +7,8 @@ import MenuBookRounded from '@mui/icons-material/MenuBookRounded';
 import ScienceRounded from '@mui/icons-material/ScienceRounded';
 import GroupsRounded from '@mui/icons-material/GroupsRounded';
 import AutoModeRounded from '@mui/icons-material/AutoModeRounded';
+import VisibilityOutlined from '@mui/icons-material/VisibilityOutlined';
+import VisibilityOffOutlined from '@mui/icons-material/VisibilityOffOutlined';
 import { useInstallJobs, installProgress } from '../engine/install-jobs';
 import { useShallow } from 'zustand/react/shallow';
 import { useEffect, useState } from 'react';
@@ -51,7 +53,8 @@ export function Shell({ children }: { children: ReactNode }) {
   const sidebar = view === 'chat' && workspace.preferences.sidebarOpen;
   const currentProject = (workspace.projects ?? []).find((p) => p.id === workspace.activeProjectId);
   const scopeCount = workspace.sessions.filter((s) => (s.projectId ?? null) === (currentProject?.id ?? null)).length;
-  return <Box className="app-shell">
+  const cosmic=workspace.preferences.interfaceTheme==='cosmic';
+  return <Box className={`app-shell ${cosmic?'cosmic-interface':''}`}>
     <header className="title-bar" data-tauri-drag-region>
       <Stack direction="row" alignItems="center" gap={1.2}>
         <span className="brand-symbol">☼</span><Typography fontWeight={800} fontSize={13.5} letterSpacing="-.25px">Solarium</Typography>
@@ -62,6 +65,12 @@ export function Shell({ children }: { children: ReactNode }) {
         <Typography color="text.secondary" fontSize={10.5} sx={{ display: { xs: 'none', sm: 'block' } }}>Your local AI universe</Typography>
         {currentInstall && <Tooltip title={`${currentInstall.engine}: ${currentInstall.phase}`}><Button size="small" variant="outlined" className="runtime-title-progress" onClick={() => setView('runtime')}><DownloadForOfflineRounded sx={{ fontSize: 14, mr: .5 }}/>{currentInstall.engine} {installProgress(currentInstall) === null ? '…' : `${Math.round(installProgress(currentInstall)!)}%`}</Button></Tooltip>}
         <Tooltip title="Switch between Companion and Workspace layouts"><Button size="small" variant="text" onClick={() => updatePreferences({ workspaceMode: workspace.preferences.workspaceMode === 'workspace' ? 'companion' : 'workspace' })}><AutoModeRounded sx={{ fontSize: 15, mr: .6 }}/>{workspace.preferences.workspaceMode === 'workspace' ? 'Workspace' : 'Companion'}</Button></Tooltip>
+        <Tooltip title={cosmic?'Return to Classic interface':'Open Cosmic interface (futuristic workbench)'}>
+          <IconButton data-cosmic-toggle aria-label={cosmic?'Switch to Classic interface':'Switch to Cosmic interface'}
+            aria-pressed={cosmic} onClick={()=>updatePreferences({interfaceTheme:cosmic?'classic':'cosmic'})}>
+            {cosmic?<VisibilityOffOutlined fontSize="small"/>:<VisibilityOutlined fontSize="small"/>}
+          </IconButton>
+        </Tooltip>
         <ThemePicker />
         {view==='chat'&&<Tooltip title={sidebar ? 'Hide sidebar' : 'Show sidebar'}><IconButton aria-label="Toggle sidebar" onClick={() => updatePreferences({ sidebarOpen: !sidebar })}><MenuOpenRounded fontSize="small" /></IconButton></Tooltip>}
         <WindowButtons />

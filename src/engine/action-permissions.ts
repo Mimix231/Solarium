@@ -21,10 +21,10 @@ const KNOWN_TOOLS = new Set([
 ]);
 
 export function taskGrantForTool(name: string, args: Record<string, unknown>): TaskGrant | null {
-  if (['spica_research_save','create_spica_app', 'edit_spica_graph', 'compose_spica_v2_graph', 'export_spica_app', 'run_spica_v2_graph',  'migrate_spica_v2_graph', 'history_spica_v2_graph'].includes(name)) return 'write';
+  if (['spica_research_save','create_spica_app', 'edit_spica_graph', 'compose_spica_v2_graph', 'export_spica_app', 'run_spica_graph', 'run_spica_v2_graph',  'migrate_spica_v2_graph', 'history_spica_v2_graph'].includes(name)) return 'write';
   if (name === 'verify_spica_app' || name === 'prepare_spica_app') return 'check';
   if (name === 'create_video_editor_project') return 'write';
-  if (name === 'replace_project_text' || name === 'apply_project_changes' || ['save_story_context','create_writing_document','finalize_writing_document','move_writing_document','create_writing_category','create_story_world','create_story_character','update_character_claims','remember_story_event','remember_character_fact'].includes(name)) return 'write';
+  if (name === 'replace_project_text' || name === 'apply_project_changes' || ['save_story_context','save_fiction_profiles','create_writing_document','finalize_writing_document','move_writing_document','create_writing_category','create_story_world','create_story_character','update_character_claims','remember_story_event','remember_character_fact'].includes(name)) return 'write';
   if(['register_project_command','start_project_service','stop_project_service'].includes(name))return 'check';
   if(name==='install_project_dependencies'||name==='run_project_command')return 'check';
   if (name === 'run_project_check' && !['git_status', 'git_diff'].includes(String(args.check ?? ''))) return 'check';

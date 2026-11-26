@@ -16,7 +16,7 @@ export interface Control {
   preference: string;
 }
 export type CollectionField =
-  | { key: string; label: string; type: 'text'; initial: string; required?: boolean; multiline?: boolean }
+  | { key: string; label: string; type: 'text'; initial: string; required?: boolean; multiline?: boolean; format?: 'plain' | 'markdown' }
   | { key: string; label: string; type: 'boolean'; initial: boolean; filter?: boolean }
   | { key: string; label: string; type: 'number'; initial: number; min?: number; max?: number }
   | { key: string; label: string; type: 'choice'; initial: string; choices: string[] }
@@ -53,6 +53,7 @@ export type GraphEdit =
   | { op: 'add_record_toggle'; key: string; label: string; initial: boolean; filter?: boolean }
   | { op: 'add_collection'; collection: CollectionInput }
   | { op: 'add_record_field'; collection: string; field: NewCollectionField }
+  | { op: 'set_field_property'; collection_id: string; field_key: string; property: 'label' | 'multiline' | 'format'; new_value: string | boolean }
   | { op: 'remove_setting'; key: string }
   | StyleEdit
   | ProgramEdit;
@@ -93,7 +94,8 @@ function validateCollection(value: unknown): asserts value is Collection {
           !field.choices.includes(field.initial)) throw Error(`Field "${field.key}" needs distinct choices and a default from those choices.`);
     } else if (field.type !== 'text' || typeof field.initial !== 'string' || field.initial.length > 16000 ||
         (field.required !== undefined && typeof field.required !== 'boolean') ||
-        (field.multiline !== undefined && typeof field.multiline !== 'boolean')) {
+        (field.multiline !== undefined && typeof field.multiline !== 'boolean') ||
+        (field.format !== undefined && field.format !== 'plain' && field.format !== 'markdown')) {
       throw Error(`Field "${field.key}" needs a text default of at most 16,000 characters and Boolean required or multiline flags.`);
     }
     keys.add(field.key);
@@ -264,6 +266,23 @@ export function changeGraph(graph: Graph, edits: readonly GraphEdit[]): Graph {
         try { validateCollection(proposed); }
         catch (error) { throw new GraphEditError(error instanceof Error ? error.message : String(error)); }
         collection.fields.push(proposed.fields.at(-1)!);
+        break;
+      }
+      case 'set_field_property': {
+        const collection=allCollections(next).find(item=>item.id===edit.collection_id);
+        if(!collection)throw new GraphEditError(`Collection "${edit.collection_id}" does not exist.`);
+        const field=collection.fields.find(item=>item.key===edit.field_key);
+        if(!field)throw new GraphEditError(`Field "${edit.field_key}" does not exist in "${collection.id}".`);
+        if(edit.property==='label') {
+          if(typeof edit.new_value!=='string'||!validLabel(edit.new_value))throw new GraphEditError('Field label must be a nonempty string up to 80 characters.');
+          field.label=edit.new_value;
+        } else if(edit.property==='multiline') {
+          if(field.type!=='text'||typeof edit.new_value!=='boolean')throw new GraphEditError('Only text fields support Boolean multiline.');
+          field.multiline=edit.new_value;
+        } else if(edit.property==='format') {
+          if(field.type!=='text'||(edit.new_value!=='plain'&&edit.new_value!=='markdown'))throw new GraphEditError('Only text fields support format plain or markdown.');
+          field.format=edit.new_value;
+        } else throw new GraphEditError('Unsupported field property.');
         break;
       }
       case 'remove_setting': {

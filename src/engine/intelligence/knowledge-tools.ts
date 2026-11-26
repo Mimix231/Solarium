@@ -2,8 +2,13 @@ import type { AgentToolDefinition } from '../tools';
 import type { ChatSession, CreatorProject, Preferences } from '../../domain/types';
 import { WritingRepository } from '../../writing/repository';
 import { markdownContent } from '../../writing/schema';
-import { StoryRepository, claimKinds, claimSections, type ClaimData } from '../../stories/repository';
-import { FictionRepository, profileFields, type ProfileField } from '../../stories/fiction';
+import { StoryRepository, claimKinds, claimSections, resolveStoryCharacter, type ClaimData } from '../../stories/repository';
+import { FictionRepository, profileFields, type FictionDestination, type ProfileField } from '../../stories/fiction';
+import { saveFictionProfiles, statedFictionRules, type FictionProfileInput } from '../../stories/profiles';
+import { englishFiction } from '../../stories/language';
+import { isFictionNameList } from '../../stories/name-list';
+import { matchesCharacterMention } from '../../stories/mentions';
+import type { CanonPoint } from '../../stories/canon';
 import { SourceRepository } from '../../sources/repository';
 import { researchTopic, nativeSearchProvider } from '../../research/research';
 import { saveStorySetup, type StorySetup } from '../../stories/setup';
@@ -25,6 +30,18 @@ export const knowledgeToolDefinitions:AgentToolDefinition[]=[
   define('move_writing_document','Move an authored document to a category inside the same project/story.',{document_id:str,category_id:{type:['string','null']}},['document_id','category_id']),
   define('create_story_world','Create a separate story continuity; never changes the assistant Spark persona.',{title:str,origin_kind:{type:'string',enum:['original','fanfiction','mixed']},franchise:str,canon_anchor:str,divergence:str},['title','origin_kind']),
   define('create_story_character','Save a story character avatar/profile, separate from the Spark. Names/aliases deduplicate. Voice/motive notes are interpretations until authored by the user or supported by evidence. A portrait can use an image attachment already supplied in this chat.',{name:str,aliases:{type:'array',items:str,maxItems:30},kind:{type:'string',enum:['canon','original','adapted']},voice:str,personality:str,motivation:str,portrait_attachment_id:str},['name']),
+  define('save_fiction_profiles','Save fiction profiles for characters the user mentioned. Use separate original summaries for personality, appearance, history and abilities, with other useful fields as available. Cite exact supporting excerpts when sourced. Uncited sections are editable drafts. Existing fields and locked facts are preserved. Supply story only to start a recognizable fiction world.', {
+    story:{type:'object',additionalProperties:false,properties:{title:str,franchise:str,edition:str,arc:{type:'integer',minimum:1,maximum:100_000},
+      chapter:{type:'integer',minimum:1,maximum:100_000},divergence:{type:'string',maxLength:1500},style:{type:'string',maxLength:800}},required:['title','franchise']},
+    rules:{type:'array',maxItems:8,items:{type:'object',additionalProperties:false,properties:{quote:{type:'string',minLength:12,maxLength:400,
+      description:'Exact user-stated world mechanic, taboo, limit or private-knowledge rule. Copy the user’s words.'}},required:['quote']}},
+    profiles:{type:'array',minItems:1,maxItems:12,items:{type:'object',additionalProperties:false,properties:{
+      name:str,aliases:{type:'array',maxItems:12,items:str},kind:{type:'string',enum:['canon','original','adapted']},
+      sections:{type:'object',additionalProperties:false,properties:Object.fromEntries(profileFields.map(field=>[field,{type:'string',maxLength:1600}]))},
+      evidence:{type:'array',maxItems:12,items:{type:'object',additionalProperties:false,properties:{field:{type:'string',enum:profileFields},
+        source_id:str,quote:{type:'string',minLength:8,maxLength:300}},required:['field','source_id','quote']}},
+    },required:['name','kind','sections']}},
+  },['profiles']),
   define('read_story_memory','Read scoped cast and memories offline. For a selected arc profile, pass character_id, field and optional character offset to read a page of its exact text.',{
     character_id:str,field:{type:'string',enum:profileFields},offset:{type:'integer',minimum:0},
   }),
@@ -59,6 +76,7 @@ export function storySetupTools(allowed:readonly AgentToolDefinition[],pendingNa
 export function selectKnowledgeTools(allowed:readonly AgentToolDefinition[],request:string,lastTool:string|null,storyId?:string|null,storySetup=false):AgentToolDefinition[]{
   let names:string[];
   if(storySetup)names=['read_task_brief','save_story_context'].includes(lastTool??'')?['save_story_context','read_task_brief']:['save_story_context','read_task_brief'];
+  else if(/\b(?:create|save|add|build|draft)\b.{0,80}\b(?:character|cast|au)\b.{0,50}\bprofiles?\b/i.test(request))names=['save_fiction_profiles','read_story_memory'];
   else if(lastTool==='save_story_context')names=['read_story_memory','read_task_brief'];
   else if(lastTool==='search_saved_sources'||lastTool==='read_saved_source')names=['read_saved_source','search_saved_sources','recall_context'];
   else if(/\b(research|find|search|scene)\b/i.test(request)&&!/\b(write|draft)\b/i.test(request))names=['search_specific_scene','search_saved_sources',...(storyId?['research_character']:[])];
@@ -69,7 +87,7 @@ export function selectKnowledgeTools(allowed:readonly AgentToolDefinition[],requ
   else names=['search_saved_sources','get_current_time','calculate','search_memories'];
   return names.flatMap(name=>{const t=allowed.find(t=>t.function.name===name);return t?[t]:[];});
 }
-export interface KnowledgeExecution {webEnabled:boolean;signal:AbortSignal;preferences:Preferences;messageId?:string;onStory?:(id:string)=>void;onResearch?:(data:import('../../research/research').ResearchCandidate[])=>void}
+export interface KnowledgeExecution {webEnabled:boolean;signal:AbortSignal;preferences:Preferences;messageId?:string;canonPoint?:CanonPoint;fictionMentions?:readonly string[];fictionDestination?:FictionDestination;onStory?:(id:string)=>void;onResearch?:(data:import('../../research/research').ResearchCandidate[])=>void}
 export async function executeKnowledgeTool(name:string,args:Record<string,unknown>,session:ChatSession,projects:CreatorProject[],execution:KnowledgeExecution):Promise<string>{
   const context={sessionId:session.id,projectId:projects.some(p=>p.id===session.projectId)?session.projectId??null:null};const sourceRepo=new SourceRepository(context),writing=new WritingRepository(context),stories=new StoryRepository(context);
   const scope=context.projectId?{kind:'project' as const,id:context.projectId}:{kind:'chat' as const,id:session.id};const storyId=session.storyId??null;
@@ -97,10 +115,47 @@ export async function executeKnowledgeTool(name:string,args:Record<string,unknow
     case 'move_writing_document':{const {document,content}=await writing.get(String(args.document_id));return JSON.stringify(await writing.save(document,content,{categoryId:args.category_id as string|null}));}
     case 'create_story_world':{const world=await stories.create(String(args.title),scope,{originKind:args.origin_kind as 'original'|'fanfiction'|'mixed',franchiseName:String(args.franchise??''),canonAnchor:String(args.canon_anchor??''),divergenceNote:String(args.divergence??'')});session.storyId=world.id;execution.onStory?.(world.id);return JSON.stringify(world);}
     case 'create_story_character':{
+      if(isFictionNameList(String(args.name)))throw Error('Create one character per tool call. Use the individual name for this card.');
       let character=await stories.character(mustStory(),String(args.name),args.aliases as string[]??[],args.kind as 'canon'|'original'|'adapted'??'canon');
       if(args.portrait_attachment_id){const attachment=session.messages.flatMap(m=>m.attachments??[]).find(a=>a.id===args.portrait_attachment_id&&a.kind==='image');if(!attachment?.dataUrl)throw Error('Portrait must reference an image attachment in this chat.');character=await stories.editCharacter(character,character.title,{...character.data,portrait:attachment.dataUrl});}
       const claims:ClaimData[]=[];for(const [field,section] of [['voice','Personality & Voice'],['personality','Personality & Voice'],['motivation','Motivations']] as const)if(args[field])claims.push({characterId:character.id,section,field,value:String(args[field]),kind:'interpretation',sourceLinks:[],locked:false,reviewed:false});
       if(claims.length)await stories.saveClaims(character,claims);return JSON.stringify(character);
+    }
+    case 'save_fiction_profiles': {
+      const destination=execution.fictionDestination;
+      const profileStoryId=destination?.storyId??storyId;
+      if (execution.preferences.toolPermissions.update_character_claims === 'deny' ||
+          (!profileStoryId && execution.preferences.toolPermissions.create_story_world === 'deny')) {
+        throw Error('A required story/profile permission was denied.');
+      }
+      const input = args as unknown as FictionProfileInput;
+      const mentions = execution.fictionMentions;
+      if (mentions?.length) {
+        if (input.profiles.some(profile=>!matchesCharacterMention(profile.name,profile.aliases??[],mentions))) {
+          throw Error('Save only the named characters in this request: '+mentions.join(', ')+'.');
+        }
+        if (!profileStoryId && !input.story?.franchise.trim()) throw Error('A new fiction card needs a recognized work. Supply the franchise or ask what story the character belongs to.');
+      }
+      if (input.story?.divergence && !session.messages.some(message => message.role === 'user' && message.content.includes(input.story!.divergence!))) {
+        throw Error('For story.divergence copy an exact AU instruction supplied by the user or omit it. Profile summaries can use your own words.');
+      }
+      const rules = (input.rules ?? []).map(({quote}) => {
+        const message = [...session.messages].reverse().find(item => item.role === 'user' && item.content.includes(quote));
+        if (!message) throw Error('A world rule must quote an exact human instruction from this conversation.');
+        return { quote, messageId: message.id };
+      });
+      const latest=session.messages.filter(message=>message.role==='user').at(-1);
+      if(latest)rules.push(...statedFictionRules(latest.content,latest.id));
+      if (execution.preferences.toolPermissions.create_story_character === 'deny') {
+        const cast = await stories.characters(profileStoryId??mustStory());
+        if (input.profiles.some(profile => !resolveStoryCharacter(cast, profile.name))) throw Error('Creating story characters was denied.');
+      }
+      const selection=destination?{categoryId:destination.categoryId,characterIds:[]}:
+        mentions?.length&&session.fiction?{...session.fiction,characterIds:[]}:session.fiction;
+      const result = await saveFictionProfiles(stories, scope, profileStoryId, selection, input, execution.canonPoint, rules,
+        Boolean(mentions?.length&&profileStoryId),destination,englishFiction(latest?.content??''));
+      if (!destination && storyId !== result.storyId) { session.storyId = result.storyId; execution.onStory?.(result.storyId); }
+      return JSON.stringify(result);
     }
     case 'read_story_memory': {
       const storyId=mustStory();

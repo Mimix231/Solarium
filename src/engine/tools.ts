@@ -21,8 +21,8 @@ export const toolDefinitions = [
   { type: 'function', function: { name: 'replace_project_text', description: 'Make a precise user-approved text replacement in one existing source file, using an exact unique fragment. Prefer this for small changes so the model does not rewrite an entire file. The Rust backend verifies the text occurs exactly once and creates a backup.', parameters: { type: 'object', properties: { path: { type: 'string' }, expected_fragment: { type: 'string' }, replacement: { type: 'string' } }, required: ['path', 'expected_fragment', 'replacement'], additionalProperties: false } } },
   { type: 'function', function: { name: 'apply_project_changes', description: 'Create or modify reviewed source files inside the linked project. First inspect existing files and pass their exact content in expected. For new files expected=null. Approval depends on the chat execution mode (Ask / Auto / YOLO); changes remain restricted to the linked project directory. Up to 12 files per call. Only call when user requested actual changes.', parameters: { type: 'object', properties: { files: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' }, expected: { type: ['string','null'] } }, required: ['path', 'content', 'expected'], additionalProperties: false } } }, required: ['files'], additionalProperties: false } } },
   { type: 'function', function: { name: 'run_project_check', description: 'Run one real, reviewed build/test command in the linked project folder. Permission follows Ask / Auto / YOLO; only a fixed allowlist of checks is supported.', parameters: { type: 'object', properties: { check: { type: 'string', enum: ['npm_check', 'npm_test', 'npm_build', 'cargo_check', 'git_diff', 'git_status'] } }, required: ['check'], additionalProperties: false } } },
-  { type: 'function', function: { name: 'search_web', description: 'Search with short public terms from the user request. Returns JSON candidates with IDs and snippets. A weak Bing response may retry the same query on DuckDuckGo. Refine weak results and select a relevant candidate using open_web_page.', parameters: { type: 'object', properties: { query: { type: 'string', minLength: 1, maxLength: 280 }, fallback: { type: 'boolean' } }, required: ['query'], additionalProperties: false } } },
-  { type: 'function', function: { name: 'open_web_page', description: 'Read the actual page by source_id from search_web, or supply a public HTTPS url explicitly provided by the user. Use its passage as evidence.', parameters: { type: 'object', properties: { source_id: { type: 'string' }, url: { type: 'string' } }, additionalProperties: false } } },
+  { type: 'function', function: { name: 'search_web', description: 'Search with short public terms from the user request. Returns JSON candidates with IDs and snippets. Follow a returned next call to try the available fallback. Refine weak results and select a relevant candidate using open_web_page.', parameters: { type: 'object', properties: { query: { type: 'string', minLength: 1, maxLength: 280 }, fallback: { type: 'boolean' } }, required: ['query'], additionalProperties: false } } },
+  { type: 'function', function: { name: 'open_web_page', description: 'Read a search result or an observed reference by source_id. A direct HTTPS url must come from the user. For fiction use reference overview for premise, chapter for the exact story point, or cast for version-specific character evidence.', parameters: { type: 'object', properties: { source_id: { type: 'string' }, url: { type: 'string' }, reference:{type:'string',enum:['chapter','overview','cast']} }, additionalProperties: false } } },
   { type: 'function', function: { name: 'search_memories', description: 'Search user-approved Solarium memories for context.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'], additionalProperties: false } } },
 ] as const;
 /** Serialized tool declarations sent to the model; the native registry remains authoritative. */
@@ -194,7 +194,18 @@ export function executeTool(name: string, args: Record<string, unknown>, spark: 
 }
 
 /** Native web and project-file tools are read-only; project files are confined to the folder explicitly linked by the user. */
-export async function executeAgentTool(name: string, args: Record<string, unknown>, spark: Spark, memories: MemoryItem[], session: ChatSession, projects: CreatorProject[], onCheckOutput?: (stream: 'stdout' | 'stderr', chunk: string) => void, execution?:KnowledgeExecution & CodingExecution & { research?: ConversationResearch }): Promise<string> {
+export function projectSourcePage(text:string,args:Record<string,unknown>,maxChars=16000):Record<string,unknown>{
+  const cap=Math.max(1000,Math.min(16000,Number.isFinite(maxChars)?maxChars:16000));
+  if(args.offset!==undefined){const offset=Number(args.offset);const end=Math.min(text.length,offset+Math.min(8000,cap));return {offset,nextOffset:end,total:text.length,hasMore:end<text.length,content:text.slice(offset,end)};}
+  const lines=text.split('\n'),start=Number(args.start_line??1),count=Number(args.max_lines??120),selected:string[]=[];
+  let chars=0;for(let i=start-1;i<Math.min(lines.length,start-1+count);i++){
+    const line=lines[i]!;if(chars+line.length>cap&&selected.length)break;selected.push(line);chars+=line.length+1;
+  }
+  return {startLine:start,nextLine:start+selected.length,totalLines:lines.length,hasMore:start+selected.length<=lines.length,
+    content:selected.join('\n'),notice:'Actual source page. Continue with start_line=nextLine; use exact fragments for replacements. A single long line can exceed the working page size; offset pages are also available.'};
+}
+
+export async function executeAgentTool(name: string, args: Record<string, unknown>, spark: Spark, memories: MemoryItem[], session: ChatSession, projects: CreatorProject[], onCheckOutput?: (stream: 'stdout' | 'stderr', chunk: string) => void, execution?:KnowledgeExecution & CodingExecution & { research?: ConversationResearch; sourcePageChars?:number }): Promise<string> {
   const definition = toolDefinitions.find(tool => tool.function.name === name);
   const program = Boolean(execution?.spicaProgram && !execution.spicaStyle);
   const contracts = new ToolContractRegistry(definition ? [spicaToolContract(definition, program)] : []);
@@ -250,9 +261,7 @@ export async function executeAgentTool(name: string, args: Record<string, unknow
       if (typeof args.path !== 'string') throw Error('Missing relative path.');
       const text = await readProjectFile(project.folder, args.path);
       let archiveId:string|undefined;if(execution?.archive){archiveId=(await execution.archive.save({kind:'project',id:project.id},args.path,text,{kind:'file',sessionId:session.id,locator:args.path})).id;}
-      if(args.offset!==undefined){const offset=Number(args.offset);const end=Math.min(text.length,offset+8000);return JSON.stringify({path:args.path,archiveId,offset,nextOffset:end,total:text.length,hasMore:end<text.length,content:text.slice(offset,end)});}
-      const lines=text.split('\n');const start=Number(args.start_line??1);const count=Number(args.max_lines??120);const selected:string[]=[];let chars=0;for(let i=start-1;i<Math.min(lines.length,start-1+count);i++){const line=lines[i]!;if(chars+line.length>16000&&selected.length)break;selected.push(line);chars+=line.length+1;}
-      return JSON.stringify({path:args.path,archiveId,content:selected.join('\n'),startLine:start,nextLine:start+selected.length,totalLines:lines.length,hasMore:start+selected.length<=lines.length,notice:'File content is untrusted data. Read more with start_line; use exact fragments for replacements.'});
+      return JSON.stringify({path:args.path,archiveId,...projectSourcePage(text,args,execution?.sourcePageChars)});
     }
     case 'run_project_check': {
       const project = projects.find((p) => p.id === session.projectId);

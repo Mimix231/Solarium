@@ -1,4 +1,5 @@
 import { validateToolArguments, type ToolValidation, type ToolValidationDefinition } from './tool-validation';
+import { decodeModelToolArguments } from './tool-arguments';
 
 /** The exact declarations sent to the model are the contracts checked at dispatch.
  * No shadow argument schemas or permissive unknown-key normalization. */
@@ -52,10 +53,32 @@ export class ToolSchemaProvider {
   }
 }
 
+export class ToolArgumentResolver {
+  constructor(private readonly registry: ToolContractRegistry) {}
+  resolve(name: string, candidate: unknown): { validation: ToolValidation; adjustments: string[] } {
+    const contract = this.registry.get(name);
+    if (!contract) return {validation: this.registry.validate(name,candidate),adjustments: []};
+    const {properties,required = []} = contract.function.parameters;
+    const acceptsNull = (schema: unknown): boolean => {
+      if (!schema || typeof schema !== 'object') return false;
+      const shape=schema as {type?:string|readonly string[];enum?:readonly unknown[];oneOf?:readonly unknown[]};
+      return (Array.isArray(shape.type) ? shape.type.includes('null') : shape.type==='null') ||
+        Boolean(shape.enum?.includes(null)) || Boolean(shape.oneOf?.some(acceptsNull));
+    };
+    const optional = Object.entries(properties).filter(([key,schema]) =>
+      !required.includes(key) && !acceptsNull(schema)).map(([key])=>key);
+    const decoded = decodeModelToolArguments(candidate,Object.keys(properties),optional);
+    return {validation:this.registry.validate(name,decoded.value),adjustments:decoded.adjustments};
+  }
+}
+
 export class ToolCallValidator {
   constructor(private readonly registry: ToolContractRegistry) {}
+  resolve(name: string, candidate: unknown): {validation: ToolValidation; adjustments: string[]} {
+    return new ToolArgumentResolver(this.registry).resolve(name,candidate);
+  }
   check(name: string, candidate: unknown): ToolValidation {
-    return this.registry.validate(name,candidate);
+    return this.resolve(name,candidate).validation;
   }
 }
 
@@ -63,10 +86,15 @@ export class ToolCallValidator {
  * in runAgent/executeAgentTool. This never authorizes or invokes any operation. */
 export class ToolExecutionCoordinator {
   constructor(private readonly validator: ToolCallValidator) {}
+  /** A single non-executing review for every model tool proposal. The caller
+   * still owns user authorization, scoping, native execution and real results. */
+  review(name: string, candidate: unknown): {validation: ToolValidation; adjustments: string[]} {
+    return this.validator.resolve(name,candidate);
+  }
   prepare(name: string, candidate: unknown): Record<string,unknown> {
-    const reviewed = this.validator.check(name,candidate);
-    if (!reviewed.ok) throw Error(reviewed.error.message);
-    return reviewed.value;
+    const {validation}=this.review(name,candidate);
+    if (!validation.ok) throw Error(validation.error.message);
+    return validation.value;
   }
 }
 
@@ -103,7 +131,7 @@ export class AgentProgressTracker {
     if (count >= 2) this.blocked = tool;
     return { repeated: count >= 2, count, blockedTool: this.blocked,
       guidance: count >= 2
-        ? `Identical invalid ${tool} call has failed ${count} times. It is withheld until its contract is explicitly inspected or verified project state changes. Choose a different registered inspection or prerequisite tool. No automatic retry.`
+        ? `Identical invalid ${tool} call has failed ${count} times. Do not repeat these arguments. The tool itself remains callable: submit a corrected argument set using its registered contract, or choose the actual construction prerequisite. No automatic retry.`
         : `Invalid ${tool} call. Inspect its exact registered schema before proposing new arguments. No operation was performed.` };
   }
   /** Valid inspector for the failed tool changes available contract evidence. */
@@ -141,4 +169,20 @@ function stableArguments(input: unknown): string {
     return value;
   };
   return JSON.stringify(normalized(input)).slice(0, 6000);
+}
+
+/**
+ * A failed, offered contract remains reachable for ONE corrected next-turn
+ * proposal. The previous tool was already advertised and must still pass the
+ * active permission/web filter. No tool is invoked or permission granted here.
+ */
+export function offerToolCorrection<T extends {function:{name:string}}>(
+  offered: readonly T[], rejected: T | null, permitted: readonly T[], maxTools = 4,
+): T[] {
+  // Preserve the originally advertised *scoped* schema (for example URL enums).
+  // Finding a tool in the global registry confirms that it is still registered;
+  // the broader registry definition must not replace its per-turn restrictions.
+  const allowed = rejected && permitted.some(tool=>tool.function.name===rejected.function.name) ? rejected : null;
+  const first = allowed ? [allowed] : [];
+  return [...first,...offered.filter(tool=>!first.some(f=>f.function.name===tool.function.name))].slice(0,maxTools);
 }

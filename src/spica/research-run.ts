@@ -1,6 +1,6 @@
 import { uid, type ChatSource } from '../domain/types';
 import type { SourceScope } from '../foundation/types';
-import { matchesSearchQuery, rankCandidates, sceneIntent, type ResearchPage, type SearchProvider } from '../research/research';
+import { matchesSearchQuery, rankCandidates, sceneIntent, shorterSearchQuery, type ResearchPage, type SearchProvider } from '../research/research';
 import { DuplicateSourceError, SourceRepository, words } from '../sources/repository';
 
 const searchLimit = 4;
@@ -19,7 +19,8 @@ export interface Observation extends ChatSource {
 export interface SearchObservation {
   kind: 'web_search'; searchId: string; query: string; provider: string; retrievedAt: string; returned: number; shortlisted: number;
   relevance: 'matched' | 'weak';
-  attempts: { provider: string; returned?: number; diagnostic?: string }[];
+  fallbackAvailable?: boolean;
+  attempts: { provider: string; query?: string; returned?: number; diagnostic?: string }[];
   results: { id: string; url: string; title: string; snippet: string }[];
 }
 
@@ -134,14 +135,13 @@ export class SpicaResearchRun {
 
   async search(input: string, signal: AbortSignal, strategy: 'primary' | 'fallback' | 'relevant' = 'primary'): Promise<SearchObservation> {
     const query = publicQuery(input);
-    const queryKey = query.toLowerCase().replace(/\s+/g, ' ');
-    const match = (result: ChatSource) => matchesSearchQuery(query, `${result.title} ${result.excerpt ?? ''} ${new URL(result.url).pathname}`);
     return this.observe(signal, async provider => {
       if (this.searches >= searchLimit) throw Error('Search budget reached. Inspect or save the available evidence.');
       const attempts: SearchObservation['attempts'] = [];
       const fetchResults = async (fallback: boolean) => {
-        const name = fallback ? 'duckduckgo' : provider.kind ?? 'configured';
-        const key = name + ':' + queryKey;
+        const name = fallback ? provider.fallbackKind ?? 'duckduckgo' : provider.kind ?? 'configured';
+        const sentQuery = name === 'mwmbl' ? shorterSearchQuery(query) ?? query : query;
+        const key = name + ':' + sentQuery.toLowerCase().replace(/\s+/g, ' ');
         if (this.queries.has(key)) throw Error('This query already ran with this provider. Refine it or inspect a returned source.');
         const search = fallback ? provider.fallbackSearch : provider.search;
         if (!search) throw Error('The selected provider has no fallback.');
@@ -150,29 +150,33 @@ export class SpicaResearchRun {
         this.searches++;
         try {
           const seen = new Set<string>();
-          const results = (await search(query, signal)).filter(result => {
+          const results = (await search(sentQuery, signal)).filter(result => {
             const url = https(result.url)?.href;
             if (!url || seen.has(url)) return false;
             seen.add(url);
             return true;
           });
           this.guard(signal);
-          attempts.push({ provider: name, returned: results.length });
+          attempts.push({ provider: name, query: sentQuery, returned: results.length });
           return { name, results };
         } catch (error) {
           this.guard(signal);
-          attempts.push({ provider: name, diagnostic: String(error).slice(0, 220) });
+          attempts.push({ provider: name, query: sentQuery, diagnostic: String(error).slice(0, 220) });
           return undefined;
         }
       };
-      let selected = await fetchResults(strategy === 'fallback');
+      const selected = await fetchResults(strategy === 'fallback') ?? (strategy === 'relevant' && provider.fallbackSearch
+        ? { name: provider.kind ?? 'configured', results: [] } : undefined);
       if (!selected) throw Error(attempts.map(attempt => `${attempt.provider}: ${attempt.diagnostic}`).join(' '));
       const { results } = selected;
+      const matchedQuery = attempts[0]?.query ?? query;
+      const match = (result: ChatSource) => matchesSearchQuery(matchedQuery, `${result.title} ${result.excerpt ?? ''} ${new URL(result.url).pathname}`);
       const ranked = rankCandidates(results, { ...sceneIntent(query), query });
       const candidates = strategy === 'relevant' ? [...results].sort((a, b) => Number(match(b)) - Number(match(a))) : ranked.length ? ranked : results;
       const shortlist = candidates.slice(0, 8).map(item =>
-        this.add({ title: item.title, url: item.url, excerpt: item.excerpt }, query, 'search'));
+        this.add({ title: item.title, url: item.url, excerpt: item.excerpt }, matchedQuery, 'search'));
       return { kind: 'web_search', searchId: uid(), query, provider: selected.name, attempts,
+        ...(strategy === 'relevant' && provider.fallbackSearch && this.searches < searchLimit ? { fallbackAvailable: true } : {}),
         relevance: candidates.some(match) ? 'matched' : 'weak',
         retrievedAt: new Date().toISOString(), returned: results.length, shortlisted: shortlist.length,
         results: shortlist.map((source, index) => ({ id: source.id, url: source.url, title: candidates[index]!.title.slice(0, 200), snippet: candidates[index]!.excerpt?.slice(0, 240) ?? '' })) };

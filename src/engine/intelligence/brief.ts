@@ -14,6 +14,8 @@ export interface ConversationBrief {
   writingRequested: boolean;
   dialogueFormat: string;
   expectedCast: string[];
+  fanfictionRequested?: boolean;
+  noLengthTarget?: boolean;
   completedRequestIds?:string[];planAlreadyDrafted?:boolean;
 }
 const approves = /\b(accurate|approved|looks good|sounds good|go ahead|let['’]s do (?:that|it)|yes[,! ]|use (?:that|this) (?:plan|outline))\b/i;
@@ -36,6 +38,13 @@ export function outlineBeats(text: string, messageId: string): ApprovedBeat[] {
 /** Lexical routing candidates only; a profile still requires model-selected, human-quoted facts. */
 export function mentionedCast(text:string):string[]{
   const found:string[]=[];const name='[\\p{Lu}][\\p{L}]+(?:[ \t]+[\\p{Lu}][\\p{L}]+){0,2}';
+  const listName = new RegExp('^(?:[Aa]rc\\s+\\d+\\s+)?('+name+')$', 'u');
+  for (const list of text.matchAll(/(?:^|[\r\n])\s*(?:cast|characters)\s*:\s*([^.!?\r\n]+)/gi)) {
+    for (const entry of list[1]!.split(/,|;|\band\b/)) {
+      const candidate = listName.exec(entry.trim())?.[1];
+      if (candidate) found.push(candidate);
+    }
+  }
   for(const match of text.matchAll(new RegExp('\\b(?:named|alongside|character)\\s+('+name+')','gu')))found.push(match[1]!);
   for(const match of text.matchAll(new RegExp('\\b('+name+')(?:\\s+and\\s+('+name+'))?\\s+(?:is|are|has|have|wears|values|cares|knows|know|protects|speaks|prefers|does|won[’\']t)\\b','gu'))){found.push(match[1]!);if(match[2])found.push(match[2]);}
   const ignore=new Set(['he','she','they','it','this','that','i','we','you','first','chapter','season','arc','hello','okay','a','the']);
@@ -43,10 +52,17 @@ export function mentionedCast(text:string):string[]{
   return unique.filter(n=>!unique.some(other=>other!==n&&other.split(/\s+/).includes(n)));
 }
 export const isCharacterStatement=(text:string):boolean=>!/^\s*(?:what|why|how|could|would|should|does|is|are|can|might|maybe|perhaps)\b/i.test(text)&&/\b(is|are|has|have|wears|values|cares|knows|know|protects|speaks|prefers|actually|change|instead|remember|now)\b/i.test(text);
+export function isWritingRequest(text:string):boolean {
+  const direct=/\b(write|draft|compose|continue|finish|resume|rewrite)\b/i.test(text);
+  const start=/\b(?:start|begin|create|generate)\s+(?:(?!(?:profiles?|cards?|categories|groups?|worlds?|chats?)\b)[\p{L}\p{N}-]+\s+){0,6}(?:chapter|story|scene|novel|essay|article|screenplay|report|document|fanfic(?:tion)?)\b/iu.test(text);
+  return (direct||start)&&
+    /\b(chapter|story|scene|novel|essay|article|screenplay|report|writing|document|fanfic(?:tion)?)\b/i.test(text)&&
+    !/^\s*(?:please\s+)?(?:plan|outline|brainstorm|how (?:can|would|do)|what if)\b/i.test(text);
+}
 /** Extractive, attributed state. No generated thoughts or assistant suggestions become user facts. */
 export function deriveBrief(session: ChatSession): ConversationBrief {
   let messages = session.messages;
-  let reset = -1; messages.forEach((m, i) => { if (m.role === 'user' && /\b(start|begin|create)\b.{0,24}\b(?:new|different|another)\s+(?:story|fanfiction|novel|AU)\b/i.test(m.content)) reset = i; });
+  let reset = -1; messages.forEach((m, i) => { if (m.role === 'user' && /\b(start|begin|create)\b.{0,24}\b(?:new|different|another)\s+(?:\p{L}+\s+){0,2}(?:story|fanfiction|novel|AU)\b/iu.test(m.content)) reset = i; });
   if (reset >= 0) messages = messages.slice(reset);
   const users = messages.filter(m => m.role === 'user');
   const latest = users.at(-1)?.content ?? '';
@@ -57,17 +73,21 @@ export function deriveBrief(session: ChatSession): ConversationBrief {
     const beats = outlineBeats(previous.content, previous.id);
     if (beats.length >= 2 && /\b(chapter|story|scene|outline|arrival|aftermath|incident)\b/i.test(previous.content)) approvedPlan = { messageId: previous.id, acceptedBy: user.id, text: previous.content, beats };
   }
-  const storyRequested = Boolean(session.storyId) || users.some(m => /\b(fanfiction|fanfic|alternate universe|my (?:own )?(?:original )?(?:AU|story|novel)|story character)\b/i.test(m.content));
+  const fanfictionRequested = users.some(m => /\b(fanfiction|fanfic|alternate universe|my (?:own )?(?:original )?AU)\b/i.test(m.content));
+  const storyRequested = Boolean(session.storyId) || fanfictionRequested || users.some(m => /\b(my (?:own )?(?:original )?(?:story|novel)|story character)\b/i.test(m.content));
   let target: LengthTarget | null = null;
+  let noLengthTarget = false;
   for (const user of users) {
-    if (/\b(chapter|story|novel|draft|essay|article|screenplay|report)\b/i.test(user.content)) target = lengthTarget(user.content) ?? target;
-    if (/\b(no|without)\s+(?:minimum |fixed )?(?:length|word|character)\s*(?:target|count|limit)?\b/i.test(user.content)) target = null;
+    const specified = /\b(chapter|story|novel|draft|essay|article|screenplay|report)\b/i.test(user.content) ? lengthTarget(user.content) : null;
+    if (specified) { target = specified; noLengthTarget = false; }
+    if (/\b(no|without)\s+(?:minimum |fixed )?(?:length(?:\s+(?:target|count|limit))?|(?:word|character)\s+(?:target|count|limit))\b/i.test(user.content)) { target = null; noLengthTarget = true; }
   }
   const requestedChapter=/\bchapter\s+(\d+)/i.exec(latest)?.[1];const plannedChapter=approvedPlan?/\bchapter\s+(\d+)/i.exec(approvedPlan.text)?.[1]:null;
   if(requestedChapter&&plannedChapter&&requestedChapter!==plannedChapter)approvedPlan=null;
   const dialogue = [...users].reverse().find(m => /\bcharacter\s*:\s*\[?text\]?/i.test(m.content));
-  return { sessionId: session.id, instructions: users.map(m => ({ id: m.id, text: m.content })), approvedPlan, target, storyRequested,
-    writingRequested: /\b(write|draft|compose|continue|finish|resume|rewrite)\b/i.test(latest) && /\b(chapter|story|scene|novel|essay|article|screenplay|report|writing|document)\b/i.test(latest),
+  const writingRequested = isWritingRequest(latest);
+  return { sessionId: session.id, instructions: users.map(m => ({ id: m.id, text: m.content })), approvedPlan, target, storyRequested, fanfictionRequested, noLengthTarget,
+    writingRequested,
     expectedCast:mentionedCast(users.map(m=>m.content).join('\n')),
     dialogueFormat: dialogue ? 'Dialogue uses Character: text, as explicitly requested by the user.' : '' };
 }

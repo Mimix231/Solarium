@@ -13,7 +13,7 @@ export const workLifecycle={
 /** Owns cancellation/finalization, not inference turns or thought text. */
 export async function withLocalWork<T>(id:string,label:string,modelPath:string|undefined,signal:AbortSignal,run:(signal:AbortSignal)=>Promise<T>):Promise<T>{
   workLifecycle.assertIdle();
-  const controller=new AbortController(),stop=()=>controller.abort();signal.addEventListener('abort',stop,{once:true});if(signal.aborted)stop();
+  const controller=new AbortController(),stop=()=>controller.abort(signal.reason);signal.addEventListener('abort',stop,{once:true});if(signal.aborted)stop();
   let finish!:()=>void;const done=new Promise<void>(resolve=>{finish=resolve;});work.set(id,{id,label,modelPath,controller,done});changed();
   try{return await run(controller.signal);}finally{signal.removeEventListener('abort',stop);work.delete(id);finish();changed();}
 }

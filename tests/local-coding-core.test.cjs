@@ -24,6 +24,17 @@ test('local work prevents model/task overlap and Stop waits for actual finalizat
  await assert.rejects(()=>withLocalWork('two','overlap',undefined,user.signal,async()=>{}),/active local task/);await workLifecycle.stopAll();assert.equal(await observed,'stopped');assert.equal(finalized,true);assert.deepEqual(workLifecycle.active(),[]);
 });
 const commands=[{id:'script:check',command:'check',verification:true,cwd:'.'},{id:'script:test',command:'test',verification:true,behavioral:true,cwd:'.'}];
+test('the normal work owner preserves Pause and Cancel reasons through its child signal',async()=>{
+ for(const reason of ['paused','cancelled']){
+  const source=new AbortController();let ready;
+  const started=new Promise(resolve=>{ready=resolve;});
+  const result=withLocalWork('reason-'+reason,'actual task',undefined,source.signal,async signal=>{
+   ready();return new Promise(resolve=>signal.addEventListener('abort',()=>resolve(signal.reason),{once:true}));
+  });
+  await started;source.abort(reason);assert.equal(await result,reason);
+ }
+ assert.deepEqual(workLifecycle.active(),[]);
+});
 const pass=(hash)=>({command:'check',exit_code:0,stdout:'passed',stderr:'',timed_out:false,source_before:hash,source_after:hash});
 test('actual external source changes invalidate earlier passes without inventing model writes',()=>{
  const ledger=new VerificationLedger();ledger.configure(commands);ledger.edited();ledger.record('script:check',pass('old'));ledger.record('script:test',pass('old'));assert.equal(ledger.completion(true).ok,true);ledger.observeSource('external edit');assert.equal(ledger.state.writes,1);assert.deepEqual(ledger.pending(),['script:check','script:test']);assert.equal(ledger.completion(true).ok,false);

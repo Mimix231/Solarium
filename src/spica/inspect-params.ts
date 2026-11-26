@@ -5,7 +5,7 @@ import { capabilities, recipeCatalog } from './program';
 import { styleProperties, styleStates } from './appearance';
 import { spicaEditOperationSchema } from './edit-schemas';
 
-const editOperations = ['install_recipe', 'add_collection', 'add_record_field', 'put_screen', 'put_flow',
+const editOperations = ['install_recipe', 'add_collection', 'add_record_field', 'set_field_property', 'put_screen', 'put_flow',
   'put_scenario', 'set_start_screen', 'grant_capability', 'revoke_capability', 'set_style',
   'add_page', 'add_setting', 'label_setting', 'remove_setting', 'add_record_toggle', 'rename'] as const;
 export type SpicaInspectableOperation = typeof editOperations[number];
@@ -50,6 +50,7 @@ export function inspectSpicaParameters(graph: Graph, revision: number, operation
     add_collection: { op: 'add_collection', collection: { id: fresh('journal'), label: 'Journal', singular: 'Entry',
       fields: [{ key: 'title', label: 'Title', type: 'text', required: true }, { key: 'body', label: 'Body', type: 'text', multiline: true }] } },
     add_record_field: { op: 'add_record_field', collection: collectionId, field: { key: freshKey('archived', currentFields), label: 'Archived', type: 'boolean', initial: false } },
+    set_field_property: {op:'set_field_property',collection_id:collectionId,field_key:currentFields.has('body')?'body':'title',property:'format',new_value:'markdown'},
     put_screen: { op: 'put_screen', screen: { id: fresh('notes_search'), label: 'Search notes', view: 'list', collection: collectionId, query: '' } },
     put_flow: { op: 'put_flow', flow: { id: fresh('save_note'), collection: collectionId,
       steps: [{ id: 'validate_note', action: 'validate' }, { id: 'save_note_step', action: 'save' }, ...(screens.length ? [{ id: 'open_notes', action: 'navigate', screen: screenId }] : [])] } },
@@ -74,6 +75,7 @@ export function inspectSpicaParameters(graph: Graph, revision: number, operation
     add_record_field: ['collection must be an EXISTING collection ID string.', 'field must be an object with key,label,type.',
       'Do not add an existing field; duplicates are errors.', `Allowed types: ${fieldTypes.join(', ')}; choice needs 2–24 distinct choices.`,
       'Reference types require an existing target collection ID; number can have min and max.'],
+    set_field_property: ['Use collection_id, field_key, property and new_value for an EXISTING field.', 'label is text; multiline is Boolean and only for text fields; format is plain or markdown and only for text fields.', 'Field storage type and existing default are immutable.'],
     put_screen: [`Supported views: ${screenViews.join(', ')}. No settings view.`, 'screen is an OBJECT with id,label,view and (except game) an existing collection ID.',
       'For list: optional query (up to 256 chars), optional filter referencing a Boolean filter field.',
       'For form: fields must be collection FIELD KEY STRINGS and submit must name an existing flow in the same collection.',
@@ -108,14 +110,14 @@ export function inspectSpicaParameters(graph: Graph, revision: number, operation
   const allSchema = schema as { properties?: { edits?: { items?: { properties?: Record<string, unknown> } } } } | undefined;
   const allowed = allSchema?.properties?.edits?.items?.properties;
   const keys: Record<SpicaInspectableOperation, readonly string[]> = {
-    install_recipe: ['recipe'], add_collection: ['collection'], add_record_field: ['collection', 'field'],
+    install_recipe: ['recipe'], add_collection: ['collection'], add_record_field: ['collection', 'field'], set_field_property:['collection_id','field_key','property','new_value'],
     put_screen: ['screen'], put_flow: ['flow'], put_scenario: ['scenario'], set_start_screen: ['screen'],
     grant_capability: ['capability'], revoke_capability: ['capability'], set_style: ['target','property','state','value'],
     add_page: ['id','label'], add_setting: ['page','key','label','type','initial','choices','multiline'],
     label_setting: ['key','label'], remove_setting: ['key'], add_record_toggle: ['key','label','initial','filter'], rename: ['name'],
   };
   const blockers: string[] = [];
-  if (!record && ['add_record_field','put_screen','put_flow','add_record_toggle'].includes(op)) blockers.push('Create a collection first with add_collection or install a supported starter recipe.');
+  if (!record && ['add_record_field','set_field_property','put_screen','put_flow','add_record_toggle'].includes(op)) blockers.push('Create a collection first with add_collection or install a supported starter recipe.');
   if (!screens.length && ['put_scenario','set_start_screen'].includes(op)) blockers.push('Create a valid screen first with put_screen.');
   if (!graph.preferences.length && ['label_setting','remove_setting'].includes(op)) blockers.push('Add a setting before modifying or removing one.');
   if (!graph.pages.length && op === 'add_setting') blockers.push('Create a settings page first using add_page.');

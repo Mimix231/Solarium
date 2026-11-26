@@ -2,6 +2,7 @@ import { defineRuntimeBlock } from '../../../adapter';
 
 /** Declarative split panel; target renderer owns actual resizing and responsive behavior. */
 export default defineRuntimeBlock({
+  exampleConfig:{ratio:0.5},
   id:'spica.runtime.responsive_split',version:'1',kind:'renderer',trust:'built-in',targets:['desktop','web'],permissions:[],
   inputs:[{id:'left',type:{kind:'ui'},required:true},{id:'right',type:{kind:'ui'},required:true}],
   outputs:[{id:'view',type:{kind:'ui'}}],

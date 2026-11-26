@@ -47,3 +47,6 @@ export async function spicaCapabilityCounts() {
   try { indexedDraftCount = (await ensureCatalog()).entries; } catch { /* Native service unavailable outside desktop. */ }
   return spicaRegisteredCapabilityCounts(indexedDraftCount);
 }
+
+/** DCE source-code capabilities are a distinct opt-in discovery surface. */
+export { listSourceCapabilities, inspectSourceCapability } from './source-capabilities';
